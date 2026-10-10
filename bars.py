@@ -10,6 +10,12 @@ Payload (what matcher.js decodes): b'CBAR1', the timeframe count, then per timef
 interval in seconds, bar count, first open time and gap list as little-endian u32s, then four
 varints per bar: open minus the previous close and close minus open (zigzag), then the upper and
 lower shadows.
+
+Activity (served beside it for the panes): b'CACT1', the timeframe count, then per timeframe its
+name and bar count, then the volume, the quote volume (USDT) and the trade count, each as its
+natural log quantized to a u16 between the timeframe's least and greatest (a little-endian f64 for
+the least and one for the step, then the codes), then the maker share of volume as a u16 of 65535.
+A log code's step is under 0.03% of the value.
 """
 
 from __future__ import annotations
@@ -17,10 +23,11 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import math
 import re
 import struct
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 HUB = 'https://huggingface.co'
 # name shown in Composer, bar interval in seconds, HuggingFace dataset
@@ -32,6 +39,7 @@ TIMEFRAMES = (
     ('4h', 14400, 'vaquum/binance_btcusdt_4h_klines'),
 )
 MAGIC = b'CBAR1'
+ACTIVITY_MAGIC = b'CACT1'
 MAX_FILE_BYTES = 256 * 1024 * 1024
 TIMEOUT_SECONDS = 120
 
@@ -51,7 +59,7 @@ class Source:
 
 @dataclass(frozen=True)
 class Frame:
-    """One timeframe's bars: open times in seconds since the epoch (UTC) and prices in cents."""
+    """One timeframe's bars: open times in seconds since the epoch (UTC), prices in cents, and what traded in each."""
 
     name: str
     seconds: int
@@ -60,6 +68,10 @@ class Frame:
     highs: list[int]
     lows: list[int]
     closes: list[int]
+    volumes: list[float] = field(default_factory=list)
+    quotes: list[float] = field(default_factory=list)
+    trades: list[int] = field(default_factory=list)
+    makers: list[float] = field(default_factory=list)
 
 
 def _get(url: str, limit: int) -> bytes:
@@ -109,7 +121,7 @@ def frame(source: Source, data: bytes) -> Frame:
     import pyarrow as pa
     import pyarrow.parquet as pq
 
-    table = pq.read_table(io.BytesIO(data), columns=['datetime', 'open', 'high', 'low', 'close'])
+    table = pq.read_table(io.BytesIO(data), columns=['datetime', 'open', 'high', 'low', 'close', 'volume', 'liquidity_sum', 'no_of_trades', 'maker_volume'])
     label = f'{source.repo}/{source.file_name}'
     if table.num_rows != source.row_count:
         raise ValueError(f'{label} has {table.num_rows} rows, latest.json says {source.row_count}')
@@ -127,7 +139,12 @@ def frame(source: Source, data: bytes) -> Frame:
             raise ValueError(f'{label}: the bar opening at {times[i]} is not a candle')
         if i and ((step := times[i] - times[i - 1]) <= 0 or step % source.seconds):
             raise ValueError(f'{label}: the bar opening at {times[i]} is off the {source.name} grid')
-    return Frame(source.name, source.seconds, times, opens, highs, lows, closes)
+    volumes, quotes, trades, makers = (table.column(k).to_pylist() for k in ('volume', 'liquidity_sum', 'no_of_trades', 'maker_volume'))
+    for i, (v, q, n, m) in enumerate(zip(volumes, quotes, trades, makers)):
+        # every bar traded: volume, quote volume and trades are positive, and the maker volume is part of the volume
+        if v is None or q is None or n is None or m is None or not (v > 0 and q > 0 and n > 0 and 0 <= m <= v * (1 + 1e-9)):
+            raise ValueError(f'{label}: the bar opening at {times[i]} has no usable volume, quote volume, trades or maker volume')
+    return Frame(source.name, source.seconds, times, opens, highs, lows, closes, volumes, quotes, trades, makers)
 
 
 def _varint(out: bytearray, value: int) -> None:
@@ -164,11 +181,37 @@ def encode(frames: list[Frame]) -> bytes:
     return bytes(out)
 
 
+def _log_codes(values: list[float]) -> tuple[float, float, list[int]]:
+    logs = [math.log(v) for v in values]
+    lo = min(logs, default=0.0)
+    step = (max(logs, default=0.0) - lo) / 65534 or 1.0
+    return lo, step, [1 + round((x - lo) / step) for x in logs]
+
+
+def encode_activity(frames: list[Frame]) -> bytes:
+    out = bytearray(ACTIVITY_MAGIC)
+    out.append(len(frames))
+    for f in frames:
+        name = f.name.encode()
+        out.append(len(name))
+        out += name
+        n = len(f.times)
+        if not (len(f.volumes) == len(f.quotes) == len(f.trades) == len(f.makers) == n):
+            raise ValueError(f'{f.name}: activity does not cover every bar')
+        out += struct.pack('<I', n)
+        for column in (f.volumes, f.quotes, f.trades):
+            lo, step, codes = _log_codes([float(x) for x in column])
+            out += struct.pack(f'<dd{n}H', lo, step, *codes)
+        out += struct.pack(f'<{n}H', *(min(65535, round(m / v * 65535)) for v, m in zip(f.volumes, f.makers)))
+    return bytes(out)
+
+
 def current() -> list[Source]:
     """Every timeframe's current file, as `latest.json` names it."""
     return [latest(name, seconds, repo) for name, seconds, repo in TIMEFRAMES]
 
 
-def read(sources: list[Source]) -> bytes:
-    """Those files, downloaded, checked and encoded."""
-    return encode([frame(source, download(source)) for source in sources])
+def read(sources: list[Source]) -> tuple[bytes, bytes]:
+    """Those files, downloaded, checked and encoded: the bars, and what traded in them."""
+    frames = [frame(source, download(source)) for source in sources]
+    return encode(frames), encode_activity(frames)

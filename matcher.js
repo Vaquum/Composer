@@ -23,6 +23,8 @@
 
 const TF_NAMES = ['15m', '30m', '1h', '2h', '4h'];
 let BARS = null, latest = 0, pending = null;
+// what Composer reads about each bar beside its shape, once the activity has arrived (per timeframe, aligned with BARS)
+let READ = null, pendingActivity = null;
 
 function decode(buffer) {
   const buf = new Uint8Array(buffer);
@@ -63,6 +65,97 @@ function decode(buffer) {
     out.push({ name, sec, n, ts, O, H, L, C, run, atr });
   }
   return out;
+}
+
+// what traded in each bar, served beside the bars: volume, quote volume (USDT) and trades as quantized natural logs,
+// and the maker share of the volume (bars.py says how they are packed)
+function decodeActivity(buffer) {
+  const dv = new DataView(buffer);
+  if (buffer.byteLength < 6 || String.fromCharCode(dv.getUint8(0), dv.getUint8(1), dv.getUint8(2), dv.getUint8(3), dv.getUint8(4)) !== 'CACT1') throw new Error('This is not Composer activity data.');
+  let p = 5;
+  const out = [], count = dv.getUint8(p++);
+  for (let k = 0; k < count; k++) {
+    let name = '';
+    for (let i = 0, len = dv.getUint8(p++); i < len; i++) name += String.fromCharCode(dv.getUint8(p++));
+    const n = dv.getUint32(p, true); p += 4;
+    if (p + n * 2 * 4 + 48 > buffer.byteLength) throw new Error('The activity data is truncated.');
+    const column = () => {
+      const lo = dv.getFloat64(p, true), step = dv.getFloat64(p + 8, true), a = new Float64Array(n);
+      p += 16;
+      for (let i = 0; i < n; i++, p += 2) a[i] = Math.exp(lo + (dv.getUint16(p, true) - 1) * step);
+      return a;
+    };
+    const vol = column(), quote = column(), trades = column(), maker = new Float64Array(n);
+    for (let i = 0; i < n; i++, p += 2) maker[i] = dv.getUint16(p, true) / 65535;
+    out.push({ name, n, vol, quote, trades, maker });
+  }
+  return out;
+}
+
+// What Composer reads about every bar, the way the cube explorer reads a cell: its volume, trades and trade size (USDT per
+// trade) against the median of the eleven bars before it, the maker share of its volume, its range and close-minus-open
+// in the ATR at the bar before it, and where it closed in the prior UTC day's range. The first three compare as ratios,
+// so their means and spreads are taken over logs. Each timeframe also keeps every reading's count, sum and sum of
+// squares over its whole history, for the comparison.
+const READINGS = ['vol', 'trades', 'size', 'maker', 'range', 'net', 'day'];
+const AS_LOG = [true, true, true, false, false, false, false];
+function readings(T, A) {
+  const n = T.n, R = {};
+  if (A.n !== n) throw new Error(`The ${T.name} activity does not cover its bars.`);
+  for (const key of READINGS) R[key] = new Float32Array(n).fill(NaN);
+  const size = new Float64Array(n);
+  for (let i = 0; i < n; i++) size[i] = A.quote[i] / A.trades[i];
+  const w = new Float64Array(11);
+  const median = (a, i) => { for (let j = 0; j < 11; j++) w[j] = a[i - 11 + j]; w.sort(); return w[5]; };
+  for (let i = 0; i < n; i++) {
+    R.maker[i] = A.maker[i];
+    if (T.run[i] >= 12) { R.vol[i] = A.vol[i] / median(A.vol, i); R.trades[i] = A.trades[i] / median(A.trades, i); R.size[i] = size[i] / median(size, i); }
+    const a = i ? T.atr[i - 1] : NaN;
+    if (T.run[i] >= 2 && a > 0) { R.range[i] = (T.H[i] - T.L[i]) / a; R.net[i] = (T.C[i] - T.O[i]) / a; }
+  }
+  const days = new Map();
+  for (let i = 0; i < n; i++) {
+    const d = Math.floor(T.ts[i] / 86400), h = days.get(d);
+    if (!h) days.set(d, [T.H[i], T.L[i]]);
+    else { if (T.H[i] > h[0]) h[0] = T.H[i]; if (T.L[i] < h[1]) h[1] = T.L[i]; }
+  }
+  for (let i = 0; i < n; i++) {
+    const h = days.get(Math.floor(T.ts[i] / 86400) - 1);
+    if (h && h[0] > h[1]) R.day[i] = (T.C[i] - h[1]) / (h[0] - h[1]);
+  }
+  R.base = READINGS.map((key, f) => {
+    let c = 0, sum = 0, sq = 0;
+    for (const v of R[key]) { if (v !== v) continue; const x = AS_LOG[f] ? Math.log(v) : v; c++; sum += x; sq += x * x; }
+    return [c, sum, sq];
+  });
+  return R;
+}
+
+// Grid's statistics: 95% intervals, Wilson for rates and t for means, and nothing for fewer than 30 windows
+const Z95 = 1.959964;
+function wilson(k, m) {
+  if (m < 30) return null;
+  const p = k / m, d = 1 + Z95 * Z95 / m, c = (p + Z95 * Z95 / (2 * m)) / d, h = Z95 * Math.sqrt(p * (1 - p) / m + Z95 * Z95 / (4 * m * m)) / d;
+  return [p, c - h, c + h, m];
+}
+function tMean(c, sum, sq) {
+  if (c < 30) return null;
+  const m = sum / c, sd = Math.sqrt(Math.max(0, (sq - sum * sum / c) / (c - 1))), df = c - 1;
+  // Student's t at 97.5% from its expansion in 1/df: within 0.001 of the table from 30 rows up
+  const t = Z95 + (Z95 ** 3 + Z95) / (4 * df) + (5 * Z95 ** 5 + 16 * Z95 ** 3 + 3 * Z95) / (96 * df * df);
+  const h = t * sd / Math.sqrt(c);
+  return [m, m - h, m + h, c, sd];
+}
+// the one comparison in which a window differs from the drawing (W already filled): p * 3 + its relation + 1,
+// or -1 when none or more than one differ
+function oneAway(cq, W) {
+  const A = cq.A, B = cq.B, R = cq.R, P = cq.P;
+  let at = -1;
+  for (let p = 0; p < P; p++) {
+    const x = W[A[p]], y = W[B[p]], r = x < y ? -1 : x > y ? 1 : 0;
+    if (r !== R[p]) { if (at >= 0) return -1; at = p * 3 + r + 1; }
+  }
+  return at;
 }
 
 // kinds of price a held relation can name: 0 open, 1 high, 2 low, 3 close, 4 body bottom, 5 body top
@@ -227,6 +320,47 @@ async function search(q, id, report) {
   const total = BARS.reduce((a, T) => a + T.n, 0);
   let done = 0, sinceTick = 0;
 
+  // The panes: the set of windows that match (exact twins with nothing held, the windows that hold otherwise, on the
+  // timeframes shown and through the next-bar filter), summed as they are found. For each drawn bar, the readings of the
+  // BTCUSDT bar it took; the next bar; and what the next six bars did in the shape's own scale (its low 0, its high 1),
+  // with a fixed-seed sample of their closes for the fan.
+  const NR = READINGS.length, AFTER = 6, SAMPLE = 20000;
+  let acc = new Float64Array(n * NR * 3), setN = 0, setTf = TF_NAMES.map(() => [0, 0]);
+  let fan = new Float32Array(SAMPLE * AFTER), cont = [0, 0, 0, 0], seed = 0x9e3779b9;
+  const rand = () => { seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const addSet = (k, T, s, ps, e, o) => {
+    setN++;
+    const R = READ && READ[k];
+    if (R) {
+      for (let g = 0; g < n; g++) {
+        const j = s + (ps ? ps[g] : g);
+        for (let r = 0; r < NR; r++) {
+          // where a window closed in the prior day's range is read on its last bar only
+          if (r === NR - 1 && g !== n - 1) continue;
+          const v = R[READINGS[r]][j];
+          if (v !== v) continue;
+          const x = AS_LOG[r] ? Math.log(v) : v, a = (g * NR + r) * 3;
+          acc[a]++; acc[a + 1] += x; acc[a + 2] += x * x;
+        }
+      }
+    }
+    if (!o.why) { setTf[k][0]++; if (o.dir > 0) setTf[k][1]++; }
+    if (e + AFTER >= T.n || T.run[e + AFTER] < AFTER + 1) return;
+    let lo = Infinity, hi = -Infinity;
+    for (let g = 0; g < n; g++) { const j = s + (ps ? ps[g] : g); if (T.L[j] < lo) lo = T.L[j]; if (T.H[j] > hi) hi = T.H[j]; }
+    if (!(hi > lo)) return;
+    const m = ++cont[0];
+    let up = false, down = false;
+    for (let j = 1; j <= AFTER; j++) { if (T.H[e + j] > hi) up = true; if (T.L[e + j] < lo) down = true; }
+    if (up) cont[1]++;
+    if (down) cont[2]++;
+    if (T.C[e + AFTER] > T.C[e]) cont[3]++;
+    const slot = m <= SAMPLE ? m - 1 : Math.floor(rand() * m);
+    if (slot < SAMPLE) for (let j = 1; j <= AFTER; j++) fan[slot * AFTER + j - 1] = (T.C[e + j] - lo) / (hi - lo);
+  };
+  // one comparison away: windows of the drawing's length, with its colours, that differ from it in a single comparison
+  const near = new Map();
+
   // held relations, with stretch: drawn bar g takes bar pos + skip, and the skipped bars are ignored.
   let T = null, s = 0, bestHere = null, on = false, any = false;
   const fits = (g, pos, skip) => {
@@ -287,7 +421,20 @@ async function search(q, id, report) {
       const pass0 = passes(o0, f);
       if (on && !o0.why) { base.n++; if (o0.dir > 0) base.up++; else if (o0.dir < 0) base.down++; else base.flat++; if (f && pass0) base.pass++; }
       // exact twins of the whole pattern are the windows with no flips at all
-      if (flips(cq, MO, MH, ML, MC, W, 0) === 0) { exact[k]++; if (pass0) exactF[k]++; }
+      if (flips(cq, MO, MH, ML, MC, W, 0) === 0) { exact[k]++; if (pass0) { exactF[k]++; if (on && !held) addSet(k, T, s, null, s + n - 1, o0); } }
+      if (on) {
+        let same = true;
+        if (cq.oriented) for (let g = 0; g < n && same; g++) same = (MC[g] > MO[g] ? 1 : MC[g] < MO[g] ? -1 : 0) === cq.D[g];
+        const at = same ? oneAway(cq, W) : -1;
+        if (at >= 0) {
+          let v = near.get(at);
+          if (!v) near.set(at, v = { n: 0, out: 0, up: 0, look: Infinity, k: 0, s: 0 });
+          v.n++;
+          if (!o0.why) { v.out++; if (o0.dir > 0) v.up++; }
+          const look = lookOf(cq, W);
+          if (look < v.look) { v.look = look; v.k = k; v.s = s; }
+        }
+      }
       if (!held) {
         // nothing held: rank every window that passes the next-bar filter by how close it looks
         if (on && pass0) { const sc = closeness(cq, MO, MH, ML, MC, W, best.bound()); if (sc >= 0) best.push(sc, { k, s, picks: null, extra: 0, span: n, end: T.ts[s + n - 1] }); }
@@ -307,6 +454,7 @@ async function search(q, id, report) {
         if (!passes(oo, f)) continue;
         countsF[k]++;
         if (on) {
+          addSet(k, T, s, picks, e, oo);
           closest(0, s, extra, 0, 0);
           if (bestHere) best.push(bestHere.d, { k, s, picks: bestHere.picks, extra, span: n + extra, end: T.ts[e] });
         }
@@ -335,6 +483,41 @@ async function search(q, id, report) {
     ranked = near.sorted();
   }
 
+  // with nothing held, or nothing holding, and fewer than 30 exact twins, the set is the closest windows instead
+  let setKind = held && mode === 'held' ? 'hold' : 'twins';
+  if (setN < 30 && setKind === 'twins' || mode === 'fallback') {
+    acc = new Float64Array(n * NR * 3); setN = 0; setTf = TF_NAMES.map(() => [0, 0]); fan = new Float32Array(SAMPLE * AFTER); cont = [0, 0, 0, 0]; seed = 0x9e3779b9;
+    for (const r of ranked) { const R = BARS[r.k], e = r.s + r.span - 1; addSet(r.k, R, r.s, r.picks, e, outcomeInto(R, e, oo)); }
+    setKind = 'closest';
+  }
+  const panes = { kind: setKind, n: setN, readings: !!READ, rows: [], next: null, byTf: setTf.map(([m, k]) => wilson(k, m)), after: AFTER, cont: null, near: [] };
+  if (READ) {
+    for (let g = 0; g < n; g++) for (let r = 0; r < NR; r++) {
+      if (r === NR - 1 && g !== n - 1) continue;
+      const a = (g * NR + r) * 3, set = tMean(acc[a], acc[a + 1], acc[a + 2]);
+      let c = 0, sum = 0, sq = 0;
+      for (let k = 0; k < BARS.length; k++) if (q.tfs[k]) { const b = READ[k].base[r]; c += b[0]; sum += b[1]; sq += b[2]; }
+      const all = tMean(c, sum, sq);
+      if (set && all) panes.rows.push({ bar: g, key: READINGS[r], log: AS_LOG[r], set, all, d: all[4] > 0 ? (set[0] - all[0]) / all[4] : 0 });
+    }
+  }
+  const outs = setTf.reduce((a, [m, k]) => [a[0] + m, a[1] + k], [0, 0]);
+  panes.next = wilson(outs[1], outs[0]);
+  if (cont[0] >= 30) {
+    const m = Math.min(cont[0], SAMPLE), col = new Float32Array(m), qs = [];
+    for (let j = 0; j < AFTER; j++) {
+      for (let i = 0; i < m; i++) col[i] = fan[i * AFTER + j];
+      col.sort();
+      qs.push([0.1, 0.25, 0.5, 0.75, 0.9].map(p => col[Math.round(p * (m - 1))]));
+    }
+    panes.cont = { n: cont[0], sampled: m, fan: qs, aboveHigh: wilson(cont[1], cont[0]), belowLow: wilson(cont[2], cont[0]), aboveClose: wilson(cont[3], cont[0]) };
+  }
+  panes.near = [...near].sort((a, b) => b[1].n - a[1].n).slice(0, 6).map(([at, v]) => {
+    const p = Math.floor(at / 3), R = BARS[v.k], bars = [];
+    for (let g = 0; g < n; g++) { const j = v.s + g; bars.push([R.O[j] / 100, R.H[j] / 100, R.L[j] / 100, R.C[j] / 100]); }
+    return { a: cq.A[p], b: cq.B[p], was: cq.R[p], rel: at % 3 - 1, n: v.n, up: wilson(v.up, v.out), bars };
+  });
+
   // distinct moments: skip anything overlapping an earlier pick in time, on any timeframe
   const chosen = [], spans = [];
   for (const r of ranked) {
@@ -357,7 +540,7 @@ async function search(q, id, report) {
     const next = o.why ? null : { dir: o.dir, bps: o.bps, atrx: o.atrx, bar: [R.O[e + 1] / 100, R.H[e + 1] / 100, R.L[e + 1] / 100, R.C[e + 1] / 100] };
     return { tf: TF_NAMES[r.k], start: R.ts[r.s], end: R.ts[e] + R.sec, flips: flipped, off, score: r.d, extra: r.extra, picks: ps, raw, drawn, broken, next, nextWhy: o.why };
   });
-  return { mode, exact, exactF, counts, countsF, split, base, filter: f, results, holds: q.holds.length, stretch, ms: Date.now() - t0 };
+  return { mode, exact, exactF, counts, countsF, split, base, filter: f, results, holds: q.holds.length, stretch, panes, ms: Date.now() - t0 };
 }
 
 if (typeof self !== 'undefined' && typeof self.postMessage === 'function' && typeof window === 'undefined') {
@@ -371,8 +554,19 @@ if (typeof self !== 'undefined' && typeof self.postMessage === 'function' && typ
       try {
         BARS = decode(m.buffer);
         self.postMessage({ type: 'ready', bars: BARS.reduce((a, T) => a + T.n, 0), from: BARS[0].ts[0], to: BARS[0].ts[BARS[0].n - 1] + BARS[0].sec });
+        if (pendingActivity) { const a = pendingActivity; pendingActivity = null; self.onmessage({ data: { type: 'activity', buffer: a } }); }
         if (pending) { const p = pending; pending = null; run(p); }
       } catch (err) { self.postMessage({ type: 'error', message: String(err.message || err) }); }
+      return;
+    }
+    if (m.type === 'activity') {
+      if (!BARS) { pendingActivity = m.buffer; return; }
+      try {
+        const A = decodeActivity(m.buffer);
+        if (A.length !== BARS.length) throw new Error('The activity does not cover every timeframe.');
+        READ = BARS.map((T, k) => readings(T, A[k]));
+        self.postMessage({ type: 'readings' });
+      } catch (err) { self.postMessage({ type: 'readings-error', message: String(err.message || err) }); }
       return;
     }
     if (m.type === 'query') {
