@@ -9,6 +9,16 @@ searches the 15m, 30m, 1h, 2h and 4h BTCUSDT bars in the browser and shows the c
 ranked by how they look: colours first, then shape, then sizes, with a small charge for each
 comparison that flips. Prices are compared exactly as the engine does, in integer cents.
 
+Two panes read the windows that match. **What sets them apart** (left) reads them the way the
+Market State Cube Explorer reads a cell: each drawn bar's volume, trades and trade size against
+the eleven bars before it, its maker share, its range and body in ATR, and where the last bar
+closed in the prior UTC day's range, against every window, the largest difference first, then
+what came next. **What it became** (right) is what only a composed shape can show: the next six
+bars after the matches, drawn on the canvas as a fan in the drawing's own scale, how often they
+broke the shape's high and low, and the drawings one comparison away, each of which can be put on
+the canvas. Every number follows Grid: 95% intervals, Wilson for rates, t for means, nothing for
+fewer than 30 windows.
+
 ## Data
 
 The bars are the Vaquum HuggingFace kline datasets `vaquum/binance_btcusdt_{15m,30m,1h,2h,4h}_klines`,
@@ -34,10 +44,12 @@ it answers.
 - `index.html`: the page.
 - `matcher.js`: the matcher, run by the page as a Web Worker.
 - `bars.py`: reads the kline files and encodes them for the page.
-- `server.py`: serves the page, `matcher.js`, `/bars` and `/healthz` on `127.0.0.1` only.
+- `server.py`: serves the page, `matcher.js`, `/bars`, `/activity` (each bar's volume, quote
+  volume, trades and maker volume, for the panes) and `/healthz` on `127.0.0.1` only.
 - `tests/`: unit tests for reading, encoding and serving.
 - `checks/`: the matcher's checks on the real bars: an independent brute force of the ranking,
-  the bounded search against the unbounded one, and the two-bar colour and proportion checks.
+  the bounded search against the unbounded one, the two-bar colour and proportion checks, and the
+  panes against an independent recomputation.
 
 ## Checks
 
@@ -46,6 +58,7 @@ python3 -m unittest discover -s tests -v
 python3 checks/with_bars.py checks/similarity-windows.mjs
 python3 checks/with_bars.py checks/similarity-look.mjs
 python3 checks/with_bars.py checks/similarity-equivalence.mjs
+python3 checks/with_bars.py checks/panes.mjs
 ```
 
 `with_bars.py` reads the current bars as the server does, once, and runs the check on them.

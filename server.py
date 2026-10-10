@@ -1,4 +1,4 @@
-"""Composer's server: the page, its matcher and the bars it searches, on 127.0.0.1 only.
+"""Composer's server: the page, its matcher, the bars it searches and what traded in them, on 127.0.0.1 only.
 
 The host's Caddy, deployed from Vaquum/Portal, puts composer.vaquum.fi in front of this server
 behind the portal login, so it checks no credentials of its own. It reads the bars from the Vaquum
@@ -34,13 +34,15 @@ def log(message: str) -> None:
 
 
 class Bars:
-    """The payload being served, swapped whole when newer files arrive."""
+    """The payloads being served, the bars and their activity, swapped whole when newer files arrive."""
 
     def __init__(self, current=bars.current, read=bars.read) -> None:
         self._current, self._read = current, read
         self._lock = threading.Lock()
         self.payload = b''
         self.etag = ''
+        self.activity = b''
+        self.activity_etag = ''
         self.sources: list[bars.Source] = []
         self.failure = ''
 
@@ -51,15 +53,20 @@ class Bars:
             with self._lock:
                 self.failure = ''
             return False
-        payload = self._read(sources)
+        payload, activity = self._read(sources)
         with self._lock:
-            self.payload, self.sources, self.failure = payload, sources, ''
+            self.payload, self.activity, self.sources, self.failure = payload, activity, sources, ''
             self.etag = '"' + hashlib.sha256(payload).hexdigest()[:32] + '"'
+            self.activity_etag = '"' + hashlib.sha256(activity).hexdigest()[:32] + '"'
         return True
 
     def current(self) -> tuple[bytes, str]:
         with self._lock:
             return self.payload, self.etag
+
+    def current_activity(self) -> tuple[bytes, str]:
+        with self._lock:
+            return self.activity, self.activity_etag
 
     def health(self) -> dict:
         with self._lock:
@@ -103,8 +110,8 @@ def handler(state: Bars, pages: dict[str, tuple[bytes, str]]):
             if path in pages:
                 body, kind = pages[path]
                 self._send(200, body, kind)
-            elif path == '/bars':
-                payload, etag = state.current()
+            elif path in ('/bars', '/activity'):
+                payload, etag = state.current() if path == '/bars' else state.current_activity()
                 if self.headers.get('If-None-Match') == etag:
                     self._send(304, b'', 'application/octet-stream', {'ETag': etag})
                 else:

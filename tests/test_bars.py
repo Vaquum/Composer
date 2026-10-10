@@ -23,12 +23,15 @@ import bars  # noqa: E402
 T0 = 1577836800  # 2020-01-01 00:00 UTC
 
 
-def parquet(times: list[int], rows: list[tuple[float, float, float, float]], unit: str = 'ms', tz: str | None = 'UTC') -> bytes:
+def parquet(times: list[int], rows: list[tuple[float, float, float, float]], unit: str = 'ms', tz: str | None = 'UTC',
+            traded: list[tuple[float, float, int, float]] | None = None) -> bytes:
     scale = {'s': 1, 'ms': 1000}[unit]
+    traded = traded or [(10.0 + i, 70000.0 * (10 + i), 100 + i, 4.0) for i in range(len(rows))]
     table = pa.table({
         'datetime': pa.array([t * scale for t in times], pa.timestamp(unit, tz=tz)),
         'open': [r[0] for r in rows], 'high': [r[1] for r in rows], 'low': [r[2] for r in rows], 'close': [r[3] for r in rows],
-        'volume': [1.0] * len(rows),
+        'volume': [x[0] for x in traded], 'liquidity_sum': [x[1] for x in traded],
+        'no_of_trades': pa.array([x[2] for x in traded], pa.uint64()), 'maker_volume': [x[3] for x in traded],
     })
     out = io.BytesIO()
     pq.write_table(table, out)
@@ -55,6 +58,7 @@ class Frames(unittest.TestCase):
         self.assertEqual(f.times, times)
         self.assertEqual((f.opens[0], f.highs[0], f.lows[0], f.closes[0]), (719524, 724500, 717546, 722501))
         self.assertEqual(f.closes[3], 720000)
+        self.assertEqual((f.volumes[1], f.quotes[1], f.trades[1], f.makers[1]), (11.0, 770000.0, 101, 4.0))
 
     def test_bad_files_are_refused(self) -> None:
         good = (100.0, 101.0, 99.0, 100.5)
@@ -64,6 +68,8 @@ class Frames(unittest.TestCase):
             'out of order': (parquet([T0 + 900, T0], [good, good]), 2, 'off the 15m grid'),
             'row count': (parquet([T0], [good]), 2, 'latest.json says 2'),
             'not UTC': (parquet([T0], [good], tz=None), 1, 'UTC timestamp'),
+            'no volume': (parquet([T0], [good], traded=[(0.0, 1.0, 1, 0.0)]), 1, 'no usable volume'),
+            'maker beyond volume': (parquet([T0], [good], traded=[(1.0, 1.0, 1, 1.5)]), 1, 'no usable volume'),
         }
         for label, (data, rows, message) in cases.items():
             with self.subTest(label), self.assertRaisesRegex(ValueError, message):
@@ -116,6 +122,35 @@ class Payload(unittest.TestCase):
         # a bar after missing bars starts a new run, so no window crosses the gap
         self.assertEqual(decoded[0]['run'], [1, 2, 1, 2])
         self.assertEqual(decoded[1]['run'], [1, 2, 3, 1])
+
+
+class Activity(unittest.TestCase):
+    def test_the_matcher_decodes_what_traded_within_its_precision(self) -> None:
+        node = shutil.which('node')
+        if node is None:
+            self.fail('node is needed to check that matcher.js decodes what bars.py encodes')
+        frames = [
+            bars.Frame('15m', 900, [T0, T0 + 900, T0 + 1800], [1, 1, 1], [2, 2, 2], [1, 1, 1], [2, 2, 2],
+                       [3.98538, 1234.5, 40371.4], [292226.0, 9.1e7, 1.086850286e9], [224, 51234, 1754730], [0.5, 600.1, 37252.4]),
+            bars.Frame('4h', 14400, [T0], [1], [2], [1], [2], [5.887], [400000.0], [300], [5.887]),
+        ]
+        with tempfile.NamedTemporaryFile(suffix='.act') as tmp:
+            tmp.write(bars.encode_activity(frames))
+            tmp.flush()
+            out = subprocess.run([node, str(ROOT / 'tests' / 'decode.mjs'), str(ROOT / 'matcher.js'), '--activity', tmp.name],
+                                 capture_output=True, text=True, check=True).stdout
+        decoded = json.loads(out)
+        for f, d in zip(frames, decoded):
+            self.assertEqual((d['name'], d['n']), (f.name, len(f.times)))
+            for key, want in (('vol', f.volumes), ('quote', f.quotes), ('trades', f.trades)):
+                for got, w in zip(d[key], want):
+                    self.assertLess(abs(got / w - 1), 3e-4, (key, got, w))
+            for got, v, m in zip(d['maker'], f.volumes, f.makers):
+                self.assertLess(abs(got - m / v), 1 / 65535)
+
+    def test_activity_must_cover_every_bar(self) -> None:
+        with self.assertRaisesRegex(ValueError, 'does not cover every bar'):
+            bars.encode_activity([bars.Frame('15m', 900, [T0], [1], [2], [1], [2])])
 
 
 if __name__ == '__main__':

@@ -41,5 +41,7 @@ jobs:
         run: python checks/with_bars.py checks/similarity-look.mjs
       - name: Bounded search against the unbounded one
         run: python checks/with_bars.py checks/similarity-equivalence.mjs
+      - name: The panes against an independent recomputation
+        run: python checks/with_bars.py checks/panes.mjs
       - name: The container builds
         run: docker build -t composer:check .

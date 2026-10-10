@@ -30,9 +30,9 @@ class Fake:
             raise OSError('hub unreachable')
         return sources(self.tag)
 
-    def read(self, found: list[bars.Source]) -> bytes:
+    def read(self, found: list[bars.Source]) -> tuple[bytes, bytes]:
         self.reads += 1
-        return b'CBAR1' + found[0].sha256[:1].encode()
+        return b'CBAR1' + found[0].sha256[:1].encode(), b'CACT1' + found[0].sha256[:1].encode()
 
 
 class Server(unittest.TestCase):
@@ -64,6 +64,10 @@ class Server(unittest.TestCase):
         etag = got.headers['ETag']
         self.assertEqual((got.status, got.read(), got.headers['Cache-Control']), (200, b'CBAR11', 'private, no-cache'))
         self.assertEqual(self.get('/bars', {'If-None-Match': etag}).status, 304)
+        traded = self.get('/activity')
+        self.assertEqual((traded.status, traded.read()), (200, b'CACT11'))
+        self.assertNotEqual(traded.headers['ETag'], etag)
+        self.assertEqual(self.get('/activity', {'If-None-Match': traded.headers['ETag']}).status, 304)
         self.assertEqual(self.get('/nothing').status, 404)
 
     def test_health_names_the_files_served(self) -> None:
@@ -76,7 +80,7 @@ class Server(unittest.TestCase):
         self.assertEqual(self.fake.reads, 1)
         self.fake.tag = '2'
         self.assertTrue(self.state.refresh())
-        self.assertEqual((self.fake.reads, self.get('/bars').read()), (2, b'CBAR12'))
+        self.assertEqual((self.fake.reads, self.get('/bars').read(), self.get('/activity').read()), (2, b'CBAR12', b'CACT12'))
 
     def test_a_failed_refresh_keeps_the_bars_and_says_so(self) -> None:
         self.fake.fail = True
