@@ -234,6 +234,18 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
   .work[data-reference="open"] > .ref { position: fixed; inset: 0; z-index: 50; height: 100%; background: var(--paper); }
 }
 
+/* one screen: on a wide screen the page is the window, so the strip of similar windows is always in view; the panes
+   and the reference scroll inside themselves, and the paper takes what the controls and the strip leave */
+@media (min-width: 1181px) {
+  body { overflow: hidden; }
+  .app { height: 100vh; height: 100dvh; min-height: 0; box-sizing: border-box; }
+  .work { min-height: 0; grid-template-rows: minmax(0, 1fr); }
+  .work > .pane, .work > .ref { min-height: 0; overflow-y: auto; scrollbar-width: thin; }
+  .ref { position: static; height: auto; align-self: stretch; }
+  .stage { min-height: 0; overflow-y: auto; scrollbar-width: thin; }
+  .cvwrap { min-height: 300px; }
+}
+
 @media (max-width: 900px) {
   .cvwrap { min-height: 62vh; }
   .hint { right: 24px; top: 56px; }
@@ -418,6 +430,8 @@ const KANJI = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九'
 const ORD_JA = Array.from({ length: 20 }, (_, i) => { const n = i + 1, t = Math.floor(n / 10), u = n % 10; return (t ? (t > 1 ? KANJI[t] : '') + '十' : '') + (u ? KANJI[u] : '') + '本目'; });
 // the engine keys and counts windows up to ten bars; matching on held relations reads the bars directly, so compositions may go further
 const MINN = 2, MAXN = 20;
+// a step of the fan takes this share of a bar's place across the paper
+const FAN_PITCH = 0.62;
 const TF_LABELS = ['15m', '30m', '1h', '2h', '4h'];
 
 /* ================= the composition: free prices, exact order ================= */
@@ -633,20 +647,32 @@ const Stage = {
     // the plot starts below the hint, which wraps onto several lines on a phone
     const plotTop = Math.max(70, this.hint.offsetTop + this.hint.offsetHeight + 24), plotBottom = Math.max(plotTop + 160, h - 84);
     // bar width follows the count and the screen; 間 sets the pitch, from nearly touching to as far apart as fits
-    // 続: with a fan to draw, the composition moves left to leave it a quarter of the paper
-    const fan = Match.result && Match.result.panes && Match.result.panes.cont ? w * 0.26 : 0;
-    const room = Math.max(24, (w - 150 - fan) / N), bw = clamp(Math.min(210, room) * 0.4, 6, 68);
+    // 続: with a fan to draw, its six steps take places beside the bars, each FAN_PITCH of a bar's, and the bars and the
+    // fan are centred together, so both always fit across the paper
+    const steps = Match.result && Match.result.panes && Match.result.panes.cont ? Match.result.panes.cont.fan.length : 0;
+    const fanSlots = steps ? steps * FAN_PITCH + 1 : 0;
+    const room = Math.max(24, (w - 150) / (N + fanSlots)), bw = clamp(Math.min(210, room) * 0.4, 6, 68);
     const tight = bw * 1.22, airy = Math.max(tight, Math.min(room, 340));
     const spacing = tight * Math.pow(airy / tight, S.space);
-    return { w, h, N, plotTop, plotBottom, plotH: plotBottom - plotTop, spacing, bw, xs: S.bars.map((_, i) => (w - fan) / 2 + (i - (N - 1) / 2) * spacing) };
+    const x0 = (w - ((N - 1) + fanSlots) * spacing) / 2;
+    return { w, h, N, plotTop, plotBottom, plotH: plotBottom - plotTop, spacing, bw, fanStep: FAN_PITCH * spacing, xs: S.bars.map((_, i) => x0 + i * spacing) };
   },
   Y(v, G) { const { lo, hi } = this.view; return G.plotBottom - (v - lo) / (hi - lo) * G.plotH; },
-  // frame the composition with room to pull past its extremes; stay still unless it no longer fits well
+  // frame the composition with room to pull past its extremes, and the whole fan when there is one; stay still unless
+  // the frame no longer fits well
   fit(force) {
     let mn = Infinity, mx = -Infinity;
     for (const b of S.bars) for (let k = 0; k < 4; k++) { mn = Math.min(mn, b.v[k]); mx = Math.max(mx, b.v[k]); }
+    let lo = mn - Math.max(mx - mn, 1) * 0.22, hi = mx + Math.max(mx - mn, 1) * 0.22;
+    const c = Match.result && Match.result.panes && Match.result.panes.cont;
+    if (c && mx > mn) {
+      // the fan's closes are in the shape's own scale: 0 is the drawing's low, 1 its high
+      let a = Infinity, z = -Infinity;
+      for (const q of c.fan) { a = Math.min(a, q[0]); z = Math.max(z, q[4]); }
+      const fLo = mn + a * (mx - mn), fHi = mn + z * (mx - mn), pad = (fHi - fLo) * 0.06;
+      lo = Math.min(lo, fLo - pad); hi = Math.max(hi, fHi + pad); mn = Math.min(mn, fLo); mx = Math.max(mx, fHi);
+    }
     const span = Math.max(mx - mn, 1);
-    const lo = mn - span * 0.22, hi = mx + span * 0.22;
     const cur = this.view.thi - this.view.tlo, inLo = this.view.tlo + cur * 0.07, inHi = this.view.thi - cur * 0.07;
     if (force || !this.ready || mn < inLo || mx > inHi || span < cur * 0.4) { this.view.tgt[0] = lo; this.view.tgt[1] = hi; }
     if (!this.ready || calm()) { this.view.cur.set(this.view.tgt); this.view.vel.fill(0); this.ready = true; }
@@ -947,8 +973,8 @@ const Stage = {
     let lo = Infinity, hi = -Infinity;
     for (const b of S.bars) { lo = Math.min(lo, b.dv[0]); hi = Math.max(hi, b.dv[3]); }
     const n = S.bars.length, last = S.bars[n - 1], lx = (last.x == null ? G.xs[n - 1] : last.x) + G.bw / 2;
-    const step = Math.min(G.spacing, (G.w - 70 - lx) / (c.fan.length + 0.4));
-    if (!(step >= 10) || !(hi > lo)) return;
+    const step = G.fanStep;
+    if (!(step >= 4) || !(hi > lo)) return;
     const Y = u => this.Y(lo + u * (hi - lo), G), xs = c.fan.map((_, j) => lx + (j + 1) * step);
     const y0 = this.Y(dirOf(n - 1) >= 0 ? last.dv[2] : last.dv[1], G);
     ctx.save();
@@ -1091,7 +1117,7 @@ const Match = {
     if (m.type === 'progress') { if (m.id === this.id) { $('#prog').hidden = false; $('#prog i').style.width = `${(m.f * 100).toFixed(1)}%`; } return; }
     if (m.type === 'readings') { Panes.readings = 'ready'; if (this.result) { this.sentKey = ''; this.send(); } return; }
     if (m.type === 'readings-error') { Panes.readings = 'failed'; Panes.note = m.message; if (this.result) Panes.render(this.result); return; }
-    if (m.type === 'result' && m.id === this.id) { this.result = m; this.render(); Panes.render(m); App.redraw(); }
+    if (m.type === 'result' && m.id === this.id) { this.result = m; this.render(); Panes.render(m); Stage.fit(); App.redraw(); }
   },
   query() {
     const held = heldNow();
@@ -1410,8 +1436,8 @@ const Ref = {
     const r = Match.result, c = r && r.panes && r.panes.cont;
     if (!c) return null;
     const G = Stage.geom(), n = S.bars.length, last = S.bars[n - 1], lx = (last.x == null ? G.xs[n - 1] : last.x) + G.bw / 2;
-    const step = Math.min(G.spacing, (G.w - 70 - lx) / (c.fan.length + 0.4));
-    if (!(step >= 10)) return null;
+    const step = G.fanStep;
+    if (!(step >= 4)) return null;
     const box = Stage.cv.getBoundingClientRect();
     return { left: box.left + lx - 6, top: box.top + G.plotTop - 26, right: box.left + lx + c.fan.length * step + 66, bottom: box.top + G.plotBottom + 48 };
   },
