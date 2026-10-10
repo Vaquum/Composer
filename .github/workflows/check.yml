@@ -1,0 +1,47 @@
+name: Check Composer
+# Pull requests run these checks on their own; main runs them once through deploy.yml, on the exact
+# commit it deploys.
+on:
+  pull_request:
+  workflow_call:
+    outputs:
+      sha:
+        description: The commit these checks checked out and tested
+        value: ${{ jobs.checks.outputs.sha }}
+permissions:
+  contents: read
+jobs:
+  checks:
+    name: Unit tests and the matcher's checks on the current bars
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    outputs:
+      sha: ${{ steps.commit.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - id: commit
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          echo "sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: pip install -r requirements.txt
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
+      - name: Read the current bars from the Vaquum HuggingFace files
+        run: python -c "import bars; open('bars.bin', 'wb').write(bars.read(bars.current()))"
+      - name: Similarity ranking against an independent brute force
+        run: node checks/similarity-windows.mjs matcher.js bars.bin
+      - name: Two-bar colours and proportions
+        run: node checks/similarity-look.mjs matcher.js bars.bin
+      - name: Bounded search against the unbounded one
+        run: node checks/similarity-equivalence.mjs matcher.js bars.bin
+      - name: The container builds
+        run: docker build -t composer:check .

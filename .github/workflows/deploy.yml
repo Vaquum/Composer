@@ -1,0 +1,68 @@
+name: Deploy Composer
+on:
+  push:
+    branches: [main]
+# Never cancel a deploy half way: a newer push waits, and the last commit pushed is deployed next.
+concurrency:
+  group: deploy-main
+permissions:
+  contents: read
+jobs:
+  check:
+    name: Required checks
+    uses: ./.github/workflows/check.yml
+  deploy:
+    name: Sync to the Origo host and start
+    # A failed, skipped or cancelled check leaves this job skipped; nothing here overrides that.
+    needs: check
+    if: ${{ needs.check.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+      DEPLOY_DIR: ${{ vars.DEPLOY_DIR }}
+      DEPLOY_KNOWN_HOSTS: ${{ vars.DEPLOY_KNOWN_HOSTS }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: The checks ran on this commit
+        env:
+          CHECKED: ${{ needs.check.outputs.sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$CHECKED" = "$GITHUB_SHA"
+          echo "Deploying $GITHUB_SHA after checks on the same commit." >> "$GITHUB_STEP_SUMMARY"
+      - name: Validate deploy configuration
+        run: |
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_USER"
+          test -n "$DEPLOY_DIR"
+          test -n "$DEPLOY_KNOWN_HOSTS"
+      - uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+      - name: Pin the host key
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Sync the checkout
+        run: rsync -az --delete --exclude .git --exclude .env ./ "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/"
+      - name: Start
+        run: ssh "$DEPLOY_USER@$DEPLOY_HOST" "cd '$DEPLOY_DIR' && docker compose up -d --build --remove-orphans && docker compose ps"
+      - name: Check that Composer answers
+        run: |
+          # the server reads the five kline files before it answers, so allow it a few minutes
+          probe() { ssh "$DEPLOY_USER@$DEPLOY_HOST" "curl -s -o /dev/null -w '%{http_code}' --max-time 30 http://127.0.0.1:8488/healthz || printf 000"; }
+          code=000
+          for attempt in $(seq 1 30); do
+            code=$(probe || printf 000)
+            test "$code" = "200" && break
+            sleep 10
+          done
+          test "$code" = "200"
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" "cd '$DEPLOY_DIR' && docker compose ps --format '{{.Name}} {{.Status}}'"

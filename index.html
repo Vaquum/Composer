@@ -1,0 +1,1180 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Composer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=M+PLUS+1+Code:wght@400;500&family=Shippori+Mincho:wght@500;600&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
+<style>
+:root {
+  /* Layout: one sheet of paper. The composition sits in the middle with wide ma; the closest instances in BTCUSDT history answer in a scroll beneath it; its identity is written last. */
+  --paper: #f3efe5;      /* kinari, unbleached washi */
+  --paper-2: #ebe5d8;    /* deeper paper for wells */
+  --ink: #2a2824;        /* sumi */
+  --ink-2: #6b655b;      /* usuzumi, diluted ink */
+  --ink-3: #a1998b;      /* faint ink */
+  --hair: #dad2c2;       /* ash hairline */
+  --mist: rgba(42, 40, 36, 0.1);
+  --up: #4f8a69;         /* rokusho, verdigris */
+  --down: #b5533f;       /* akani, red ochre */
+  --flat: #8c8679;       /* nibi, dull grey */
+  --ai: #2f587a;         /* ai, indigo */
+  --ai-soft: rgba(47, 88, 122, 0.1);
+  --shu: #b6432e;        /* shu, seal vermilion */
+  --tex: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.17 0 0 0 0 0.15 0 0 0 0 0.12 0 0 0 0.1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --font-mincho: "Shippori Mincho", "Hiragino Mincho ProN", "Yu Mincho", serif;
+  --font-ui: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", system-ui, sans-serif;
+  --font-code: "M PLUS 1 Code", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #1d1c19; --paper-2: #26241f; --ink: #ece6d7; --ink-2: #aba393; --ink-3: #726b5f; --hair: #3a3731; --mist: rgba(236, 230, 215, 0.09);
+    --up: #74ab8c; --down: #d47862; --flat: #9b9485; --ai: #8aabca; --ai-soft: rgba(138, 171, 202, 0.14); --shu: #e07a5f;
+    --tex: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.95 0 0 0 0 0.92 0 0 0 0 0.86 0 0 0 0.045 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #1d1c19; --paper-2: #26241f; --ink: #ece6d7; --ink-2: #aba393; --ink-3: #726b5f; --hair: #3a3731; --mist: rgba(236, 230, 215, 0.09);
+  --up: #74ab8c; --down: #d47862; --flat: #9b9485; --ai: #8aabca; --ai-soft: rgba(138, 171, 202, 0.14); --shu: #e07a5f;
+  --tex: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.95 0 0 0 0 0.92 0 0 0 0 0.86 0 0 0 0.045 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body { margin: 0; overflow-x: hidden; overflow-y: auto; background-color: var(--paper); background-image: var(--tex); color: var(--ink); font: 14px/1.6 var(--font-ui); -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: inherit; cursor: pointer; background: none; border: 0; padding: 0; }
+button:disabled { cursor: default; }
+:focus-visible { outline: 1.5px solid var(--ai); outline-offset: 3px; border-radius: 4px; }
+[lang="ja"] { font-family: var(--font-mincho); }
+.ja { font-family: var(--font-mincho); color: var(--ink-3); font-size: .92em; margin-inline-start: .35em; letter-spacing: .04em; }
+
+.app { min-height: 100%; display: flex; flex-direction: column; padding-inline: 16px; padding-block: 0 14px; }
+.top { display: flex; align-items: center; gap: 22px; padding-block: 14px 12px; border-bottom: 1px solid var(--hair); flex-wrap: wrap; }
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; margin-inline-end: auto; }
+.seal { width: 32px; height: 32px; border-radius: 3px; background: var(--shu); color: var(--paper); display: grid; place-items: center; font: 600 19px/1 var(--font-mincho); box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .12); }
+.brand-name { font: 600 18px/1.2 var(--font-mincho); letter-spacing: .03em; }
+.brand-sub { font-size: 12px; color: var(--ink-2); }
+.tools { display: flex; align-items: center; gap: 14px; }
+.seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: 7px; background: var(--paper-2); }
+.seg button { padding: 3px 10px 4px; border-radius: 5px; font-size: 12.5px; color: var(--ink-2); transition: background .4s, color .4s, box-shadow .4s; white-space: nowrap; }
+.seg button[aria-pressed="true"] { background: var(--paper); color: var(--ink); box-shadow: 0 0 0 1px var(--hair); }
+.home { font-size: 12.5px; color: var(--ink-2); text-decoration: none; letter-spacing: .08em; text-transform: uppercase; }
+.home:hover { color: var(--ink); }
+.icon { width: 30px; height: 30px; border-radius: 6px; display: grid; place-items: center; color: var(--ink-2); font-size: 16px; transition: background .3s, color .3s, opacity .3s; }
+.icon:hover:not(:disabled) { background: var(--paper-2); color: var(--ink); }
+.icon:disabled { opacity: .3; }
+
+.stage { flex: 1; display: flex; flex-direction: column; }
+.cvwrap { position: relative; flex: 1; min-height: 360px; }
+.cvwrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; outline: none; }
+.hint { position: absolute; left: 28px; top: 18px; right: 400px; margin: 0; font-size: 12px; color: var(--ink-3); pointer-events: none; transition: color .4s; }
+.hint.pinning { color: var(--ai); }
+.dock { position: absolute; right: 24px; top: 12px; display: flex; align-items: center; gap: 10px; }
+.space { display: flex; align-items: center; gap: 7px; height: 34px; padding: 0 12px 0 11px; border-radius: 9px; background: var(--paper-2); cursor: pointer; }
+.space .ma { font: 500 15px/1 var(--font-mincho); color: var(--ink-2); margin-inline-end: 3px; }
+.space .ico { width: 14px; height: 14px; flex: none; fill: var(--ink-3); }
+input[type="range"] { -webkit-appearance: none; appearance: none; height: 22px; margin: 0; background: transparent; cursor: pointer; }
+input[type="range"]:focus-visible { outline: none; }
+input[type="range"]::-webkit-slider-runnable-track { height: 1px; background: var(--ink-3); }
+input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; margin-top: -6.5px; border-radius: 50%; background: var(--paper); box-shadow: 0 0 0 1.5px var(--ink-2); transition: box-shadow .3s; }
+input[type="range"]:hover::-webkit-slider-thumb, input[type="range"]:active::-webkit-slider-thumb { box-shadow: 0 0 0 1.5px var(--ink); }
+input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 1.5px var(--ai), 0 0 0 5px var(--ai-soft); }
+input[type="range"]::-moz-range-track { height: 1px; background: var(--ink-3); }
+input[type="range"]::-moz-range-thumb { width: 14px; height: 14px; border: 0; border-radius: 50%; background: var(--paper); box-shadow: 0 0 0 1.5px var(--ink-2); }
+input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 1.5px var(--ai), 0 0 0 5px var(--ai-soft); }
+input[type="range"]:disabled { cursor: default; opacity: .4; }
+.space input { width: 112px; }
+.bars { display: flex; align-items: center; gap: 4px; padding: 3px; border-radius: 9px; background: var(--paper-2); }
+.bars button { width: 30px; height: 28px; border-radius: 6px; font: 400 18px/1 var(--font-mincho); color: var(--ink); transition: background .3s, opacity .3s; }
+.bars button:hover:not(:disabled) { background: var(--paper); box-shadow: 0 0 0 1px var(--hair); }
+.bars button:disabled { opacity: .3; }
+.bars .nb { min-width: 64px; text-align: center; font-size: 12.5px; color: var(--ink-2); }
+.bars .nb b { font: 500 15px/1 var(--font-mincho); color: var(--ink); margin-inline-end: 4px; }
+
+/* the history answers: three ways of matching, mixed freely, and a scroll of instances */
+.match { border-top: 1px solid var(--hair); padding-block: 12px 4px; padding-inline: 12px 4px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.mbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.grp { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; min-width: 0; }
+.ctl { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 11px; border-radius: 9px; background: var(--paper-2); font-size: 12.5px; color: var(--ink-2); white-space: nowrap; }
+.ctl .k { font: 500 15px/1 var(--font-mincho); color: var(--ink); }
+.ctl .v { color: var(--ink); font-variant-numeric: tabular-nums; min-width: 6.5em; }
+.ctl input[type="range"] { width: 92px; }
+.ctl .step { width: 24px; height: 24px; border-radius: 6px; font: 400 16px/1 var(--font-mincho); color: var(--ink); }
+.ctl .step:hover:not(:disabled) { background: var(--paper); box-shadow: 0 0 0 1px var(--hair); }
+.ctl .step:disabled { opacity: .3; }
+.pinctl { padding: 0 8px 0 3px; }
+.pinbtn { display: inline-flex; align-items: center; gap: 8px; height: 28px; padding: 0 10px 0 8px; border-radius: 7px; color: var(--ink-2); transition: background .3s, box-shadow .3s, color .3s; }
+.pinbtn:hover { background: var(--paper); box-shadow: 0 0 0 1px var(--hair); }
+.pinbtn .n { font: 500 12px/1 var(--font-code); color: var(--ink); font-variant-numeric: tabular-nums; }
+.pinbtn[aria-pressed="true"] { background: var(--ai); color: var(--paper); box-shadow: none; }
+.pinbtn[aria-pressed="true"] .k, .pinbtn[aria-pressed="true"] .n { color: var(--paper); }
+.clear { font-size: 12px; color: var(--ai); padding: 0 2px; }
+.seg.mini button { padding: 2px 8px 3px; font-size: 12px; }
+.nextctl { padding-inline-end: 8px; }
+.nextctl[data-any="true"] #nmeas { opacity: .35; pointer-events: none; }
+.nval { display: inline-flex; align-items: center; gap: 5px; color: var(--ink-2); }
+.nval input { width: 54px; height: 24px; border: 0; border-radius: 6px; padding: 0 6px; background: var(--paper); box-shadow: inset 0 0 0 1px var(--hair); font: 12px/1 var(--font-code); color: var(--ink); }
+.nval input:focus-visible { outline: 1.5px solid var(--ai); outline-offset: 1px; }
+.tfs { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.chip { height: 30px; padding: 0 9px; border-radius: 8px; font-size: 12px; color: var(--ink-3); box-shadow: inset 0 0 0 1px var(--hair); transition: background .3s, color .3s, box-shadow .3s; white-space: nowrap; }
+.chip b { font: 500 12px/1 var(--font-code); color: var(--ink-2); margin-inline-start: 5px; font-variant-numeric: tabular-nums; }
+.chip[aria-pressed="true"] { background: var(--paper-2); color: var(--ink); box-shadow: none; }
+.chip[aria-pressed="true"] b { color: var(--ink); }
+.status { display: flex; align-items: center; gap: 10px; min-height: 22px; font-size: 12.5px; color: var(--ink-2); }
+.status .msg { min-width: 0; }
+.status .msg b { color: var(--ink); font-weight: 500; }
+.prog { flex: none; width: 90px; height: 1px; background: var(--hair); position: relative; overflow: hidden; }
+.prog i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--ai); width: 0; transition: width .2s; }
+.emaki { display: flex; align-items: flex-start; gap: 10px; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; padding-block: 2px 10px; scrollbar-width: thin; scrollbar-color: var(--hair) transparent; height: 182px; }
+.emaki.stale .card { opacity: .45; }
+.card { flex: none; width: 140px; display: flex; flex-direction: column; gap: 2px; text-align: left; padding: 6px 6px 7px; border-radius: 8px; background: var(--paper-2); transition: opacity .5s, box-shadow .3s, transform .5s; }
+.card:hover, .card:focus-visible { box-shadow: 0 0 0 1px var(--ink-3); }
+.card[aria-pressed="true"] { box-shadow: 0 0 0 1.5px var(--ai); }
+.card.enter { opacity: 0; transform: translateY(4px); }
+.card svg { width: 100%; height: auto; display: block; margin-bottom: 3px; }
+.card .when { font-size: 11.5px; color: var(--ink); line-height: 1.35; }
+.card .fl { font: 400 11px/1.35 var(--font-code); color: var(--ink-3); }
+.card .nx { font-size: 11.5px; line-height: 1.35; color: var(--ink-3); margin-top: 2px; padding-top: 3px; border-top: 1px solid var(--hair); font-variant-numeric: tabular-nums; }
+.card .nx.nu { color: var(--up); } .card .nx.nd { color: var(--down); }
+.card .br { font-size: 11px; color: var(--shu); line-height: 1.35; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.empty { font-size: 12.5px; color: var(--ink-3); align-self: center; padding-inline: 4px; }
+.cu { fill: var(--up); } .cd { fill: var(--down); } .cz { fill: var(--flat); }
+.skip { fill-opacity: .22; }
+.mk { fill: none; stroke: var(--shu); stroke-width: 1.3; }
+.mkl { fill: none; stroke: var(--shu); stroke-width: 1; stroke-dasharray: 2 2; }
+
+.ident { border-top: 1px solid var(--hair); margin-top: 6px; padding-block: 14px 0; padding-inline: 28px 8px; display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 10px 40px; align-items: start; }
+.idl { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.names { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline; min-height: 24px; }
+.nm { font-size: 13px; color: var(--ink); }
+.nm [lang="ja"] { font-size: 15px; margin-inline-end: 6px; color: var(--ink); }
+.nm .who { color: var(--ink-3); font-size: 12px; margin-inline-end: 6px; }
+.nm .note { color: var(--ink-3); }
+.nm.none { color: var(--ink-3); font-size: 12.5px; }
+.desc { margin: 0; font-size: 12.5px; color: var(--ink-2); max-width: 78ch; display: flex; flex-direction: column; gap: 2px; }
+.codebox { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; min-width: 0; }
+.codebox code { font: 400 12px/1.4 var(--font-code); color: var(--ink-2); overflow-wrap: anywhere; }
+.codebox .dom { font-size: 12px; color: var(--ink-3); }
+.link { font-size: 12px; color: var(--ai); }
+
+@media (max-width: 900px) {
+  .cvwrap { min-height: 62vh; }
+  .hint { right: 24px; top: 56px; }
+  .ident { grid-template-columns: minmax(0, 1fr); padding-inline: 4px; }
+}
+@media (max-width: 600px) {
+  .dock { right: 4px; gap: 6px; }
+  .space { padding-inline: 10px; }
+  .space .ico { display: none; }
+  .space input { width: 76px; }
+  .hint { left: 12px; right: 12px; }
+  .match { padding-inline: 0; }
+  .ctl input[type="range"] { width: 72px; }
+  .ctl .v { min-width: 0; }
+  .nextctl { height: auto; flex-wrap: wrap; white-space: normal; padding-block: 5px; row-gap: 6px; }
+}
+@media (prefers-reduced-motion: reduce) { .card, .prog i { transition: none; } }
+</style>
+
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <div class="seal" aria-hidden="true">足</div>
+      <div><div class="brand-name">Composer</div><div class="brand-sub">Compose bars freely in the g1 language<span class="ja" lang="ja">ローソク足</span></div></div>
+    </div>
+    <div class="tools">
+      <a class="home" id="home" href="/" hidden>Portal</a>
+      <div class="seg" id="mode" role="group" aria-label="Direction"><button type="button" data-v="1">Up / down<span class="ja" lang="ja">陽陰</span></button><button type="button" data-v="0">Shape only<span class="ja" lang="ja">形</span></button></div>
+      <button class="icon" type="button" id="undo" aria-label="Undo" title="Undo (⌘Z)">↶</button>
+      <button class="icon" type="button" id="redo" aria-label="Redo" title="Redo (⇧⌘Z)">↷</button>
+      <button class="icon" type="button" id="theme" aria-label="Switch between washi and sumi" title="Washi or sumi">◐</button>
+    </div>
+  </header>
+
+  <main class="stage" aria-label="Composition">
+    <div class="cvwrap" id="cvwrap">
+      <canvas id="cv" tabindex="0" aria-label="Bar composition. Drag shadows and body edges; left and right arrows choose a bar; up and down arrows move it; space changes its color; plus and minus add or remove a bar; the bracket keys bring the bars closer together or further apart; P starts pinning relations."></canvas>
+      <p class="hint" id="hint">Drag a shadow or a body edge · drag a body to move it · tap a body to change its color · hold ⌥ to place without snapping</p>
+      <div class="dock">
+        <label class="space" title="Space between the bars · [ and ] · pinch on the paper">
+          <span class="ma" lang="ja" aria-hidden="true">間</span>
+          <svg class="ico" viewBox="0 0 14 14" aria-hidden="true"><rect x="3" y="2" width="3.6" height="10" rx=".7"/><rect x="7.4" y="2" width="3.6" height="10" rx=".7"/></svg>
+          <input type="range" id="space" min="0" max="1" step="0.001" aria-label="Space between the bars">
+          <svg class="ico" viewBox="0 0 14 14" aria-hidden="true"><rect x=".4" y="2" width="3.6" height="10" rx=".7"/><rect x="10" y="2" width="3.6" height="10" rx=".7"/></svg>
+        </label>
+        <div class="bars" role="group" aria-label="Bars">
+          <button type="button" id="rm" aria-label="Remove the last bar" title="Remove the last bar">−</button>
+          <span class="nb" id="nb" aria-live="polite"></span>
+          <button type="button" id="add" aria-label="Add a bar" title="Add a bar">+</button>
+        </div>
+      </div>
+    </div>
+
+    <section class="match" aria-label="In the BTCUSDT history">
+      <div class="mbar">
+        <div class="grp">
+        <label class="ctl" title="骨 Skeleton: hold the order of the composition's landmarks exactly, from its strongest highs and lows (bones) to every swing">
+          <span class="k" lang="ja" aria-hidden="true">骨</span>Skeleton
+          <input type="range" id="skel" min="0" max="1" step="1" value="0" aria-label="Skeleton detail, from off to every swing">
+          <span class="v" id="skelv">off</span>
+        </label>
+        <span class="ctl pinctl">
+          <button type="button" class="pinbtn" id="pins" aria-pressed="false" title="結 Pins: tap two points on the drawing to hold how they relate · P"><span class="k" lang="ja" aria-hidden="true">結</span>Pins<span class="n" id="pinv">0</span></button>
+          <button type="button" class="clear" id="clearpins" hidden>Clear</button>
+        </span>
+        <span class="ctl" title="伸 Stretch: let the drawn bars pick themselves out of a longer run of BTCUSDT bars, in order. The first and last drawn bars are the run's first and last bars; up to this many bars between them are skipped and ignored. Applies while something is held.">
+          <span class="k" lang="ja" aria-hidden="true">伸</span>Stretch
+          <button type="button" class="step" id="stless" aria-label="Less stretch">−</button>
+          <span class="v" id="stv" style="min-width: 4.6em; text-align: center">+0 bars</span>
+          <button type="button" class="step" id="stmore" aria-label="More stretch">+</button>
+        </span>
+        </div>
+        <div class="grp">
+        <span class="ctl nextctl" id="nextctl" data-any="true" title="次 Next bar: keep only instances whose next bar rose or fell, at all or by at least a threshold. Measured from the window's last close to the next close; ATR is the engine's 14-bar Wilder average true range at the window's last bar.">
+          <span class="k" lang="ja" aria-hidden="true">次</span>Next bar
+          <span class="seg mini" id="ndir" role="group" aria-label="Next bar direction"><button type="button" data-v="0">any</button><button type="button" data-v="1">▲ up</button><button type="button" data-v="-1">▼ down</button></span>
+          <span class="seg mini" id="nmeas" role="group" aria-label="By how much"><button type="button" data-v="any">at all</button><button type="button" data-v="bps">bps</button><button type="button" data-v="atr">ATR</button></span>
+          <label class="nval" id="nvalw" hidden>≥<input id="nval" type="number" inputmode="decimal" min="0.1" step="1" aria-label="Threshold"></label>
+        </span>
+        <span class="tfs" id="tfs" role="group" aria-label="Timeframes"></span>
+        <span class="seg" id="xsel" role="group" aria-label="How many instances"><button type="button" data-x="12">12</button><button type="button" data-x="24">24</button><button type="button" data-x="48">48</button></span>
+        </div>
+      </div>
+      <div class="status"><span class="prog" id="prog" hidden><i></i></span><span class="msg" id="mmsg" aria-live="polite">Loading the BTCUSDT 15m to 4h klines…</span></div>
+      <div class="emaki" id="emaki" aria-label="Closest instances in the BTCUSDT history"></div>
+    </section>
+
+    <footer class="ident">
+      <div class="idl"><div class="names" id="names"></div><div class="desc" id="desc"></div></div>
+      <div class="codebox"><code id="code"></code><button type="button" class="link" id="copy">Copy</button><span class="dom" id="dom"></span></div>
+    </footer>
+  </main>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+/* ================= utilities ================= */
+const $ = (s, r = document) => r.querySelector(s);
+const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
+const fmt = n => Math.round(n).toLocaleString('en-US');
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const sgn = x => (x > 0 ? 1 : x < 0 ? -1 : 0);
+const motion = matchMedia('(prefers-reduced-motion: reduce)');
+const calm = () => motion.matches;
+function dense(arr) { const s = Array.from(new Set(arr)).sort((a, b) => a - b), m = new Map(); s.forEach((v, i) => m.set(v, i)); return arr.map(v => m.get(v)); }
+function springArr(x, v, t, n, w, dt, eps) {
+  let moving = false; const ex = Math.exp(-w * dt);
+  for (let i = 0; i < n; i++) {
+    const d = x[i] - t[i];
+    if (d < eps && d > -eps && v[i] < eps * 6 && v[i] > -eps * 6) { x[i] = t[i]; v[i] = 0; continue; }
+    const c2 = v[i] + w * d;
+    x[i] = t[i] + (d + c2 * dt) * ex; v[i] = (v[i] - w * c2 * dt) * ex; moving = true;
+  }
+  return moving;
+}
+function rr(ctx, x, y, w, h, r) { r = Math.max(0, Math.min(r, w / 2, h / 2)); ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+function fitCanvas(cv, w, h) {
+  const dpr = Math.min(2, window.devicePixelRatio || 1), W = Math.round(w * dpr), H = Math.round(h * dpr);
+  if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+  const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); return ctx;
+}
+const FONT_UI = '"Zen Kaku Gothic New", "Hiragino Sans", system-ui, sans-serif';
+const FONT_MIN = '"Shippori Mincho", "Hiragino Mincho ProN", serif';
+
+/* ================= theme ================= */
+const COL = {};
+function rgbOf(s) { s = s.trim(); if (s[0] === '#') { const n = parseInt(s.slice(1, 7), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; } const m = s.match(/[\d.]+/g); return m ? m.slice(0, 3).map(Number) : [128, 128, 128]; }
+function readTheme() {
+  const cs = getComputedStyle(document.documentElement);
+  ['paper', 'paper-2', 'ink', 'ink-2', 'ink-3', 'hair', 'mist', 'up', 'down', 'flat', 'ai', 'ai-soft', 'shu'].forEach(k => { COL[k] = cs.getPropertyValue('--' + k).trim(); });
+  COL.rgb = { u: rgbOf(COL.up), d: rgbOf(COL.down), z: rgbOf(COL.flat) };
+}
+readTheme();
+const rgbStr = (c, a = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
+
+/* ================= what the engine knows ================= */
+// exact complete-domain sizes per window length (geometry-count; docs/BAR_GEOMETRY.md section 7)
+const DOMAIN = {
+  o: { 2: '7,452', 3: '32,160,252', 4: '508,608,936,252', 5: '21,386,422,752,715,452', 6: '1,971,122,519,237,375,505,852', 7: '349,946,534,568,771,563,626,027,452', 8: '109,093,488,682,843,434,702,978,214,200,252', 9: '55,702,085,623,739,099,432,122,993,642,929,144,252', 10: '44,121,589,533,882,676,853,417,959,154,810,808,313,579,452' },
+  u: { 2: '2,568', 3: '5,592,968', 4: '44,418,808,968', 5: '936,239,675,880,968', 6: '43,216,321,851,028,552,968', 7: '3,840,691,551,111,678,501,624,968', 8: '599,170,270,107,067,142,441,692,696,968', 9: '153,066,871,555,466,967,822,330,084,645,768,968', 10: '60,654,091,922,379,541,904,994,268,730,790,100,840,968' },
+};
+const NWORD = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty'];
+const KANJI = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
+const ORD_JA = Array.from({ length: 20 }, (_, i) => { const n = i + 1, t = Math.floor(n / 10), u = n % 10; return (t ? (t > 1 ? KANJI[t] : '') + '十' : '') + (u ? KANJI[u] : '') + '本目'; });
+// the engine keys and counts windows up to ten bars; matching on held relations reads the bars directly, so compositions may go further
+const MINN = 2, MAXN = 20;
+const TF_LABELS = ['15m', '30m', '1h', '2h', '4h'];
+
+/* ================= the composition: free prices, exact order ================= */
+// Every bar keeps the actual prices you draw. The g1 identity is derived from them exactly as the
+// engine's encoder does: sort all endpoints, equal prices share a rank, direction from open vs close.
+function newBar(v, d) { return { v: Float64Array.from(v), d, dv: Float64Array.from(v), vv: new Float64Array(4), x: null, vx: 0, a: 0, col: null }; }
+const S = {
+  bars: [newBar([30, 42, 56, 68], 'u'), newBar([18, 36, 62, 80], 'd')], colored: true, sel: 1, space: 0.68,
+  pins: [],            // relations you hold: { a: {bar, part}, b: {bar, part} } or { bar, color: true }; parts are L, B, T, H as drawn
+  skel: 0,             // 0 off, then 1 (bones) to the number of skeleton levels (every swing)
+  stretch: 0,          // BTCUSDT bars the drawn bars may skip, between their first and last
+  x: 12, tfOn: [true, true, true, true, true], pinMode: false,
+  next: { dir: 0, measure: 'any', bps: 10, atr: 1 },   // 次: which next bars to keep; thresholds keep their own defaults
+};
+try { const v = parseFloat(localStorage.getItem('ashi.space')); if (v >= 0 && v <= 1) S.space = v; } catch (err) { /* spacing simply starts at its default */ }
+const hist = { past: [], future: [] };
+const snap = () => ({ bars: S.bars.map(b => ({ v: Array.from(b.v), d: b.d })), pins: JSON.parse(JSON.stringify(S.pins)) });
+function pushHist(s) { hist.past.push(s || snap()); if (hist.past.length > 400) hist.past.shift(); hist.future = []; }
+function identity() {
+  const vals = []; for (const b of S.bars) for (let k = 0; k < 4; k++) vals.push(b.v[k]);
+  return { r: dense(vals), d: S.bars.map(b => (b.v[1] === b.v[2] ? 'z' : b.d)), n: S.bars.length };
+}
+const codeOf = id => `g1:${S.colored ? 'o' : 'u'}:` + Array.from({ length: id.n }, (_, i) => id.r.slice(i * 4, i * 4 + 4).join(',') + (S.colored ? ',' + id.d[i] : '')).join(';');
+const formOf = q => (q[0] < q[1] ? 1 : 0) | (q[1] < q[2] ? 2 : 0) | (q[2] < q[3] ? 4 : 0);
+function epName(d, k) {
+  if (k === 0) return 'low'; if (k === 3) return 'high';
+  if (!S.colored) return k === 1 ? 'body bottom' : 'body top';
+  if (d === 'z') return 'open = close';
+  return (k === 1) === (d === 'u') ? 'open' : 'close';
+}
+const EP_JA = { low: '安値', high: '高値', open: '始値', close: '終値', 'open = close': '始値 = 終値' };
+const SEG_NAME = { 0: 'lower shadow', 1: 'body', 2: 'upper shadow' };
+
+/* ================= what a match holds ================= */
+// prices a held relation can name; the matcher reads the same kinds from BTCUSDT bars: 0 open, 1 high, 2 low, 3 close, 4 body bottom, 5 body top
+const PART_K = { L: 0, B: 1, T: 2, H: 3 };
+const KIND_LETTER = ['O', 'H', 'L', 'C', 'B', 'T'];
+const dirOf = i => { const b = S.bars[i]; return b.v[1] === b.v[2] ? 0 : b.d === 'u' ? 1 : -1; };
+function ohlcOf(i) { const [l, lo, hi, h] = S.bars[i].v, d = dirOf(i); return d >= 0 ? [lo, h, l, hi] : [hi, h, l, lo]; }
+function kindOf(bar, part) {
+  if (part === 'H') return 1; if (part === 'L') return 2;
+  if (!S.colored) return part === 'T' ? 5 : 4;
+  const d = dirOf(bar); return part === 'T' ? (d >= 0 ? 3 : 0) : (d >= 0 ? 0 : 3);
+}
+function priceOf(bar, kind) { const [o, h, l, c] = ohlcOf(bar); return [o, h, l, c, Math.min(o, c), Math.max(o, c)][kind]; }
+const relWordOf = r => (r > 0 ? 'above' : r < 0 ? 'below' : 'level with');
+function partName(bar, part) {
+  if (part === 'H') return 'high'; if (part === 'L') return 'low';
+  if (!S.colored) return part === 'T' ? 'body top' : 'body bottom';
+  const d = dirOf(bar); if (d === 0) return 'open = close';
+  return (part === 'T') === (d > 0) ? 'close' : 'open';
+}
+// a high (low) that beats every bar within k bars on both sides has strength k; the extremes of the whole composition have strength n
+function landmarks() {
+  const n = S.bars.length, out = [];
+  for (const [part, k, s] of [['H', 3, 1], ['L', 0, -1]]) for (let i = 0; i < n; i++) {
+    const v = j => S.bars[j].v[k] * s;
+    let st = 0;
+    while (st < n) {
+      const lo = i - (st + 1), hi = i + (st + 1);
+      if (lo < 0 && hi >= n) { st = n; break; }
+      if ((lo >= 0 && !(v(i) > v(lo))) || (hi < n && !(v(i) > v(hi)))) break;
+      st++;
+    }
+    if (st > 0) out.push({ bar: i, part, k: st });
+  }
+  return out;
+}
+const skelLevels = () => [...new Set(landmarks().map(m => m.k))].sort((a, b) => b - a);
+function skelMarks() { const lv = skelLevels(); if (!S.skel || !lv.length) return []; const min = lv[Math.min(S.skel, lv.length) - 1]; return landmarks().filter(m => m.k >= min); }
+// everything held right now, as the matcher needs it, each with a short label
+function heldNow() {
+  const out = [], seen = new Set(), n = S.bars.length;
+  const rel = (a, ka, b, kb, from) => {
+    if (a === b && ka === kb) return;
+    const key = a < b || (a === b && ka < kb) ? `${a}.${ka}|${b}.${kb}` : `${b}.${kb}|${a}.${ka}`;
+    if (seen.has(key)) return; seen.add(key);
+    const r = sgn(priceOf(a, ka) - priceOf(b, kb));
+    out.push({ h: { a: [a, ka], b: [b, kb], rel: r }, label: `${KIND_LETTER[ka]}${a + 1} ${r > 0 ? '>' : r < 0 ? '<' : '='} ${KIND_LETTER[kb]}${b + 1}`, from });
+  };
+  for (const p of S.pins) {
+    if (p.color) { if (S.colored && !seen.has('c' + p.bar)) { seen.add('c' + p.bar); const d = dirOf(p.bar); out.push({ h: { color: true, bar: p.bar, dir: d }, label: `bar ${p.bar + 1} ${d > 0 ? 'up' : d < 0 ? 'down' : 'open = close'}`, from: 'pin' }); } continue; }
+    rel(p.a.bar, kindOf(p.a.bar, p.a.part), p.b.bar, kindOf(p.b.bar, p.b.part), 'pin');
+  }
+  const marks = skelMarks();
+  if (marks.length) {
+    const pts = [];
+    if (S.colored) pts.push([0, 0]);
+    for (const m of marks) pts.push([m.bar, m.part === 'H' ? 1 : 2]);
+    if (S.colored) pts.push([n - 1, 3]);
+    for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) rel(pts[i][0], pts[i][1], pts[j][0], pts[j][1], 'skeleton');
+    for (const m of marks) for (const j of [m.bar - 1, m.bar + 1]) if (j >= 0 && j < n) { const k = m.part === 'H' ? 1 : 2; rel(m.bar, k, j, k, 'skeleton'); }
+  }
+  return out;
+}
+
+const Ops = {
+  select(i) { i = clamp(i, 0, S.bars.length - 1); if (S.sel === i) return; S.sel = i; refresh(); },
+  flip(i) { const b = S.bars[i]; if (!S.colored || b.v[1] === b.v[2]) return; pushHist(); b.d = b.d === 'u' ? 'd' : 'u'; refresh(); },
+  add() {
+    if (S.bars.length >= MAXN) return;
+    pushHist();
+    const last = S.bars[S.bars.length - 1], span = Stage.view.thi - Stage.view.tlo;
+    const range = last.v[3] - last.v[0] || span * 0.12;
+    const shift = 0.55 * range * (last.d === 'd' ? -1 : 1);
+    S.bars.push(newBar(Array.from(last.v, x => x + shift), last.d));
+    S.sel = S.bars.length - 1;
+    Stage.fit(); refresh();
+  },
+  remove() {
+    if (S.bars.length <= MINN) return;
+    pushHist();
+    Stage.retire(S.bars.pop());
+    const n = S.bars.length;
+    S.pins = S.pins.filter(p => (p.color ? p.bar < n : p.a.bar < n && p.b.bar < n));
+    if (S.sel >= n) S.sel = n - 1;
+    Stage.fit(); refresh();
+  },
+  nudge(i, px) {
+    const G = Stage.geom(), dv = px * (Stage.view.hi - Stage.view.lo) / G.plotH;
+    pushHist(); for (let k = 0; k < 4; k++) S.bars[i].v[k] += dv;
+    Stage.fit(); refresh();
+  },
+  restore(st) {
+    for (let i = 0; i < st.bars.length; i++) { if (S.bars[i]) { S.bars[i].v.set(st.bars[i].v); S.bars[i].d = st.bars[i].d; } else S.bars.push(newBar(st.bars[i].v, st.bars[i].d)); }
+    while (S.bars.length > st.bars.length) Stage.retire(S.bars.pop());
+    S.pins = JSON.parse(JSON.stringify(st.pins));
+    if (S.sel >= S.bars.length) S.sel = S.bars.length - 1;
+    Stage.fit(); refresh();
+  },
+  undo() { const s = hist.past.pop(); if (!s) return; hist.future.push(snap()); Ops.restore(s); },
+  redo() { const s = hist.future.pop(); if (!s) return; hist.past.push(snap()); Ops.restore(s); },
+  pin(a, b) {
+    if (a.bar === b.bar && a.part === b.part) return;
+    const same = p => !p.color && ((p.a.bar === a.bar && p.a.part === a.part && p.b.bar === b.bar && p.b.part === b.part) || (p.a.bar === b.bar && p.a.part === b.part && p.b.bar === a.bar && p.b.part === a.part));
+    if (S.pins.some(same)) return;
+    pushHist(); S.pins.push({ a: { ...a }, b: { ...b } }); refresh();
+  },
+  colorPin(bar) {
+    pushHist();
+    const i = S.pins.findIndex(p => p.color && p.bar === bar);
+    if (i >= 0) S.pins.splice(i, 1); else S.pins.push({ bar, color: true });
+    refresh();
+  },
+  unpin(i) { pushHist(); S.pins.splice(i, 1); refresh(); },
+  clearPins() { if (!S.pins.length) return; pushHist(); S.pins = []; refresh(); },
+};
+
+/* ================= relations, names and words ================= */
+function band(x1, x2, y1, y2) {
+  if (x1 === y1 && x2 === y2) return 3;
+  if (x1 >= y1 && x2 <= y2) return 4;
+  if (x1 <= y1 && x2 >= y2) return 2;
+  if (x1 > y1) return x1 >= y2 ? 0 : 1;
+  return x2 <= y1 ? 6 : 5;
+}
+function pairSentence(id, i, j) {
+  const p = id.r.slice(i * 4, i * 4 + 4), q = id.r.slice(j * 4, j * 4 + 4), n = `Bar ${i + 1}`;
+  const BODY = [`sits at or above ${n}'s body`, `overlaps ${n}'s body from above`, `covers ${n}'s body`, `spans exactly ${n}'s body`, `sits within ${n}'s body`, `overlaps ${n}'s body from below`, `sits at or below ${n}'s body`];
+  const RANGE = [`trades entirely at or above ${n}`, `shifts up while overlapping ${n}`, `is an outside bar`, `spans exactly ${n}'s range`, `is an inside bar`, `shifts down while overlapping ${n}`, `trades entirely at or below ${n}`];
+  const w = (a, b, hi, eq, lo) => (a > b ? hi : a === b ? eq : lo);
+  const ties = new Set(q.filter(x => p.includes(x))).size;
+  return `Bar ${j + 1}'s body ${BODY[band(q[1], q[2], p[1], p[2])]}, and it ${RANGE[band(q[0], q[3], p[0], p[3])]}: ${w(q[3], p[3], 'higher high', 'equal high', 'lower high')}, ${w(q[0], p[0], 'higher low', 'equal low', 'lower low')}` + (ties ? `; ${ties === 1 ? 'one shared level' : ties + ' shared levels'}.` : '.');
+}
+// classical Japanese names whose geometric core the composition satisfies (trend context aside)
+function namesOf(id) {
+  const out = [], col = S.colored, bar = i => id.r.slice(i * 4, i * 4 + 4);
+  for (let i = 0; i < id.n; i++) {
+    const f = formOf(bar(i)), who = `Bar ${i + 1}`, d = id.d[i];
+    if (f === 2) out.push([who, '丸坊主', 'Marubozu', '']);
+    else if (f === 5) out.push([who, '十字線', 'Doji', '']);
+    else if (f === 1) out.push([who, 'トンボ', 'Dragonfly doji', '']);
+    else if (f === 4) out.push([who, '塔婆', 'Gravestone doji', '']);
+    else if (col && (f === 3 || f === 6)) out.push((d === 'u') === (f === 6) ? [who, '寄付坊主', 'Opening marubozu', ''] : [who, '大引坊主', 'Closing marubozu', '']);
+  }
+  for (let i = 1; i < id.n; i++) {
+    const p = bar(i - 1), q = bar(i), dp = id.d[i - 1], dq = id.d[i], who = `Bars ${i}–${i + 1}`;
+    const opp = col && dp !== 'z' && dq !== 'z' && dp !== dq;
+    const close = (x, d) => x[d === 'u' ? 2 : 1], open = (x, d) => x[d === 'u' ? 1 : 2];
+    if (opp && band(q[1], q[2], p[1], p[2]) === 2) out.push([who, '包み線', 'Engulfing', dq === 'u' ? 'bullish' : 'bearish']);
+    if (q[1] > p[1] && q[2] < p[2]) out.push([who, 'はらみ線', q[1] < q[2] ? 'Harami' : 'Harami cross', '']);
+    if (q[0] > p[3]) out.push([who, '窓', 'Window', 'gap up']);
+    if (q[3] < p[0]) out.push([who, '窓', 'Window', 'gap down']);
+    if (q[3] === p[3]) out.push([who, '毛抜き天井', 'Tweezer top', '']);
+    if (q[0] === p[0]) out.push([who, '毛抜き底', 'Tweezer bottom', '']);
+    if (opp && close(p, dp) === close(q, dq)) out.push([who, '出会い線', 'Meeting lines', '']);
+    if (opp && open(p, dp) === open(q, dq)) out.push([who, '行き違い線', 'Separating lines', '']);
+  }
+  return out;
+}
+
+/* ================= the paper ================= */
+const HINT_DRAW = 'Drag a shadow or a body edge · drag a body to move it · tap a body to change its color · hold ⌥ to place without snapping';
+const HINT_PIN = 'Tap two points to hold how they relate · tap a body to hold its colour · tap a knot to let it go · Esc when done';
+const Stage = {
+  wrap: $('#cvwrap'), cv: $('#cv'), hint: $('#hint'),
+  view: { cur: new Float64Array([0, 100]), vel: new Float64Array(2), tgt: new Float64Array([0, 100]), get lo() { return this.cur[0]; }, get hi() { return this.cur[1]; }, get tlo() { return this.tgt[0]; }, get thi() { return this.tgt[1]; } },
+  ghosts: [], drag: null, hov: null, ptr: null, snapV: null, ready: false,
+  pinFrom: null, pinHov: null, pinPress: null, trace: null,
+  geom() {
+    const w = this.wrap.clientWidth, h = this.wrap.clientHeight, N = S.bars.length;
+    // the plot starts below the hint, which wraps onto several lines on a phone
+    const plotTop = Math.max(70, this.hint.offsetTop + this.hint.offsetHeight + 24), plotBottom = Math.max(plotTop + 160, h - 84);
+    // bar width follows the count and the screen; 間 sets the pitch, from nearly touching to as far apart as fits
+    const room = Math.max(24, (w - 150) / N), bw = clamp(Math.min(210, room) * 0.4, 6, 68);
+    const tight = bw * 1.22, airy = Math.max(tight, Math.min(room, 340));
+    const spacing = tight * Math.pow(airy / tight, S.space);
+    return { w, h, N, plotTop, plotBottom, plotH: plotBottom - plotTop, spacing, bw, xs: S.bars.map((_, i) => w / 2 + (i - (N - 1) / 2) * spacing) };
+  },
+  Y(v, G) { const { lo, hi } = this.view; return G.plotBottom - (v - lo) / (hi - lo) * G.plotH; },
+  // frame the composition with room to pull past its extremes; stay still unless it no longer fits well
+  fit(force) {
+    let mn = Infinity, mx = -Infinity;
+    for (const b of S.bars) for (let k = 0; k < 4; k++) { mn = Math.min(mn, b.v[k]); mx = Math.max(mx, b.v[k]); }
+    const span = Math.max(mx - mn, 1);
+    const lo = mn - span * 0.22, hi = mx + span * 0.22;
+    const cur = this.view.thi - this.view.tlo, inLo = this.view.tlo + cur * 0.07, inHi = this.view.thi - cur * 0.07;
+    if (force || !this.ready || mn < inLo || mx > inHi || span < cur * 0.4) { this.view.tgt[0] = lo; this.view.tgt[1] = hi; }
+    if (!this.ready || calm()) { this.view.cur.set(this.view.tgt); this.view.vel.fill(0); this.ready = true; }
+  },
+  settle() { this.view.cur.set(this.view.tgt); this.view.vel.fill(0); for (const b of S.bars) { b.dv.set(b.v); b.vv.fill(0); } },
+  retire(b) { this.ghosts.push({ dv: Float64Array.from(b.dv), x: b.x, col: b.col ? b.col.slice() : COL.rgb.z.slice(), a: b.a }); },
+  step(dt) {
+    let busy = false;
+    const fast = calm(), span = this.view.thi - this.view.tlo;
+    if (!this.drag && springArr(this.view.cur, this.view.vel, this.view.tgt, 2, fast ? 40 : 7, dt, span * 1e-4)) busy = true;
+    const G = this.geom(), id = identity(), kc = 1 - Math.exp(-(fast ? 40 : 6) * dt);
+    S.bars.forEach((b, i) => {
+      const tx = G.xs[i];
+      if (b.x == null) { b.x = fast ? tx : tx + G.spacing * 0.7; b.vx = 0; }
+      const xs = [b.x], vx = [b.vx];
+      if (springArr(xs, vx, [tx], 1, fast ? 40 : 8, dt, 0.05)) busy = true;
+      b.x = xs[0]; b.vx = vx[0];
+      if (!(this.drag && this.drag.bar === i) && springArr(b.dv, b.vv, b.v, 4, fast ? 40 : 8, dt, span * 1e-4)) busy = true;
+      if (b.a < 1) { b.a = Math.min(1, b.a + dt * (fast ? 40 : 3.2)); busy = true; }
+      const tc = S.colored ? COL.rgb[id.d[i]] : COL.rgb.z;
+      if (!b.col) b.col = tc.slice();
+      for (let c = 0; c < 3; c++) { const d = tc[c] - b.col[c]; if (Math.abs(d) > 0.4) { b.col[c] += d * kc; busy = true; } else b.col[c] = tc[c]; }
+    });
+    for (const g of this.ghosts) { g.a -= dt * (fast ? 40 : 3.4); g.x += dt * 60; }
+    this.ghosts = this.ghosts.filter(g => g.a > 0.01);
+    if (this.ghosts.length) busy = true;
+    if (this.trace && this.trace.a < 1) { this.trace.a = Math.min(1, this.trace.a + dt * (fast ? 40 : 4)); busy = true; }
+    return busy;
+  },
+  hit(px, py) {
+    const G = this.geom();
+    for (let i = 0; i < G.N; i++) {
+      const b = S.bars[i], cx = G.xs[i];
+      if (Math.abs(px - cx) > G.spacing / 2) continue;
+      if (py < G.plotTop - 40) return null;
+      if (py > G.plotBottom + 12) return { kind: 'grip', bar: i };
+      const yL = this.Y(b.v[0], G), yB = this.Y(b.v[1], G), yT = this.Y(b.v[2], G), bodyH = yB - yT;
+      const noU = b.v[3] === b.v[2], noL = b.v[0] === b.v[1];
+      if (bodyH < 6) {
+        if (Math.abs(py - (yT + yB) / 2) <= 10) return { kind: 'doji', bar: i };
+        return py < yT ? { kind: 'end', bar: i, group: [3], part: 'H' } : { kind: 'end', bar: i, group: [0], part: 'L' };
+      }
+      const edge = clamp(bodyH * 0.26, 6, 14);
+      if (py < yT - edge) return { kind: 'end', bar: i, group: [3], part: 'H' };
+      if (py <= yT + edge) return { kind: 'end', bar: i, group: noU ? [2, 3] : [2], part: 'T' };
+      if (py < yB - edge) return { kind: 'move', bar: i };
+      if (py <= yB + edge) return { kind: 'end', bar: i, group: noL ? [1, 0] : [1], part: 'B' };
+      return { kind: 'end', bar: i, group: [0], part: 'L' };
+    }
+    return null;
+  },
+  /* ----- pins: points you can tie together, drawn where the bars are now ----- */
+  points(i) {
+    const v = S.bars[i].v, out = [['T', 2], ['B', 1]];
+    if (v[3] !== v[2]) out.unshift(['H', 3]);
+    if (v[0] !== v[1]) out.push(['L', 0]);
+    if (v[1] === v[2]) out.splice(out.findIndex(p => p[0] === 'B'), 1);
+    return out.map(([part, k]) => ({ bar: i, part, k }));
+  },
+  at(p, G) { const b = S.bars[p.bar]; return { x: b.x == null ? G.xs[p.bar] : b.x, y: this.Y(b.dv[PART_K[p.part]], G) }; },
+  knotAt(pin, G) {
+    if (pin.color) { const b = S.bars[pin.bar], cx = b.x == null ? G.xs[pin.bar] : b.x; return { x: cx - G.bw / 2 - 11, y: (this.Y(b.dv[1], G) + this.Y(b.dv[2], G)) / 2 }; }
+    const A = this.at(pin.a, G), B = this.at(pin.b, G); return { x: (A.x + B.x) / 2, y: (A.y + B.y) / 2 };
+  },
+  pinHit(px, py) {
+    const G = this.geom();
+    for (let i = S.pins.length - 1; i >= 0; i--) { const k = this.knotAt(S.pins[i], G); if (Math.hypot(px - k.x, py - k.y) <= 10) return { kind: 'knot', index: i }; }
+    let best = null, bd = 17;
+    for (let i = 0; i < S.bars.length; i++) for (const p of this.points(i)) { const q = this.at(p, G), d = Math.hypot((px - q.x) * 0.8, py - q.y); if (d < bd) { bd = d; best = { kind: 'point', bar: p.bar, part: p.part }; } }
+    if (best) return best;
+    for (let i = 0; i < S.bars.length; i++) {
+      const b = S.bars[i], cx = b.x == null ? G.xs[i] : b.x, yT = this.Y(b.dv[2], G), yB = this.Y(b.dv[1], G);
+      if (Math.abs(px - cx) <= G.bw / 2 + 4 && py >= yT - 2 && py <= yB + 2) return { kind: 'body', bar: i };
+    }
+    return null;
+  },
+  pinWord(h) {
+    if (!h) return this.pinFrom ? `Bar ${this.pinFrom.bar + 1} ${partName(this.pinFrom.bar, this.pinFrom.part)} · now tap a second point` : '';
+    if (h.kind === 'knot') { const p = S.pins[h.index]; if (!p) return ''; return p.color ? `Holding bar ${p.bar + 1}'s colour · tap to let it go` : `Holding bar ${p.a.bar + 1} ${partName(p.a.bar, p.a.part)} ${relWordOf(sgn(S.bars[p.a.bar].v[PART_K[p.a.part]] - S.bars[p.b.bar].v[PART_K[p.b.part]]))} bar ${p.b.bar + 1} ${partName(p.b.bar, p.b.part)} · tap to let it go`; }
+    if (h.kind === 'body') return S.colored ? `Hold bar ${h.bar + 1}'s colour` : 'Colours are not part of shape only';
+    const name = `Bar ${h.bar + 1} ${partName(h.bar, h.part)}`;
+    if (!this.pinFrom || (this.pinFrom.bar === h.bar && this.pinFrom.part === h.part)) return `${name} · tap to start a pin`;
+    const f = this.pinFrom, r = sgn(S.bars[f.bar].v[PART_K[f.part]] - S.bars[h.bar].v[PART_K[h.part]]);
+    return `Bar ${f.bar + 1} ${partName(f.bar, f.part)} ${relWordOf(r)} ${name.toLowerCase()} · tap to hold`;
+  },
+  // a bar or pin that is gone must not stay under the pointer or at the start of a pin
+  dropStale() {
+    const n = S.bars.length, gone = h => !!h && ((h.kind === 'knot' && !S.pins[h.index]) || (h.bar != null && h.bar >= n));
+    if (this.pinFrom && this.pinFrom.bar >= n) this.pinFrom = null;
+    if (gone(this.pinHov)) this.pinHov = null;
+    if (gone(this.hov)) this.hov = null;
+  },
+  pinDown(p) {
+    const h = this.pinHit(p.x, p.y);
+    if (h && h.kind === 'knot') { this.pinFrom = null; this.pinHov = null; Ops.unpin(h.index); return; }
+    if (h && h.kind === 'body') { this.pinFrom = null; if (S.colored) Ops.colorPin(h.bar); return; }
+    if (h && h.kind === 'point') {
+      const pt = { bar: h.bar, part: h.part };
+      if (this.pinFrom && !(this.pinFrom.bar === pt.bar && this.pinFrom.part === pt.part)) { const a = this.pinFrom; this.pinFrom = null; Ops.pin(a, pt); return; }
+      this.pinFrom = pt; this.pinPress = { x: p.x, y: p.y }; App.redraw(); return;
+    }
+    this.pinFrom = null; App.redraw();
+  },
+  pinUp(p) {
+    const press = this.pinPress; this.pinPress = null;
+    if (!press || !this.pinFrom || Math.hypot(p.x - press.x, p.y - press.y) < 8) return;
+    const h = this.pinHit(p.x, p.y);
+    if (h && h.kind === 'point' && !(h.bar === this.pinFrom.bar && h.part === this.pinFrom.part)) { const a = this.pinFrom; this.pinFrom = null; Ops.pin(a, { bar: h.bar, part: h.part }); }
+  },
+  partWord(h) {
+    if (!h) return '';
+    const b = S.bars[h.bar], d = identity().d[h.bar], name = k => { const n = epName(d, k); return EP_JA[n] && S.colored ? `${n} · ${EP_JA[n]}` : n; };
+    if (h.kind === 'grip') return `Bar ${h.bar + 1} · drag to move it`;
+    if (h.kind === 'move') return S.colored ? 'drag to move · tap to change color' : 'drag to move this bar';
+    if (h.kind === 'doji') return 'drag up or down to open a body';
+    if (h.part === 'H') return b.v[3] === b.v[2] ? 'pull up for an upper shadow' : name(3);
+    if (h.part === 'L') return b.v[0] === b.v[1] ? 'pull down for a lower shadow' : name(0);
+    return name(h.part === 'T' ? 2 : 1);
+  },
+  // where a point sits against its neighbours, in words
+  relWord(i, k) {
+    const v = S.bars[i].v[k], id = identity(), parts = [];
+    for (const j of [i - 1, i + 1]) {
+      if (j < 0 || j >= S.bars.length) continue;
+      const o = S.bars[j].v, dj = id.d[j], nm = `Bar ${j + 1}`;
+      let w = null;
+      for (let q = 0; q < 4; q++) if (o[q] === v) { w = `at ${nm}'s ${epName(dj, q)}`; break; }
+      if (!w) {
+        if (v < o[0]) w = `below ${nm}`; else if (v > o[3]) w = `above ${nm}`;
+        else for (let q = 1; q < 4; q++) if (v < o[q]) { w = `inside ${nm}'s ${SEG_NAME[q - 1]}`; break; }
+      }
+      parts.push(w);
+    }
+    for (let j = 0; j < S.bars.length; j++) if (Math.abs(j - i) > 1 && S.bars[j].v.includes(v)) parts.push(`level with Bar ${j + 1}`);
+    return parts.join(' · ');
+  },
+  local(e) { const r = this.cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; },
+  down(e) {
+    if (e.button !== 0) return;
+    const p = this.local(e);
+    if (S.pinMode) { e.preventDefault(); this.cv.focus({ preventScroll: true }); this.cv.setPointerCapture(e.pointerId); this.ptr = p; this.pinDown(p); return; }
+    const h = this.hit(p.x, p.y); if (!h) return;
+    e.preventDefault(); this.cv.focus({ preventScroll: true });
+    this.cv.setPointerCapture(e.pointerId);
+    if (S.sel !== h.bar) Ops.select(h.bar);
+    this.settle();
+    this.drag = { ...h, y0: p.y, base: S.bars.map(b => Float64Array.from(b.v)), start: snap(), moved: false };
+    this.ptr = p; App.kick();
+  },
+  move(e) {
+    const p = this.local(e); this.ptr = p;
+    if (S.pinMode) { this.pinHov = this.pinHit(p.x, p.y); this.cv.style.cursor = this.pinHov ? 'pointer' : 'crosshair'; App.redraw(); return; }
+    const d = this.drag;
+    if (!d) { const h = this.hit(p.x, p.y); this.hov = h; this.cv.style.cursor = !h ? '' : h.kind === 'move' || h.kind === 'grip' ? 'grab' : 'ns-resize'; App.redraw(); return; }
+    if (!d.moved && Math.abs(p.y - d.y0) < 3) return;
+    if (!d.moved) { d.moved = true; if (d.kind === 'move' || d.kind === 'grip') this.cv.style.cursor = 'grabbing'; }
+    const G = this.geom(), i = d.bar, b = S.bars[i], base = d.base, own = base[i];
+    const per = (this.view.hi - this.view.lo) / G.plotH, free = e.altKey;
+    let dv = -(p.y - d.y0) * per;
+    if (d.kind === 'doji') {
+      const up = dv > 0; d.kind = 'end'; d.part = up ? 'T' : 'B';
+      d.group = up ? (own[3] === own[2] ? [2, 3] : [2]) : (own[0] === own[1] ? [1, 0] : [1]);
+    }
+    const others = []; base.forEach((v, j) => { if (j !== i) for (let k = 0; k < 4; k++) others.push(v[k]); });
+    this.snapV = null;
+    if (d.kind === 'move' || d.kind === 'grip') {
+      dv = clamp(dv, this.view.lo - own[0], this.view.hi - own[3]);
+      let best = null, bd = free ? 0 : 8 * per;
+      for (let k = 0; k < 4; k++) for (const o of others) { const diff = own[k] + dv - o; if (Math.abs(diff) < bd) { bd = Math.abs(diff); best = { k, target: o, dv: dv - diff }; } }
+      if (best) dv = best.dv;
+      for (let k = 0; k < 4; k++) b.v[k] = best && own[k] === own[best.k] ? best.target : own[k] + dv;
+      if (best) this.snapV = best.target;
+      d.lead = best ? best.k : 0;
+    } else {
+      const lead = d.group[0];
+      let v = clamp(own[lead] + dv, this.view.lo, this.view.hi), bd = free ? 0 : 8 * per, snapTo = null;
+      for (const o of others) { const diff = Math.abs(o - v); if (diff < bd) { bd = diff; snapTo = o; } }
+      if (!free) for (let k = 0; k < 4; k++) { if (d.group.includes(k)) continue; const diff = Math.abs(own[k] - v); if (diff < Math.min(bd, 6 * per)) { bd = diff; snapTo = own[k]; } }
+      if (snapTo !== null) { v = snapTo; this.snapV = v; }
+      for (let k = 0; k < 4; k++) {
+        if (d.group.includes(k)) b.v[k] = v;
+        else if (k > lead && own[k] < v) b.v[k] = v;
+        else if (k < lead && own[k] > v) b.v[k] = v;
+        else b.v[k] = own[k];
+      }
+      d.lead = lead;
+    }
+    b.dv.set(b.v); b.vv.fill(0);
+    d.word = this.relWord(i, d.lead);
+    refresh();
+  },
+  up(e) {
+    // a drag that began before pin mode was switched on still ends as a drag, so its search is scheduled
+    if (S.pinMode && !this.drag) { if (e && e.type === 'pointerup') this.pinUp(this.local(e)); return; }
+    const d = this.drag; if (!d) return;
+    this.drag = null; this.snapV = null; this.cv.style.cursor = '';
+    if (!d.moved) { if (d.kind === 'move') Ops.flip(d.bar); App.redraw(); return; }
+    const changed = S.bars.some((b, i) => b.v.some((x, k) => x !== d.base[i][k]));
+    if (changed) pushHist(d.start);
+    this.fit(); refresh();
+  },
+  draw() {
+    const G = this.geom(); if (!G.w || !G.h) return;
+    const ctx = fitCanvas(this.cv, G.w, G.h), id = identity();
+    ctx.clearRect(0, 0, G.w, G.h);
+    const Y = v => this.Y(v, G), x0 = 24, x1 = G.w - 52;
+    // the selected bar's levels as faint rules, with their place in the global order
+    const sb = S.bars[S.sel];
+    ctx.font = `500 11px ${FONT_MIN}`; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = COL['ink-3']; ctx.fillText('段', G.w - 22, G.plotTop - 12);
+    const seen = new Set(); let lastY = -Infinity;
+    for (let k = 3; k >= 0; k--) {
+      const rank = id.r[S.sel * 4 + k]; if (seen.has(rank)) continue; seen.add(rank);
+      const y = Math.round(Y(sb.dv[k])) + 0.5;
+      ctx.strokeStyle = COL.mist; ctx.lineWidth = 1; ctx.setLineDash([1, 4]);
+      ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke(); ctx.setLineDash([]);
+      const ly = Math.max(y, lastY + 13); lastY = ly;
+      ctx.fillStyle = COL['ink-3']; ctx.fillText(String(rank), G.w - 24, ly);
+    }
+    // exact ties between bars: the only equalities the engine sees
+    ctx.strokeStyle = COL.ai; ctx.lineWidth = 1; ctx.setLineDash([3, 4]); ctx.globalAlpha = this.trace ? 0.3 : 0.8;
+    for (let i = 0; i < G.N; i++) for (let j = i + 1; j < G.N; j++) {
+      const a = S.bars[i], c = S.bars[j], done = new Set();
+      for (let k = 0; k < 4; k++) for (let q = 0; q < 4; q++) if (a.v[k] === c.v[q] && !done.has(a.v[k])) {
+        done.add(a.v[k]); const y = Math.round(Y(a.dv[k])) + 0.5;
+        ctx.beginPath(); ctx.moveTo(a.x, y); ctx.lineTo(c.x, y); ctx.stroke();
+      }
+    }
+    ctx.setLineDash([]); ctx.globalAlpha = 1;
+    if (this.snapV !== null) { const y = Math.round(Y(this.snapV)) + 0.5; ctx.strokeStyle = COL.ai; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke(); }
+    for (const g of this.ghosts) this.drawCandle(ctx, G, g.x, g.dv, g.col, g.a);
+    S.bars.forEach((b, i) => this.drawBar(ctx, G, i));
+    this.drawTrace(ctx, G);
+    this.drawSkeleton(ctx, G);
+    this.drawPins(ctx, G);
+    const label = S.pinMode ? this.pinWord(this.pinHov) : null;
+    const hv = this.drag || this.hov;
+    if (this.ptr && (S.pinMode ? label : hv)) {
+      const t = S.pinMode ? label : this.drag && this.drag.moved ? `Bar ${this.drag.bar + 1} ${epName(id.d[this.drag.bar], this.drag.lead)} · ${this.drag.word || ''}` : this.partWord(hv);
+      ctx.font = `400 12px ${FONT_UI}`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+      const tw = ctx.measureText(t).width, x = clamp(this.ptr.x + 16, 8, G.w - tw - 24), y = clamp(this.ptr.y - 18, 14, G.h - 14);
+      ctx.fillStyle = COL['paper-2']; ctx.globalAlpha = 0.95; rr(ctx, x - 8, y - 11, tw + 16, 22, 5); ctx.fill(); ctx.globalAlpha = 1;
+      ctx.fillStyle = COL.ink; ctx.fillText(t, x, y + 0.5);
+    }
+  },
+  drawCandle(ctx, G, cx, dv, col, a) {
+    const Y = v => this.Y(v, G), bw = G.bw, yL = Y(dv[0]), yB = Y(dv[1]), yT = Y(dv[2]), yH = Y(dv[3]);
+    const ww = clamp(bw * 0.05, 1.4, 2.6);
+    ctx.globalAlpha = a; ctx.fillStyle = rgbStr(col);
+    if (yL - yH > 0.5) { rr(ctx, cx - ww / 2, yH, ww, yL - yH, ww / 2); ctx.fill(); }
+    const bh = Math.max(2.5, yB - yT); rr(ctx, cx - bw / 2, (yT + yB) / 2 - bh / 2, bw, bh, clamp(bw * 0.05, 1.5, 3)); ctx.fill();
+    ctx.strokeStyle = COL.ink; ctx.globalAlpha = a * 0.1; ctx.lineWidth = 1; ctx.stroke();
+    ctx.globalAlpha = 1;
+    return { yL, yB, yT, yH };
+  },
+  drawBar(ctx, G, i) {
+    const b = S.bars[i], cx = b.x, bw = G.bw, sel = S.sel === i && !S.pinMode, act = S.pinMode ? null : this.drag || this.hov;
+    const { yL, yB, yT, yH } = this.drawCandle(ctx, G, cx, b.dv, b.col, b.a);
+    const col = rgbStr(b.col), bh = Math.max(2.5, yB - yT);
+    if (act && act.bar === i && !(this.drag && this.drag.moved && this.drag.kind !== 'end')) {
+      ctx.fillStyle = COL['ai-soft'];
+      const part = act.part, k = act.kind;
+      if (k === 'move' || k === 'grip') { rr(ctx, cx - bw / 2 - 6, yT - 6, bw + 12, bh + 12, 6); ctx.fill(); }
+      else if (k === 'doji' || part === 'T' || part === 'B') { const y = part === 'B' ? yB : yT; rr(ctx, cx - bw / 2 - 8, y - 5, bw + 16, 10, 5); ctx.fill(); }
+      else if (part === 'H') { const top = b.v[3] === b.v[2] && !(this.drag && this.drag.moved) ? yT - 26 : yH - 8; rr(ctx, cx - 11, top, 22, Math.max(14, yT - top), 9); ctx.fill(); }
+      else if (part === 'L') { const bot = b.v[0] === b.v[1] && !(this.drag && this.drag.moved) ? yB + 26 : yL + 8; rr(ctx, cx - 11, yB, 22, Math.max(14, bot - yB), 9); ctx.fill(); }
+    }
+    if (sel || (act && act.bar === i)) {
+      ctx.globalAlpha = sel ? 1 : 0.6;
+      ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.fillStyle = COL.paper;
+      const ring = (x, y, rad) => { ctx.beginPath(); ctx.arc(x, y, rad, 0, 6.2832); ctx.fill(); ctx.stroke(); };
+      const noU = Math.abs(yH - yT) < 0.5, noL = Math.abs(yL - yB) < 0.5;
+      if (!noU) ring(cx, yH, 3.6);
+      if (!noL) ring(cx, yL, 3.6);
+      ctx.strokeStyle = COL['ink-3']; ctx.setLineDash([2, 3]);
+      if (noU) { ctx.beginPath(); ctx.moveTo(cx, yT - 4); ctx.lineTo(cx, yT - 18); ctx.stroke(); ctx.setLineDash([]); ring(cx, yT - 21, 3); ctx.setLineDash([2, 3]); }
+      if (noL) { ctx.beginPath(); ctx.moveTo(cx, yB + 4); ctx.lineTo(cx, yB + 18); ctx.stroke(); ctx.setLineDash([]); ring(cx, yB + 21, 3); }
+      ctx.setLineDash([]);
+      ctx.strokeStyle = col; ctx.lineWidth = 1.5;
+      const tk = 3 + clamp((G.spacing - bw) / 2 - 4, 2, 6);
+      for (const y of [yT, yB]) { ctx.beginPath(); ctx.moveTo(cx - bw / 2 - tk, y); ctx.lineTo(cx - bw / 2 - 3, y); ctx.moveTo(cx + bw / 2 + 3, y); ctx.lineTo(cx + bw / 2 + tk, y); ctx.stroke(); }
+      ctx.globalAlpha = 1;
+    }
+    const gy = G.plotBottom + 34, selLabel = S.sel === i;
+    ctx.globalAlpha = b.a; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = selLabel ? COL.ink : COL['ink-3'];
+    if (G.spacing >= 64) { ctx.font = `500 12.5px ${FONT_UI}`; ctx.fillText(`Bar ${i + 1}`, cx, gy); ctx.font = `500 11px ${FONT_MIN}`; ctx.fillText(ORD_JA[i], cx, gy + 16); }
+    else { ctx.font = `500 13px ${FONT_MIN}`; ctx.fillText(String(i + 1), cx, gy + 6); }
+    if (selLabel) { ctx.strokeStyle = COL.ai; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(cx - 13, gy + 30); ctx.quadraticCurveTo(cx, gy + 28, cx + 13, gy + 30.5); ctx.stroke(); ctx.lineCap = 'butt'; }
+    ctx.globalAlpha = 1;
+  },
+  // 写し: an instance from the history traced over the drawing, scaled to the drawing's height, one BTCUSDT bar per drawn bar
+  drawTrace(ctx, G) {
+    const t = this.trace; if (!t || t.bars.length !== S.bars.length) return;
+    let cmin = Infinity, cmax = -Infinity, imin = Infinity, imax = -Infinity;
+    for (const b of S.bars) { cmin = Math.min(cmin, b.v[0]); cmax = Math.max(cmax, b.v[3]); }
+    for (const [, h, l] of t.bars) { imin = Math.min(imin, l); imax = Math.max(imax, h); }
+    const f = p => cmin + (p - imin) / (imax - imin || 1) * (cmax - cmin), Y = v => this.Y(f(v), G), bw = G.bw * 0.86;
+    ctx.save(); ctx.globalAlpha = 0.9 * t.a; ctx.lineWidth = 1.3;
+    const outline = ([o, h, l, c], cx) => {
+      const top = Y(Math.max(o, c)), bot = Y(Math.min(o, c));
+      ctx.strokeStyle = c > o ? COL.up : c < o ? COL.down : COL.flat;
+      ctx.beginPath(); ctx.moveTo(cx, Y(h)); ctx.lineTo(cx, top); ctx.moveTo(cx, bot); ctx.lineTo(cx, Y(l)); ctx.stroke();
+      ctx.setLineDash([4, 3]); ctx.strokeRect(cx - bw / 2, top, bw, Math.max(1, bot - top)); ctx.setLineDash([]);
+    };
+    t.bars.forEach((bar, i) => { const b = S.bars[i]; outline(bar, b.x == null ? G.xs[i] : b.x); });
+    if (t.next) {
+      // 次: the bar that followed, one step to the right, on the same scale
+      const last = S.bars[S.bars.length - 1], nx = (last.x == null ? G.xs[G.N - 1] : last.x) + G.spacing;
+      ctx.globalAlpha = 0.75 * t.a; outline(t.next, nx);
+      ctx.globalAlpha = t.a; ctx.font = `500 12px ${FONT_MIN}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = COL['ink-2'];
+      ctx.fillText('次', nx, Math.min(Y(t.next[1]), Y(Math.max(...t.bars.map(b => b[1])))) - 14);
+    }
+    ctx.restore();
+    ctx.font = `400 12px ${FONT_UI}`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = COL['ink-2'];
+    ctx.fillText(`写し · ${t.caption}`, 28, G.plotTop - 12);
+  },
+  drawSkeleton(ctx, G) {
+    const marks = skelMarks(); if (!marks.length) return;
+    const pts = marks.map(m => ({ bar: m.bar, k: m.part === 'H' ? 3 : 0 }));
+    if (S.colored) { const n = S.bars.length; pts.push({ bar: 0, k: dirOf(0) >= 0 ? 1 : 2 }, { bar: n - 1, k: dirOf(n - 1) >= 0 ? 2 : 1 }); }
+    ctx.fillStyle = COL.ink;
+    for (const p of pts) { const b = S.bars[p.bar], cx = b.x == null ? G.xs[p.bar] : b.x; ctx.beginPath(); ctx.arc(cx, this.Y(b.dv[p.k], G), 2.6, 0, 6.2832); ctx.fill(); }
+  },
+  drawPins(ctx, G) {
+    const on = S.pinMode;
+    if (on) {
+      // every point you can tie, as a faint ring
+      ctx.lineWidth = 1.2;
+      for (let i = 0; i < S.bars.length; i++) for (const p of this.points(i)) {
+        const q = this.at(p, G), hov = this.pinHov && this.pinHov.kind === 'point' && this.pinHov.bar === p.bar && this.pinHov.part === p.part;
+        const from = this.pinFrom && this.pinFrom.bar === p.bar && this.pinFrom.part === p.part;
+        ctx.strokeStyle = hov || from ? COL.ai : COL['ink-3']; ctx.fillStyle = from ? COL.ai : COL.paper;
+        ctx.beginPath(); ctx.arc(q.x, q.y, hov || from ? 5 : 3.4, 0, 6.2832); ctx.fill(); ctx.stroke();
+      }
+      if (this.pinFrom && this.ptr) {
+        const a = this.at(this.pinFrom, G); ctx.strokeStyle = COL.ai; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(this.ptr.x, this.ptr.y); ctx.stroke(); ctx.setLineDash([]);
+      }
+      if (this.pinHov && this.pinHov.kind === 'body') {
+        const b = S.bars[this.pinHov.bar], cx = b.x == null ? G.xs[this.pinHov.bar] : b.x, yT = this.Y(b.dv[2], G), yB = this.Y(b.dv[1], G);
+        ctx.fillStyle = COL['ai-soft']; rr(ctx, cx - G.bw / 2 - 5, yT - 5, G.bw + 10, Math.max(2.5, yB - yT) + 10, 6); ctx.fill();
+      }
+    }
+    // pins read as fine threads while you draw and come forward while you pin; a traced instance pushes them back
+    const base = on ? 0.95 : this.trace ? 0.22 : 0.5;
+    S.pins.forEach((pin, i) => {
+      const k = this.knotAt(pin, G), dim = pin.color && !S.colored, hov = on && this.pinHov && this.pinHov.kind === 'knot' && this.pinHov.index === i;
+      ctx.globalAlpha = base * (dim ? 0.4 : 1); ctx.strokeStyle = hov ? COL.shu : COL.ai; ctx.lineWidth = on ? 1.2 : 1;
+      if (pin.color) { const b = S.bars[pin.bar], cx = b.x == null ? G.xs[pin.bar] : b.x; ctx.beginPath(); ctx.moveTo(k.x + 4, k.y); ctx.lineTo(cx - G.bw / 2, k.y); ctx.stroke(); }
+      else { const A = this.at(pin.a, G), B = this.at(pin.b, G); ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke(); }
+      const rad = on ? 4.4 : 3.2;
+      ctx.globalAlpha = Math.min(1, base * 1.6) * (dim ? 0.4 : 1);
+      ctx.fillStyle = COL.paper; ctx.lineWidth = 1.3; ctx.beginPath(); ctx.arc(k.x, k.y, rad, 0, 6.2832); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = hov ? COL.shu : COL.ai; ctx.beginPath(); ctx.arc(k.x, k.y, on ? 1.7 : 1.2, 0, 6.2832); ctx.fill();
+      ctx.globalAlpha = 1;
+    });
+  },
+};
+Stage.cv.addEventListener('pointerdown', e => Stage.down(e));
+Stage.cv.addEventListener('pointermove', e => Stage.move(e));
+Stage.cv.addEventListener('pointerup', e => Stage.up(e));
+Stage.cv.addEventListener('pointercancel', e => Stage.up(e));
+Stage.cv.addEventListener('pointerleave', () => { if (!Stage.drag) { Stage.hov = null; Stage.pinHov = null; Stage.ptr = null; App.redraw(); } });
+Stage.cv.addEventListener('keydown', e => {
+  const k = e.key;
+  if (k === 'ArrowLeft' || k === 'ArrowRight') { Ops.select(S.sel + (k === 'ArrowLeft' ? -1 : 1)); e.preventDefault(); }
+  else if (k === 'ArrowUp' || k === 'ArrowDown') { Ops.nudge(S.sel, (k === 'ArrowUp' ? 1 : -1) * (e.shiftKey ? 12 : 2)); e.preventDefault(); }
+  else if (k === ' ' || k === 'Enter') { Ops.flip(S.sel); e.preventDefault(); }
+  else if (k === '+' || k === '=') { Ops.add(); e.preventDefault(); }
+  else if (k === '-' || k === '_') { Ops.remove(); e.preventDefault(); }
+  else if (k === '[' || k === ']') { setSpace(S.space + (k === ']' ? 0.06 : -0.06)); e.preventDefault(); }
+  else if (k === 'p' || k === 'P') { setPinMode(!S.pinMode); e.preventDefault(); }
+  else if (k === 'Escape') { if (Stage.pinFrom) { Stage.pinFrom = null; App.redraw(); } else if (S.pinMode) setPinMode(false); }
+  else if (/^[0-9]$/.test(k)) { Ops.select(k === '0' ? 9 : +k - 1); e.preventDefault(); }
+});
+// a pinch on the paper spreads the bars apart or draws them together
+Stage.cv.addEventListener('wheel', e => { if (!e.ctrlKey) return; e.preventDefault(); setSpace(S.space - e.deltaY * 0.006); }, { passive: false });
+new ResizeObserver(() => App.redraw()).observe(Stage.wrap);
+
+/* ================= the history: one matcher, three ways of holding, mixed as you like ================= */
+const Match = {
+  worker: null, ready: false, failed: false, id: 0, shown: 0, sentKey: '', timer: 0, sent: null, result: null, sticky: -1,
+  start() {
+    try {
+      const el = document.getElementById('matcher-src'), src = el ? el.textContent.trim() : '';
+      this.worker = src && src !== '__MATCHER__' ? new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' }))) : new Worker('matcher.js');
+    } catch (err) { this.fail('This browser cannot run the matcher in the background, so the BTCUSDT history is unavailable.'); return; }
+    this.worker.onmessage = e => this.onmsg(e.data);
+    this.worker.onerror = e => this.fail(`The matcher stopped: ${e.message || 'unknown error'}.`);
+    loadBars()
+      .then(buffer => this.worker.postMessage({ type: 'bars', buffer }, [buffer]))
+      .catch(err => this.fail(`The BTCUSDT klines could not be loaded (${err.message}). Composer still works; reload to try again.`));
+    this.schedule(true);
+  },
+  fail(msg) { this.failed = true; $('#prog').hidden = true; $('#mmsg').textContent = msg; $('#emaki').innerHTML = ''; },
+  onmsg(m) {
+    if (m.type === 'ready') { this.ready = true; this.until = m.to; if (!this.result) $('#mmsg').textContent = `Searching the BTCUSDT history, ${day(m.from)} to ${day(m.to)}…`; return; }
+    if (m.type === 'error') { this.fail(`The BTCUSDT klines could not be read: ${m.message}`); return; }
+    if (m.type === 'progress') { if (m.id === this.id) { $('#prog').hidden = false; $('#prog i').style.width = `${(m.f * 100).toFixed(1)}%`; } return; }
+    if (m.type === 'result' && m.id === this.id) { this.result = m; this.render(); }
+  },
+  query() {
+    const held = heldNow();
+    const nx = S.next, next = nx.dir ? { dir: nx.dir, measure: nx.measure, value: nx.measure === 'bps' ? nx.bps : nx.measure === 'atr' ? nx.atr : 0 } : null;
+    return { held, q: { bars: S.bars.map((_, i) => ohlcOf(i)), oriented: S.colored, holds: held.map(h => h.h), stretch: S.stretch, x: S.x, tfs: S.tfOn.map(Number), next } };
+  },
+  // ask again once the drawing is still; while a bar is being dragged the last answer stays, dimmed
+  schedule(now) {
+    if (this.failed || !this.worker) return;
+    clearTimeout(this.timer);
+    if (Stage.drag && Stage.drag.moved) { $('#emaki').classList.add('stale'); return; }
+    this.timer = setTimeout(() => this.send(), now ? 0 : 140);
+  },
+  send() {
+    const { held, q } = this.query(), key = JSON.stringify(q);
+    if (key === this.sentKey) { $('#emaki').classList.remove('stale'); return; }
+    this.sentKey = key; this.sent = { held, q }; this.id++;
+    $('#emaki').classList.add('stale'); $('#prog').hidden = false; $('#prog i').style.width = '0%';
+    if (this.ready || !this.result) $('#mmsg').textContent = this.ready ? 'Searching the BTCUSDT history…' : 'Loading the BTCUSDT 15m to 4h klines…';
+    this.worker.postMessage({ type: 'query', id: this.id, q });
+  },
+  render() {
+    const r = this.result, held = this.sent.held, n = this.sent.q.bars.length;
+    $('#prog').hidden = true;
+    // every count in the sentence covers the timeframes shown, like the rates it is compared with; the chips keep all five
+    const F = r.filter, on = this.sent.q.tfs, sum = a => a.reduce((x, y, k) => x + (on[k] ? y : 0), 0);
+    const counts = r.mode === 'nearest' ? (F ? r.exactF : r.exact) : F ? r.countsF : r.counts, total = sum(r.counts), totalF = sum(r.countsF);
+    const totalAll = r.counts.reduce((x, y) => x + y, 0), where = on.every(Boolean) ? 'in the history' : 'on the timeframes shown';
+    renderChips(counts);
+    const pct = (a, b) => (!b ? '–' : a > 0 && 100 * a / b < 1 ? 'under 1%' : `${Math.round(100 * a / b)}%`), words = F ? nextWords(F) : '';
+    const pins = held.filter(h => h.from === 'pin').length, skel = held.length - pins;
+    const what = [pins ? `${pins} pin${pins > 1 ? 's' : ''}` : '', skel ? `${skel} skeleton relation${skel > 1 ? 's' : ''}` : ''].filter(Boolean).join(' and ');
+    const twins = sum(r.exact);
+    const twinsF = sum(r.exactF), relations = `${held.length === 1 ? 'the' : 'all'} ${held.length} relation${held.length === 1 ? '' : 's'} (${what})${r.stretch ? `, with up to ${r.stretch} bar${r.stretch > 1 ? 's' : ''} skipped` : ''}`;
+    const everyWindow = `${pct(r.base.pass, r.base.n)} of all windows`;
+    let msg;
+    if (r.mode === 'nearest') {
+      const tw = twins ? `${fmt(twins)} exact twin${twins > 1 ? 's' : ''} of the whole pattern ${where}` : `The whole ${NWORD[n] || n}-bar pattern has no exact twin ${where}`;
+      msg = F ? `<b>Nothing held.</b> Closest in shape among windows whose next bar ${words} (${everyWindow}). ${twins ? `${tw}; after ${fmt(twinsF)} of them it did.` : tw + '.'}`
+        : `<b>Nothing held.</b> Closest in shape first${this.sent.q.oriented ? ', with your colours' : ''}. ${tw}.`;
+    } else if (r.mode === 'held' && !total) {
+      msg = `<b>${fmt(totalAll)} window${totalAll === 1 ? '' : 's'}</b> hold ${relations}, all on timeframes you left out.`;
+    } else if (r.mode === 'held') {
+      const sp = r.split, seen = sp.up + sp.down + sp.flat;
+      msg = F ? `<b>${fmt(total)} window${total === 1 ? '' : 's'}</b> hold ${relations}; after <b>${fmt(totalF)}</b> of them (${pct(totalF, total)}) the next bar ${words}, against ${everyWindow}. Closest in shape first.`
+        : `<b>${fmt(total)} window${total === 1 ? '' : 's'}</b> hold ${relations}. After them the next bar rose ${pct(sp.up, seen)} and fell ${pct(sp.down, seen)} of the time (whole history: rose ${pct(r.base.up, r.base.n)}). Closest in shape first.`;
+    } else if (total) msg = `<b>${fmt(total)} window${total === 1 ? '' : 's'}</b> hold ${relations}, but after none of them the next bar ${words}. The nearest windows where it did are shown with the relations each one breaks.`;
+    else msg = `<b>No window holds ${relations}</b>${r.stretch ? ' even with bars skipped' : ''}. The nearest windows${F ? ` whose next bar ${words}` : ''} are shown with the relations each one breaks.`;
+    $('#mmsg').innerHTML = msg + ` <span style="color: var(--ink-3)">· ${r.ms < 1000 ? r.ms + ' ms' : (r.ms / 1000).toFixed(1) + ' s'}${this.until ? ` · BTCUSDT to ${day(this.until)}` : ''}</span>`;
+    const em = $('#emaki'); em.classList.remove('stale');
+    if (!r.results.length) { em.innerHTML = `<p class="empty">${r.mode === 'held' ? 'Every window that holds is on a timeframe you left out. Include it above to see them.' : 'Nothing to show on the selected timeframes.'}</p>`; this.setTrace(-1); return; }
+    em.innerHTML = r.results.map((x, i) => this.card(x, i, held)).join('');
+    this.sticky = -1; this.setTrace(-1);
+    if (!calm()) requestAnimationFrame(() => requestAnimationFrame(() => em.querySelectorAll('.card.enter').forEach((c, i) => setTimeout(() => c.classList.remove('enter'), Math.min(i, 12) * 28))));
+    else em.querySelectorAll('.card.enter').forEach(c => c.classList.remove('enter'));
+  },
+  card(r, i, held) {
+    const d = new Date(r.start * 1000), when = `${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })} ${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+    const broken = r.broken.map(i2 => held[i2].label);
+    const flips = r.flips === 0 ? 'exact' : `${r.flips} flip${r.flips === 1 ? '' : 's'}`, off = `${(r.off * 100).toFixed(1)}% off`;
+    const nx = r.next;
+    let next;
+    if (!nx) next = `<span class="nx" title="${r.nextWhy === 'gap' ? 'A bar is missing from the data right after this window' : 'The bar after this window is not in the data yet'}">次 ${r.nextWhy === 'gap' ? 'after a gap in the data' : 'not in the data yet'}</span>`;
+    else {
+      const mag = nx.atrx === nx.atrx ? `${Math.abs(nx.atrx).toFixed(2)} ATR` : `${Math.abs(nx.bps).toFixed(1)} bps`;
+      const tip = nx.dir ? `The next bar closed ${nx.atrx === nx.atrx ? Math.abs(nx.atrx).toFixed(2) + ' ATR, ' : ''}${Math.abs(nx.bps).toFixed(1)} bps ${nx.dir > 0 ? 'above' : 'below'} this window's last close` : 'The next bar closed exactly at this window\'s last close';
+      next = `<span class="nx ${nx.dir > 0 ? 'nu' : nx.dir < 0 ? 'nd' : ''}" title="${tip}">次 ${nx.dir > 0 ? '▲' : nx.dir < 0 ? '▼' : '—'} ${nx.dir ? mag : 'flat'}</span>`;
+    }
+    return `<button type="button" class="card${calm() ? '' : ' enter'}" data-i="${i}" aria-pressed="false" title="Trace this instance over your drawing">${this.thumb(r, held)}
+      <span class="when">${r.tf} · ${esc(when)}</span><span class="fl" title="Scaled to the same height, its bar ends sit on average ${off.replace(' off', '')} of that height from yours. Exact means every comparison matches your drawing.">${off} · ${flips}${r.extra ? ` · ${r.extra} skipped` : ''}</span>${broken.length ? `<span class="br" title="Breaks ${esc(broken.join(', '))}">breaks ${esc(broken.join(', '))}</span>` : ''}${next}</button>`;
+  },
+  thumb(r, held) {
+    const w = 132, h = 80, pad = 5, bars = r.raw, n = bars.length;
+    const lo = Math.min(...bars.map(b => b[2])), hi = Math.max(...bars.map(b => b[1]));
+    const pitch = (w - 2 * pad) / n, bw = Math.max(1.4, pitch * 0.6), ww = Math.max(0.8, Math.min(1.4, pitch * 0.08));
+    const X = i => pad + pitch * (i + 0.5), Y = v => pad + (hi - v) / (hi - lo || 1) * (h - 2 * pad - 5);
+    let s = `<svg viewBox="0 0 ${w} ${h}" aria-hidden="true">`;
+    // bars the drawing skipped stay visible but faint, so the run reads as it happened
+    const kept = new Set(r.picks);
+    bars.forEach(([o, hh, l, c], i) => {
+      const cls = (c > o ? 'cu' : c < o ? 'cd' : 'cz') + (kept.has(i) ? '' : ' skip'), t = Y(Math.max(o, c)), b = Y(Math.min(o, c));
+      s += `<rect class="${cls}" x="${(X(i) - ww / 2).toFixed(2)}" y="${Y(hh).toFixed(2)}" width="${ww.toFixed(2)}" height="${Math.max(0.6, Y(l) - Y(hh)).toFixed(2)}"/><rect class="${cls}" x="${(X(i) - bw / 2).toFixed(2)}" y="${t.toFixed(2)}" width="${bw.toFixed(2)}" height="${Math.max(1, b - t).toFixed(2)}" rx="0.6"/>`;
+    });
+    for (const bi of r.broken) {
+      const hd = held[bi].h;
+      if (hd.color) { const b = bars[hd.bar], t = Y(Math.max(b[0], b[3])), bt = Y(Math.min(b[0], b[3])); s += `<rect class="mk" x="${(X(hd.bar) - bw / 2 - 2).toFixed(2)}" y="${(t - 2).toFixed(2)}" width="${(bw + 4).toFixed(2)}" height="${(Math.max(1, bt - t) + 4).toFixed(2)}" rx="1.5"/>`; continue; }
+      const pt = ([bar, kind]) => { const [o, hh, l, c] = bars[bar]; return [X(bar), Y([o, hh, l, c, Math.min(o, c), Math.max(o, c)][kind])]; };
+      const [x1, y1] = pt(hd.a), [x2, y2] = pt(hd.b);
+      s += `<line class="mkl" x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}"/><circle class="mk" cx="${x1.toFixed(2)}" cy="${y1.toFixed(2)}" r="2.4"/><circle class="mk" cx="${x2.toFixed(2)}" cy="${y2.toFixed(2)}" r="2.4"/>`;
+    }
+    return s + '</svg>';
+  },
+  setTrace(i) {
+    const r = this.result && i >= 0 ? this.result.results[i] : null;
+    if (!r) { Stage.trace = null; App.redraw(); return; }
+    const d = new Date(r.start * 1000);
+    Stage.trace = { bars: r.drawn, next: r.next ? r.next.bar : null, a: Stage.trace ? Stage.trace.a : 0, caption: `${r.tf} · ${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })} · ${(r.off * 100).toFixed(1)}% off · ${r.flips === 0 ? 'exact' : r.flips + ' flips'}` };
+    App.redraw();
+  },
+};
+// a day as the cards write it, "10 Oct 2026"
+const day = t => new Date(t * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+// 次 in words: "rose", "rose at least 10 bps", "fell at least 1 ATR"
+function nextWords(f) {
+  const verb = f.dir > 0 ? 'rose' : 'fell', v = Number.isInteger(f.value) ? String(f.value) : String(+f.value.toFixed(2));
+  return f.measure === 'bps' ? `${verb} at least ${v} bps` : f.measure === 'atr' ? `${verb} at least ${v} ATR` : verb;
+}
+// The bars come from Composer's server, which reads them from the Vaquum HuggingFace kline files;
+// the payload is accepted only if it starts with its own marker.
+async function loadBars() {
+  const r = await fetch('bars');
+  if (!r.ok) throw new Error(`the server answered ${r.status}`);
+  const bytes = new Uint8Array(await r.arrayBuffer());
+  if (!(bytes.length > 5 && String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3], bytes[4]) === 'CBAR1')) throw new Error('the server sent something other than bars');
+  return bytes.buffer;
+}
+// timeframe chips: how many windows hold (or, with nothing held, how many exact twins), and whether each timeframe is included
+function renderChips(counts) {
+  $('#tfs').innerHTML = TF_LABELS.map((tf, k) => `<button type="button" class="chip" data-k="${k}" aria-pressed="${S.tfOn[k]}" title="${S.tfOn[k] ? 'Leave out' : 'Include'} ${tf}">${tf}${counts ? `<b>${fmt(counts[k])}</b>` : ''}</button>`).join('');
+}
+renderChips(null);
+const emaki = $('#emaki');
+emaki.addEventListener('pointerover', e => { const c = e.target.closest('.card'); if (c && Match.sticky < 0) Match.setTrace(+c.dataset.i); });
+emaki.addEventListener('pointerleave', () => { if (Match.sticky < 0) Match.setTrace(-1); });
+emaki.addEventListener('focusin', e => { const c = e.target.closest('.card'); if (c && Match.sticky < 0) Match.setTrace(+c.dataset.i); });
+emaki.addEventListener('click', e => {
+  const c = e.target.closest('.card'); if (!c) return;
+  const i = +c.dataset.i, again = Match.sticky === i;
+  emaki.querySelectorAll('.card').forEach(x => x.setAttribute('aria-pressed', 'false'));
+  Match.sticky = again ? -1 : i; if (!again) c.setAttribute('aria-pressed', 'true');
+  Match.setTrace(again ? -1 : i);
+});
+$('#tfs').addEventListener('click', e => {
+  const b = e.target.closest('.chip'); if (!b) return;
+  const k = +b.dataset.k, on = S.tfOn.filter(Boolean).length;
+  if (S.tfOn[k] && on === 1) return; // keep at least one timeframe
+  S.tfOn[k] = !S.tfOn[k]; b.setAttribute('aria-pressed', String(S.tfOn[k])); refresh();
+});
+$('#ndir').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S.next.dir = +b.dataset.v; refresh(); });
+$('#nmeas').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S.next.measure = b.dataset.v; refresh(); if (b.dataset.v !== 'any') { const i = $('#nval'); i.focus(); i.select(); } });
+$('#nval').addEventListener('input', e => { const v = parseFloat(e.target.value), m = S.next.measure; if (m !== 'any' && v > 0) { S.next[m] = v; refresh(); } });
+$('#nval').addEventListener('blur', e => { const m = S.next.measure; if (m !== 'any') e.target.value = String(S.next[m]); });
+$('#xsel').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S.x = +b.dataset.x; refresh(); });
+$('#skel').addEventListener('input', e => { S.skel = +e.target.value; refresh(); });
+$('#pins').addEventListener('click', () => setPinMode(!S.pinMode));
+$('#clearpins').addEventListener('click', () => Ops.clearPins());
+$('#stless').addEventListener('click', () => { S.stretch = Math.max(0, S.stretch - 1); refresh(); });
+$('#stmore').addEventListener('click', () => { S.stretch = Math.min(4, S.stretch + 1); refresh(); });
+function setPinMode(on) {
+  S.pinMode = on; Stage.pinFrom = null; Stage.pinHov = null; Stage.hov = null;
+  Stage.hint.textContent = on ? HINT_PIN : HINT_DRAW; Stage.hint.classList.toggle('pinning', on);
+  Stage.cv.style.cursor = on ? 'crosshair' : '';
+  if (on) Stage.cv.focus({ preventScroll: true });
+  refresh();
+}
+
+/* ================= the footer: identity ================= */
+function updateFooter() {
+  const id = identity(), n = id.n;
+  const names = namesOf(id);
+  $('#names').innerHTML = names.length
+    ? names.map(([who, ja, en, note]) => `<span class="nm"><span class="who">${who}</span><span lang="ja">${ja}</span>${en}${note ? ` <span class="note">· ${note}</span>` : ''}</span>`).join('')
+    : '<span class="nm none">No classical name fits these bars</span>';
+  const lines = [];
+  if (S.sel > 0) lines.push(pairSentence(id, S.sel - 1, S.sel));
+  if (S.sel < n - 1) lines.push(pairSentence(id, S.sel, S.sel + 1));
+  $('#desc').innerHTML = lines.map(l => `<span>${l}</span>`).join('');
+  $('#code').textContent = codeOf(id);
+  $('#dom').textContent = n <= 10 ? `one of ${DOMAIN[S.colored ? 'o' : 'u'][n]} ${NWORD[n]}-bar patterns${S.colored ? '' : ' (shape only)'}` : `a ${NWORD[n]}-bar pattern, longer than the ten bars the engine counts`;
+}
+$('#copy').addEventListener('click', e => {
+  const btn = e.currentTarget, text = $('#code').textContent;
+  const done = () => { btn.textContent = 'Copied'; setTimeout(() => { btn.textContent = 'Copy'; }, 1400); };
+  const pick = () => { const r = document.createRange(); r.selectNodeContents($('#code')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); };
+  try { navigator.clipboard.writeText(text).then(done, pick); } catch (err) { pick(); }
+});
+
+/* ================= the app ================= */
+const App = {
+  running: false, lastT: 0, dirty: false,
+  kick() { if (this.running) return; this.running = true; this.lastT = performance.now(); requestAnimationFrame(t => this.tick(t)); },
+  redraw() { this.dirty = true; this.kick(); },
+  tick(now) {
+    const dt = Math.min(0.05, Math.max(0.001, (now - this.lastT) / 1000)); this.lastT = now; this.dirty = false;
+    let busy = false;
+    // one bad frame must never stop the paper for good
+    try { busy = Stage.step(dt); Stage.draw(); } catch (err) { console.error(err); }
+    if (busy || this.dirty) requestAnimationFrame(t => this.tick(t)); else this.running = false;
+  },
+};
+function refresh() {
+  Stage.dropStale();
+  const n = S.bars.length;
+  $('#nb').innerHTML = `<b>${n}</b>bars`;
+  $('#rm').disabled = n <= MINN; $('#add').disabled = n >= MAXN;
+  $('#add').title = n >= MAXN ? 'Twenty bars is as long as a composition goes' : 'Add a bar';
+  $('#mode').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String((b.dataset.v === '1') === S.colored)));
+  $('#undo').disabled = !hist.past.length; $('#redo').disabled = !hist.future.length;
+  // the three ways of holding, as they stand
+  const lv = skelLevels(); S.skel = Math.min(S.skel, lv.length);
+  const sk = $('#skel'); sk.max = String(lv.length); sk.value = String(S.skel);
+  const marks = skelMarks().length + (S.skel && S.colored ? 2 : 0);
+  $('#skelv').textContent = !S.skel ? 'off' : S.skel === 1 ? `bones · ${marks} points` : S.skel === lv.length ? `every swing · ${marks}` : `${marks} points`;
+  $('#pins').setAttribute('aria-pressed', String(S.pinMode)); $('#pinv').textContent = String(S.pins.length); $('#clearpins').hidden = !S.pins.length;
+  const anyHeld = S.pins.length > 0 || S.skel > 0;
+  $('#stv').textContent = `+${S.stretch} bar${S.stretch === 1 ? '' : 's'}`; $('#stv').style.color = anyHeld || !S.stretch ? '' : 'var(--ink-3)';
+  $('#stless').disabled = S.stretch <= 0; $('#stmore').disabled = S.stretch >= 4;
+  $('#xsel').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.x === S.x)));
+  // 次: one control; the measure and threshold only matter once a direction is chosen
+  const nx = S.next;
+  $('#nextctl').dataset.any = String(!nx.dir);
+  $('#ndir').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.v === nx.dir)));
+  $('#nmeas').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === nx.measure)));
+  const nv = $('#nval'); $('#nvalw').hidden = !nx.dir || nx.measure === 'any';
+  if (nx.measure !== 'any') { nv.step = nx.measure === 'bps' ? '1' : '0.1'; nv.setAttribute('aria-label', `At least how many ${nx.measure === 'bps' ? 'basis points' : 'ATR'}`); if (document.activeElement !== nv) nv.value = String(nx[nx.measure]); }
+  updateFooter();
+  Match.schedule();
+  App.redraw();
+}
+$('#add').addEventListener('click', () => Ops.add());
+$('#rm').addEventListener('click', () => Ops.remove());
+$('#mode').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; const c = b.dataset.v === '1'; if (c !== S.colored) { S.colored = c; refresh(); } });
+$('#undo').addEventListener('click', () => Ops.undo());
+$('#redo').addEventListener('click', () => Ops.redo());
+addEventListener('keydown', e => {
+  if (!(e.metaKey || e.ctrlKey)) return;
+  const k = e.key.toLowerCase();
+  if (k === 'z') { e.preventDefault(); e.shiftKey ? Ops.redo() : Ops.undo(); } else if (k === 'y') { e.preventDefault(); Ops.redo(); }
+});
+// spacing is how you look at the composition, not part of it: it stays out of undo and out of the g1 code
+function setSpace(u) {
+  u = clamp(u, 0, 1); if (u === S.space) return;
+  S.space = u; $('#space').value = String(u);
+  try { localStorage.setItem('ashi.space', String(u)); } catch (err) { /* not remembered in this browser */ }
+  App.redraw();
+}
+$('#space').value = String(S.space);
+$('#space').addEventListener('input', e => setSpace(+e.target.value));
+function onTheme() { readTheme(); App.redraw(); }
+$('#theme').addEventListener('click', () => {
+  const root = document.documentElement, cur = root.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  root.dataset.theme = cur === 'dark' ? 'light' : 'dark'; onTheme();
+});
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', onTheme);
+
+// inside Portal (served under /composer/), offer the way back to the Portal landing
+if (/^\/composer(\/|$)/.test(location.pathname)) $('#home').hidden = false;
+Stage.fit(true);
+refresh();
+Match.start();
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => App.redraw());
+})();
+</script>
