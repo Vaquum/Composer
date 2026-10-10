@@ -294,8 +294,8 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
   </aside>
   <main class="stage" aria-label="Composition">
     <div class="cvwrap" id="cvwrap">
-      <canvas id="cv" tabindex="0" aria-label="Bar composition. Drag shadows and body edges; left and right arrows choose a bar; up and down arrows move it; space changes its color; plus and minus add or remove a bar; the bracket keys bring the bars closer together or further apart; P starts pinning relations."></canvas>
-      <p class="hint" id="hint">Drag a shadow or a body edge · drag a body to move it · tap a body to change its color · hold ⌥ to place without snapping</p>
+      <canvas id="cv" tabindex="0" aria-label="Bar composition. Drag shadows and body edges; left and right arrows choose a bar; up and down arrows move it; space changes the first bar's colour, and every later bar's colour follows from where it sits against the previous close; plus and minus add or remove a bar; the bracket keys bring the bars closer together or further apart; P starts pinning relations."></canvas>
+      <p class="hint" id="hint">Drag a shadow or a body edge · drag a body to move it · tap the first bar to change its colour; the others follow from where they sit · hold ⌥ to place without snapping</p>
       <div class="dock">
         <label class="space" title="Space between the bars · [ and ] · pinch on the paper">
           <span class="ma" lang="ja" aria-hidden="true">間</span>
@@ -456,6 +456,16 @@ const SEG_NAME = { 0: 'lower shadow', 1: 'body', 2: 'upper shadow' };
 const PART_K = { L: 0, B: 1, T: 2, H: 3 };
 const KIND_LETTER = ['O', 'H', 'L', 'C', 'B', 'T'];
 const dirOf = i => { const b = S.bars[i]; return b.v[1] === b.v[2] ? 0 : b.d === 'u' ? 1 : -1; };
+// 陽陰 follow the bars. BTCUSDT trades around the clock, so each bar opens where the previous bar closed: a bar after the
+// first opens at the end of its body nearer the previous close, so a body above that close rose (green) and one below it
+// fell (red). A body centred on the previous close keeps its colour. Only the first bar's colour is chosen.
+function followColours() {
+  for (let i = 1; i < S.bars.length; i++) {
+    const p = S.bars[i - 1], b = S.bars[i], close = p.d === 'u' ? p.v[2] : p.v[1];
+    const fromBottom = Math.abs(b.v[1] - close), fromTop = Math.abs(b.v[2] - close);
+    if (fromBottom < fromTop) b.d = 'u'; else if (fromTop < fromBottom) b.d = 'd';
+  }
+}
 function ohlcOf(i) { const [l, lo, hi, h] = S.bars[i].v, d = dirOf(i); return d >= 0 ? [lo, h, l, hi] : [hi, h, l, lo]; }
 function kindOf(bar, part) {
   if (part === 'H') return 1; if (part === 'L') return 2;
@@ -516,7 +526,8 @@ function heldNow() {
 
 const Ops = {
   select(i) { i = clamp(i, 0, S.bars.length - 1); if (S.sel === i) return; S.sel = i; refresh(); },
-  flip(i) { const b = S.bars[i]; if (!S.colored || b.v[1] === b.v[2]) return; pushHist(); b.d = b.d === 'u' ? 'd' : 'u'; refresh(); },
+  // only the first bar's colour is chosen; every later bar's follows from where it sits (followColours)
+  flip(i) { const b = S.bars[i]; if (i > 0 || !S.colored || b.v[1] === b.v[2]) return; pushHist(); b.d = b.d === 'u' ? 'd' : 'u'; refresh(); },
   add() {
     if (S.bars.length >= MAXN) return;
     pushHist();
@@ -610,7 +621,7 @@ function namesOf(id) {
 }
 
 /* ================= the paper ================= */
-const HINT_DRAW = 'Drag a shadow or a body edge · drag a body to move it · tap a body to change its color · hold ⌥ to place without snapping';
+const HINT_DRAW = 'Drag a shadow or a body edge · drag a body to move it · tap the first bar to change its colour; the others follow from where they sit · hold ⌥ to place without snapping';
 const HINT_PIN = 'Tap two points to hold how they relate · tap a body to hold its colour · tap a knot to let it go · Esc when done';
 const Stage = {
   wrap: $('#cvwrap'), cv: $('#cv'), hint: $('#hint'),
@@ -749,7 +760,7 @@ const Stage = {
     if (!h) return '';
     const b = S.bars[h.bar], d = identity().d[h.bar], name = k => { const n = epName(d, k); return EP_JA[n] && S.colored ? `${n} · ${EP_JA[n]}` : n; };
     if (h.kind === 'grip') return `Bar ${h.bar + 1} · drag to move it`;
-    if (h.kind === 'move') return S.colored ? 'drag to move · tap to change color' : 'drag to move this bar';
+    if (h.kind === 'move') return !S.colored ? 'drag to move this bar' : h.bar === 0 ? 'drag to move · tap to change colour' : 'drag to move · its colour follows from the previous close';
     if (h.kind === 'doji') return 'drag up or down to open a body';
     if (h.part === 'H') return b.v[3] === b.v[2] ? 'pull up for an upper shadow' : name(3);
     if (h.part === 'L') return b.v[0] === b.v[1] ? 'pull down for a lower shadow' : name(0);
@@ -1505,6 +1516,7 @@ const App = {
   },
 };
 function refresh() {
+  followColours();
   Stage.dropStale();
   const n = S.bars.length;
   $('#nb').innerHTML = `<b>${n}</b>bars`;
