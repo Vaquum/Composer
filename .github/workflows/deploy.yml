@@ -18,9 +18,11 @@ jobs:
     if: ${{ needs.check.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    # The host and its deploy key: the organisation's TDW secrets once they are shared with this repository, as for
+    # Explorer, Mill, Furnace and Crucible, or else this repository's DEPLOY_SSH_KEY with its DEPLOY_HOST and DEPLOY_USER.
     env:
-      DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
-      DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+      DEPLOY_HOST: ${{ secrets.TDW_IP || vars.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.TDW_USER || vars.DEPLOY_USER }}
       DEPLOY_DIR: ${{ vars.DEPLOY_DIR }}
       DEPLOY_KNOWN_HOSTS: ${{ vars.DEPLOY_KNOWN_HOSTS }}
     steps:
@@ -41,28 +43,43 @@ jobs:
           test -n "$DEPLOY_USER"
           test -n "$DEPLOY_DIR"
           test -n "$DEPLOY_KNOWN_HOSTS"
-      - uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
-      - name: Pin the host key
+      - name: Configure SSH with the host key pinned
+        env:
+          DEPLOY_KEY: ${{ secrets.TDW_KEY || secrets.DEPLOY_SSH_KEY }}
         run: |
+          set -euo pipefail
+          if [ -z "$DEPLOY_KEY" ]; then
+            echo "::error::No deploy key: share the organisation's TDW secrets with this repository, or set its DEPLOY_SSH_KEY."
+            exit 1
+          fi
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          # the host must present the key pinned in DEPLOY_KNOWN_HOSTS, whatever address TDW_IP names it by
+          pinned=$(printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | awk '{print $2" "$3}')
+          scanned=$(ssh-keyscan -t ed25519 "$DEPLOY_HOST" 2>/dev/null | awk '{print $2" "$3}')
+          test -n "$scanned"
+          test "$scanned" = "$pinned"
+          printf '%s %s\n' "$DEPLOY_HOST" "$pinned" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
       - name: Sync the checkout
         run: rsync -az --delete --exclude .git --exclude .env ./ "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/"
       - name: Start
-        run: ssh "$DEPLOY_USER@$DEPLOY_HOST" "cd '$DEPLOY_DIR' && docker compose up -d --build --remove-orphans && docker compose ps"
+        run: |
+          # DEPLOY_DIR is expanded here, on purpose, and sent quoted
+          # shellcheck disable=SC2029
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" "cd '$DEPLOY_DIR' && docker compose up -d --build --remove-orphans && docker compose ps"
       - name: Check that Composer answers
         run: |
           # the server reads the five kline files before it answers, so allow it a few minutes
           probe() { ssh "$DEPLOY_USER@$DEPLOY_HOST" "curl -s -o /dev/null -w '%{http_code}' --max-time 30 http://127.0.0.1:8488/healthz || printf 000"; }
           code=000
-          for attempt in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             code=$(probe || printf 000)
             test "$code" = "200" && break
             sleep 10
           done
           test "$code" = "200"
+          # shellcheck disable=SC2029
           ssh "$DEPLOY_USER@$DEPLOY_HOST" "cd '$DEPLOY_DIR' && docker compose ps --format '{{.Name}} {{.Status}}'"
