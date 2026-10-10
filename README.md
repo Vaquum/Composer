@@ -19,6 +19,11 @@ broke the shape's high and low, and the drawings one comparison away, each of wh
 the canvas. Every number follows Grid: 95% intervals, Wilson for rates, t for means, nothing for
 fewer than 30 windows.
 
+The reference (the ⓘ in the header) explains how to read the panels, in the pattern of the cube
+explorer's System reference: a full-height pane on the left that pushes the workspace right, one
+Purpose, Read and Use per topic, and Show, which highlights the part a topic is about and dims the
+rest.
+
 ## Data
 
 The bars are the Vaquum HuggingFace kline datasets `vaquum/binance_btcusdt_{15m,30m,1h,2h,4h}_klines`,
@@ -55,6 +60,7 @@ it answers.
 
 ```sh
 python3 -m unittest discover -s tests -v
+node checks/page.mjs
 python3 checks/with_bars.py checks/similarity-windows.mjs
 python3 checks/with_bars.py checks/similarity-look.mjs
 python3 checks/with_bars.py checks/similarity-equivalence.mjs
