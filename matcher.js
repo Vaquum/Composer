@@ -93,11 +93,11 @@ function decodeActivity(buffer) {
 }
 
 // What Composer reads about every bar, the way the cube explorer reads a cell: its volume, trades and trade size (USDT per
-// trade) against the median of the eleven bars before it, the maker share of its volume, its range and close-minus-open
-// in the ATR at the bar before it, and where it closed in the prior UTC day's range. The first three compare as ratios,
+// trade) against the median of the eleven bars before it, the maker share of its volume, its range and body (open to close,
+// either way: the colour already says which) in the ATR at the bar before it, and where it closed in the prior UTC day's range. The first three compare as ratios,
 // so their means and spreads are taken over logs. Each timeframe also keeps every reading's count, sum and sum of
 // squares over its whole history, for the comparison.
-const READINGS = ['vol', 'trades', 'size', 'maker', 'range', 'net', 'day'];
+const READINGS = ['vol', 'trades', 'size', 'maker', 'range', 'body', 'day'];
 const AS_LOG = [true, true, true, false, false, false, false];
 function readings(T, A) {
   const n = T.n, R = {};
@@ -111,7 +111,7 @@ function readings(T, A) {
     R.maker[i] = A.maker[i];
     if (T.run[i] >= 12) { R.vol[i] = A.vol[i] / median(A.vol, i); R.trades[i] = A.trades[i] / median(A.trades, i); R.size[i] = size[i] / median(size, i); }
     const a = i ? T.atr[i - 1] : NaN;
-    if (T.run[i] >= 2 && a > 0) { R.range[i] = (T.H[i] - T.L[i]) / a; R.net[i] = (T.C[i] - T.O[i]) / a; }
+    if (T.run[i] >= 2 && a > 0) { R.range[i] = (T.H[i] - T.L[i]) / a; R.body[i] = Math.abs(T.C[i] - T.O[i]) / a; }
   }
   const days = new Map();
   for (let i = 0; i < n; i++) {

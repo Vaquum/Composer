@@ -186,7 +186,8 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
 .pchips span em { font-style: normal; color: var(--ink-2); }
 .prate { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--hair); padding-bottom: 6px; }
 .pnear { display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid var(--hair); border-radius: 8px; padding: 8px 10px; }
-.pnear small { display: block; color: var(--ink-2); font-size: 11.5px; }
+.pnear > span { flex: 1; min-width: 0; }
+.pnear small { display: block; color: var(--ink-2); font-size: 11.5px; white-space: normal; }
 .pnear button { flex: none; font-size: 12px; padding: 6px 10px; min-height: 32px; border-radius: 6px; border: 1px solid var(--ai); color: var(--ai); }
 .pnear button:hover { background: var(--ai-soft); }
 .plink { align-self: flex-start; font-size: 12px; color: var(--ai); }
@@ -241,7 +242,7 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
       <p class="pcap" id="lnext" style="color: var(--ink)"></p>
       <div class="pchips" id="ltf"></div>
     </div>
-    <p class="pfoot">Volume, trades and USDT per trade against the median of the eleven bars before each bar; maker share of its volume; range and close minus open in the ATR at the bar before; the last bar's close in the prior UTC day's range. 95% intervals, t for means and Wilson for rates; nothing for fewer than 30 windows.</p>
+    <p class="pfoot">Volume, trades and USDT per trade against the median of the eleven bars before each bar; maker share of its volume; range and body (open to close) in the ATR at the bar before; the last bar's close in the prior UTC day's range. 95% intervals, t for means and Wilson for rates; nothing for fewer than 30 windows.</p>
   </aside>
   <main class="stage" aria-label="Composition">
     <div class="cvwrap" id="cvwrap">
@@ -573,10 +574,12 @@ const Stage = {
     // the plot starts below the hint, which wraps onto several lines on a phone
     const plotTop = Math.max(70, this.hint.offsetTop + this.hint.offsetHeight + 24), plotBottom = Math.max(plotTop + 160, h - 84);
     // bar width follows the count and the screen; 間 sets the pitch, from nearly touching to as far apart as fits
-    const room = Math.max(24, (w - 150) / N), bw = clamp(Math.min(210, room) * 0.4, 6, 68);
+    // 続: with a fan to draw, the composition moves left to leave it a quarter of the paper
+    const fan = Match.result && Match.result.panes && Match.result.panes.cont ? w * 0.26 : 0;
+    const room = Math.max(24, (w - 150 - fan) / N), bw = clamp(Math.min(210, room) * 0.4, 6, 68);
     const tight = bw * 1.22, airy = Math.max(tight, Math.min(room, 340));
     const spacing = tight * Math.pow(airy / tight, S.space);
-    return { w, h, N, plotTop, plotBottom, plotH: plotBottom - plotTop, spacing, bw, xs: S.bars.map((_, i) => w / 2 + (i - (N - 1) / 2) * spacing) };
+    return { w, h, N, plotTop, plotBottom, plotH: plotBottom - plotTop, spacing, bw, xs: S.bars.map((_, i) => (w - fan) / 2 + (i - (N - 1) / 2) * spacing) };
   },
   Y(v, G) { const { lo, hi } = this.view; return G.plotBottom - (v - lo) / (hi - lo) * G.plotH; },
   // frame the composition with room to pull past its extremes; stay still unless it no longer fits well
@@ -1149,7 +1152,7 @@ async function loadBars() {
 /* ================= the panes: what sets the matching windows apart, and what the shape became ================= */
 const READ_NAME = {
   vol: ['Activity', 'volume vs the 11 before'], trades: ['Activity', 'trades vs the 11 before'], size: ['Trade size', 'USDT per trade vs before'],
-  maker: ['Aggression', 'maker share of volume'], range: ['Movement', 'range in ATR'], net: ['Movement', 'close minus open in ATR'], day: ['Location', "close in the prior day's range"],
+  maker: ['Aggression', 'maker share of volume'], range: ['Movement', 'range in ATR'], body: ['Movement', 'body in ATR'], day: ['Location', "close in the prior day's range"],
 };
 const pct = (x, d = 1) => `${(x * 100).toFixed(d)}%`;
 const Panes = {
@@ -1158,7 +1161,7 @@ const Panes = {
     if (row.log) return `${Math.exp(x).toFixed(2)}×`;
     if (row.key === 'maker') return pct(x);
     if (row.key === 'day') return pct(x, 0);
-    return `${x > 0 && row.key === 'net' ? '+' : ''}${x.toFixed(2)}`.replace('-', '−');
+    return x.toFixed(2).replace('-', '−');
   },
   // a band (the set's 95% interval), a dot (its mean) and a tick (all windows), on a scale with room around all three
   track(lo, hi, v, ref) {
