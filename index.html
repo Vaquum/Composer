@@ -196,6 +196,40 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
   .stage { order: -1; }
   .lpane, .rpane { border: 0; border-top: 1px solid var(--hair); }
 }
+/* 参照: the reference, a full-height pane on the left that pushes the workspace right, as in the cube explorer */
+.ref { display: flex; flex-direction: column; gap: 12px; padding: 16px 18px 18px; border-right: 1px solid var(--hair); min-width: 0; box-sizing: border-box; position: sticky; top: 0; align-self: start; height: 100vh; }
+.ref[hidden] { display: none; }
+.work[data-reference="open"] { --ref-w: clamp(300px, 26vw, 420px); grid-template-columns: var(--ref-w) minmax(240px, 290px) minmax(340px, 1fr) minmax(250px, 300px); }
+.ref-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ref-head h2 { margin: 0; font: 600 18px/1.3 var(--font-mincho); }
+.ref-intro { margin: 0; color: var(--ink-2); font-size: 12.5px; }
+.ref-label { margin: 0 0 -6px; color: var(--ink-2); font-size: 12px; }
+#ref-topic { width: 100%; min-height: 40px; font: inherit; font-size: 13.5px; color: var(--ink); background: var(--paper-2); border: 1px solid var(--hair); border-radius: 8px; padding: 6px 10px; }
+.ref-seq { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ink-2); }
+.ref-seq button, .ref-targets button { min-height: 36px; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--hair); font-size: 12.5px; color: var(--ink); text-align: left; line-height: 1.35; }
+.ref-seq button:hover:not(:disabled), .ref-targets button:hover { background: var(--paper-2); }
+.ref-seq button:disabled { opacity: .4; cursor: default; }
+.ref-body { flex: 1; min-height: 0; overflow: auto; scrollbar-width: thin; }
+.ref-group { margin: 2px 0 6px; color: var(--ink-2); font-size: 12px; letter-spacing: .04em; }
+.ref h3 { margin: 0 0 4px; font: 600 17px/1.4 var(--font-mincho); }
+.ref dl { margin: 0; }
+.ref dt { font-weight: 700; margin: 14px 0 3px; font-size: 13px; }
+.ref dd { margin: 0; font-size: 13.5px; line-height: 1.62; }
+.ref-targets { display: flex; flex-wrap: wrap; gap: 8px; flex: none; }
+.ref-targets button[aria-pressed="true"] { border-color: var(--ai); color: var(--ai); background: var(--ai-soft); }
+.ref-status { margin: 0; flex: none; font-size: 12px; color: var(--ink-2); }
+.ref-status:empty { display: none; }
+#ref-spot { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 60; pointer-events: none; }
+#ref-spot .shade { fill: rgba(20, 18, 15, .6); pointer-events: auto; cursor: pointer; }
+#ref-spot .frame { fill: none; stroke: var(--ai); stroke-width: 2; }
+@media (max-width: 1180px) {
+  .work[data-reference="open"] { grid-template-columns: var(--ref-w) minmax(320px, 1fr); }
+  .work[data-reference="open"] > .ref { grid-column: 1; grid-row: 1 / span 3; }
+}
+@media (max-width: 700px) {
+  .work[data-reference="open"] { grid-template-columns: minmax(0, 1fr); }
+  .work[data-reference="open"] > .ref { position: fixed; inset: 0; z-index: 50; height: 100%; background: var(--paper); }
+}
 
 @media (max-width: 900px) {
   .cvwrap { min-height: 62vh; }
@@ -227,17 +261,28 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
       <div class="seg" id="mode" role="group" aria-label="Direction"><button type="button" data-v="1">Up / down<span class="ja" lang="ja">陽陰</span></button><button type="button" data-v="0">Shape only<span class="ja" lang="ja">形</span></button></div>
       <button class="icon" type="button" id="undo" aria-label="Undo" title="Undo (⌘Z)">↶</button>
       <button class="icon" type="button" id="redo" aria-label="Redo" title="Redo (⇧⌘Z)">↷</button>
+      <button class="icon" type="button" id="reftoggle" aria-label="Reference" aria-expanded="false" aria-pressed="false" aria-controls="ref" title="Reference: how to read the panels"><svg viewBox="0 0 16 16" width="17" height="17" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="8" cy="8" r="6.3"/><path d="M8 7.2v4M8 4.6v.4"/></svg></button>
       <button class="icon" type="button" id="theme" aria-label="Switch between washi and sumi" title="Washi or sumi">◐</button>
     </div>
   </header>
 
   <div class="work">
+  <aside class="ref" id="ref" aria-labelledby="ref-title" hidden>
+    <div class="ref-head"><h2 id="ref-title">Reference</h2><button type="button" class="icon" id="ref-close" aria-label="Close the reference">✕</button></div>
+    <p class="ref-intro">How to read the panels accurately. Show highlights the part a topic is about.</p>
+    <label class="ref-label" for="ref-topic">Topic</label>
+    <select id="ref-topic"></select>
+    <div class="ref-seq"><button type="button" id="ref-prev">Previous</button><span id="ref-pos"></span><button type="button" id="ref-next">Next</button></div>
+    <div class="ref-body" id="ref-body"><article id="ref-article"></article></div>
+    <div class="ref-targets" id="ref-targets"></div>
+    <p class="ref-status" id="ref-status" role="status" aria-live="polite"></p>
+  </aside>
   <aside class="pane lpane" aria-label="What sets the matching windows apart">
     <div class="ph"><span class="k" lang="ja" aria-hidden="true">組</span><h2>What sets them apart</h2></div>
     <p class="pcap" id="lcap">The windows that match your drawing, read the way the cube explorer reads a cell, against every window.</p>
     <div class="prows" id="lrows"></div>
     <button type="button" class="plink" id="lmore" hidden></button>
-    <div class="psec">
+    <div class="psec" id="lnextsec">
       <div class="ph"><span class="k" lang="ja" aria-hidden="true">次</span><h3>What came next</h3></div>
       <p class="pcap" id="lnext" style="color: var(--ink)"></p>
       <div class="pchips" id="ltf"></div>
@@ -307,7 +352,7 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
     <p class="pcap" id="rcap">The bars after the windows that match, in your drawing's own scale.</p>
     <div id="rbecame" style="display: flex; flex-direction: column; gap: 6px"></div>
     <p class="pfoot" id="rfan"></p>
-    <div class="psec">
+    <div class="psec" id="rnearsec">
       <div class="ph"><span class="k" lang="ja" aria-hidden="true">隣</span><h3>One comparison away</h3></div>
       <p class="pcap" id="ncap"></p>
       <div id="rnear" style="display: flex; flex-direction: column; gap: 8px"></div>
@@ -1233,6 +1278,155 @@ const Panes = {
 };
 $('#lmore').addEventListener('click', () => { Panes.all = !Panes.all; if (Match.result) Panes.render(Match.result); });
 $('#rnear').addEventListener('click', e => { const b = e.target.closest('button[data-i]'); if (b) Panes.tryNear(+b.dataset.i); });
+
+/* ================= 参照: the reference, how to read the panels, as the cube explorer's System reference ================= */
+// One structure throughout: purpose, how to read it, how to use it. Targets name real parts of the page or the fan's
+// region on the canvas; reading never changes the drawing or the panels.
+const REF_TOPICS = [
+  { id: 'set', group: 'Which windows', title: 'Which windows the panels read',
+    purpose: 'Know exactly which windows every number in the panels describes.',
+    read: "With nothing held, the set is the exact twins: windows whose every comparison between bar ends (low, open, close, high), and whose colours while Up / down is on, are as drawn. With pins or a skeleton held, it is every window that keeps them; with stretch, each run from a first to a last bar is a window of its own, read on the bars it picks. The next-bar filter and the timeframe chips narrow the set further. When fewer than 30 exact twins exist, the closest windows stand in, and the caption says so.",
+    use: "Read the left pane's caption first: it names the set and how many windows are in it. Change what you hold, the stretch, the filter or the timeframes, and both panes follow.",
+    targets: [{ label: "Show the set's caption", selector: '#lcap' }, { label: 'Show what you hold', selector: '.mbar .grp:first-child' }, { label: 'Show the filter and timeframes', selector: '.mbar .grp:last-child' }] },
+  { id: 'readings', group: 'What sets them apart', title: 'The readings',
+    purpose: 'Compare what traded in the matching windows with what trades in any window, bar by bar.',
+    read: "Volume, trades and USDT per trade: a bar against the median of the eleven bars before it, so 1.00× is a typical bar. Maker share: the share of the bar's volume that the kline files record as maker volume. Range (high to low) and body (open to close, either way): in the 14-bar Wilder ATR at the bar before. Close in the prior day's range: where the last drawn bar closed between the previous UTC day's low (0%) and high (100%); below 0% or above 100% is outside that range. All are read from the Vaquum HuggingFace kline files.",
+    use: 'Each row names the drawn bar it reads. The ten largest differences show first; Show all lists every reading.',
+    targets: [{ label: 'Show the readings', selector: '#lrows' }] },
+  { id: 'row', group: 'What sets them apart', title: 'Reading a row',
+    purpose: 'Tell a real difference from noise before acting on it.',
+    read: "The bold value and the dot are the set's mean (for volume, trades and USDT per trade, the geometric mean); the band is its 95% interval. The value after vs and the tick are the mean over every window of the drawing's length on the timeframes shown. A band that stays clear of the tick is a clear difference; a band across it is not. Rows are ordered by the difference in standard deviations of all windows, largest first.",
+    use: 'Weigh a row by its band and its size, not its place in the order: with many windows, a small difference can be clear and still small.',
+    targets: [{ label: 'Show the first row', selector: '#lrows .prow' }] },
+  { id: 'next', group: 'What sets them apart', title: 'What came next',
+    purpose: 'See how often the bar after the set rose, against every window.',
+    read: "The share of the set whose next bar closed above the window's last close, with its Wilson 95% interval, against all windows of the drawing's length on the timeframes shown; below it, the same for each timeframe. The difference is clear only when the interval leaves out the all-windows rate. A next bar after a gap in the data, or not yet in the data, does not count. With the next-bar filter on, the set is chosen by its next bar, so no rate is given.",
+    use: 'Compare the timeframes: a rate that holds on each of them is sturdier than one carried by a single timeframe. A dash marks fewer than 30 windows.',
+    targets: [{ label: 'Show what came next', selector: '#lnextsec' }] },
+  { id: 'fan', group: 'What it became', title: 'The fan',
+    purpose: 'See where the shape tended to go over the next six bars, in the drawing’s own scale.',
+    read: "Each matching window with six bars after it is scaled so its own low and high sit on your drawing's low and high. From your last bar's close, the light band holds the middle 80% of their closes at each of the next six bars, the darker band the middle 50%, and the line the median. The dotted lines carry the shape's high and low to the right, and broken is the share whose next six bars went beyond them. When the set is larger than 20,000 windows, the bands come from a fixed sample of 20,000; the rates use every window.",
+    use: "Read the bands' height against the shape: a fan much taller than the drawing says the next six bars usually travel well beyond it. Hovering a card fades the fan and traces that one window instead.",
+    targets: [{ label: 'Show the fan', region: 'fan' }] },
+  { id: 'became', group: 'What it became', title: 'Broken, and where it closed',
+    purpose: "Read the fan's key outcomes as rates.",
+    read: "Broke above the shape's high: some bar of the next six went above the window's own high. Broke below the shape's low: likewise, below its low. Closed above the last bar's close: the sixth bar's close against the window's last close. Each is a share of the windows with six bars after them, with its Wilson 95% interval. A window can break both ways.",
+    use: 'Compare a break with its opposite, and with the drawings one comparison away.',
+    targets: [{ label: 'Show the rates', selector: '#rbecame' }] },
+  { id: 'near', group: 'What it became', title: 'One comparison away',
+    purpose: 'Find the drawings next to yours, and whether any of them reads differently.',
+    read: "Windows of your drawing's length, with its colours, that differ from it in exactly one comparison between bar ends, grouped by that comparison and listed by how many windows the history holds on the timeframes shown. Next rose is the share whose next bar rose, with its Wilson 95% interval. The next-bar filter does not apply here.",
+    use: 'Try it puts the closest-looking window of that group on the canvas, scaled to your drawing, so the drawing becomes that pattern exactly; Undo returns to yours.',
+    targets: [{ label: 'Show the neighbours', selector: '#rnearsec' }] },
+  { id: 'stats', group: 'Statistics', title: 'Intervals and limits',
+    purpose: 'Know what every number can and cannot say.',
+    read: "Every interval is 95%: Wilson for rates, t for means. Nothing is shown for fewer than 30 windows. All windows means every window of the drawing's length on the timeframes shown. No window crosses a gap in the data. These are observations of Binance BTCUSDT 15m to 4h bars since January 2020: they describe what happened, not what will.",
+    use: 'Before trusting a difference, check its interval, its size, and whether it holds on each timeframe.',
+    targets: [{ label: 'Show the left pane', selector: '.lpane' }, { label: 'Show the right pane', selector: '.rpane' }] },
+];
+const Ref = {
+  cur: 0, active: null, raf: 0, back: null, lastShape: '',
+  pane: $('#ref'), work: $('.work'),
+  init() {
+    const sel = $('#ref-topic');
+    let group = null;
+    for (const t of REF_TOPICS) {
+      if (!group || group.label !== t.group) { group = document.createElement('optgroup'); group.label = t.group; sel.append(group); }
+      const o = document.createElement('option'); o.value = t.id; o.textContent = t.title; group.append(o);
+    }
+    const ns = 'http://www.w3.org/2000/svg';
+    this.spot = document.createElementNS(ns, 'svg'); this.spot.id = 'ref-spot'; this.spot.setAttribute('aria-hidden', 'true'); this.spot.style.display = 'none';
+    this.shade = document.createElementNS(ns, 'path'); this.shade.setAttribute('class', 'shade'); this.shade.setAttribute('fill-rule', 'evenodd');
+    this.frame = document.createElementNS(ns, 'rect'); this.frame.setAttribute('class', 'frame'); this.frame.setAttribute('rx', '6');
+    this.spot.append(this.shade, this.frame); document.body.append(this.spot);
+    this.shade.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); this.clear(); });
+    $('#reftoggle').addEventListener('click', () => (this.pane.hidden ? this.open() : this.close()));
+    $('#ref-close').addEventListener('click', () => this.close());
+    sel.addEventListener('change', () => this.render(REF_TOPICS.findIndex(t => t.id === sel.value)));
+    $('#ref-prev').addEventListener('click', () => this.render(this.cur - 1));
+    $('#ref-next').addEventListener('click', () => this.render(this.cur + 1));
+    $('#ref-targets').addEventListener('click', e => {
+      const b = e.target.closest('button[data-t]'); if (!b) return;
+      const t = REF_TOPICS[this.cur].targets[+b.dataset.t];
+      if (this.active === t) { this.clear(); return; }
+      this.clear(); this.active = t; b.setAttribute('aria-pressed', 'true'); this.schedule();
+    });
+    // a highlight owns Escape everywhere; the open pane owns it only from its own contents
+    document.addEventListener('keydown', e => {
+      if (this.pane.hidden || e.key !== 'Escape') return;
+      if (!this.active && !this.pane.contains(e.target)) return;
+      e.preventDefault(); e.stopImmediatePropagation();
+      if (this.active) this.clear(); else this.close();
+    }, true);
+    addEventListener('resize', () => this.schedule()); addEventListener('scroll', () => this.schedule(), true);
+    new ResizeObserver(() => this.schedule()).observe(document.body);
+    this.render(0);
+  },
+  open() {
+    this.back = document.activeElement;
+    this.pane.hidden = false; this.work.dataset.reference = 'open';
+    $('#reftoggle').setAttribute('aria-expanded', 'true'); $('#reftoggle').setAttribute('aria-pressed', 'true');
+    $('#ref-topic').focus({ preventScroll: true }); App.redraw();
+  },
+  close() {
+    this.clear(); this.pane.hidden = true; delete this.work.dataset.reference;
+    $('#reftoggle').setAttribute('aria-expanded', 'false'); $('#reftoggle').setAttribute('aria-pressed', 'false');
+    const to = this.back && this.back.isConnected && this.back.getClientRects().length && !this.back.closest('[hidden]') ? this.back : $('#reftoggle');
+    to.focus({ preventScroll: true }); App.redraw();
+  },
+  render(i) {
+    this.cur = clamp(i, 0, REF_TOPICS.length - 1);
+    const t = REF_TOPICS[this.cur];
+    this.clear();
+    $('#ref-topic').value = t.id;
+    $('#ref-article').innerHTML = `<p class="ref-group">${esc(t.group)}</p><h3>${esc(t.title)}</h3><dl><dt>Purpose</dt><dd>${esc(t.purpose)}</dd><dt>Read</dt><dd>${esc(t.read)}</dd><dt>Use</dt><dd>${esc(t.use)}</dd></dl>`;
+    $('#ref-targets').innerHTML = t.targets.map((x, k) => `<button type="button" data-t="${k}" aria-pressed="false">${esc(x.label)}</button>`).join('');
+    $('#ref-pos').textContent = `${this.cur + 1} / ${REF_TOPICS.length}`;
+    $('#ref-prev').disabled = this.cur === 0; $('#ref-next').disabled = this.cur === REF_TOPICS.length - 1;
+    $('#ref-body').scrollTop = 0;
+  },
+  clear() {
+    this.active = null; this.lastShape = ''; this.spot.style.display = 'none';
+    for (const b of document.querySelectorAll('#ref-targets button')) b.setAttribute('aria-pressed', 'false');
+    $('#ref-status').textContent = '';
+  },
+  schedule() { if (this.active && !this.raf) this.raf = requestAnimationFrame(() => { this.raf = 0; this.paint(); }); },
+  // the fan's place on the paper, from the stage's own geometry
+  fanRect() {
+    const r = Match.result, c = r && r.panes && r.panes.cont;
+    if (!c) return null;
+    const G = Stage.geom(), n = S.bars.length, last = S.bars[n - 1], lx = (last.x == null ? G.xs[n - 1] : last.x) + G.bw / 2;
+    const step = Math.min(G.spacing, (G.w - 70 - lx) / (c.fan.length + 0.4));
+    if (!(step >= 10)) return null;
+    const box = Stage.cv.getBoundingClientRect();
+    return { left: box.left + lx - 6, top: box.top + G.plotTop - 26, right: box.left + lx + c.fan.length * step + 66, bottom: box.top + G.plotBottom + 48 };
+  },
+  bounds(t) {
+    if (t.region === 'fan') return this.fanRect();
+    const el = document.querySelector(t.selector);
+    if (!el || el.closest('[hidden]') || !el.getClientRects().length) return null;
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0 ? r : null;
+  },
+  paint() {
+    if (!this.active || this.pane.hidden) return;
+    const raw = this.bounds(this.active), doc = this.pane.getBoundingClientRect(), W = innerWidth, H = innerHeight;
+    if (!raw) { this.spot.style.display = 'none'; $('#ref-status').textContent = 'This part is not on the page right now: it appears once there are results to show.'; return; }
+    let l = Math.max(0, raw.left - 4), t = Math.max(0, raw.top - 4), r = Math.min(W, raw.right + 4), b = Math.min(H, raw.bottom + 4);
+    // keep the reference itself undimmed and unframed
+    if (l < doc.right && r > doc.left && t < doc.bottom && b > doc.top) { if (doc.width >= W - 16) b = Math.min(b, doc.top); else l = Math.max(l, doc.right); }
+    if (r <= l || b <= t) { this.spot.style.display = 'none'; $('#ref-status').textContent = 'This part is outside the visible area: scroll it into view to highlight it.'; return; }
+    const hole = (x, y, w, h) => `M${x},${y}h${w}v${h}h${-w}Z`;
+    const shape = `M0,0H${W}V${H}H0Z${hole(doc.left, doc.top, doc.width, doc.height)}${hole(l, t, r - l, b - t)}`;
+    if (shape !== this.lastShape) {
+      this.lastShape = shape; this.spot.setAttribute('viewBox', `0 0 ${W} ${H}`); this.shade.setAttribute('d', shape);
+      for (const [k, v] of Object.entries({ x: l, y: t, width: r - l, height: b - t })) this.frame.setAttribute(k, v);
+    }
+    this.spot.style.display = 'block';
+    $('#ref-status').textContent = `Highlighted: ${this.active.label.replace(/^Show /, '')}. Escape or a click on the dimmed area stops it.`;
+  },
+};
+Ref.init();
 // timeframe chips: how many windows hold (or, with nothing held, how many exact twins), and whether each timeframe is included
 function renderChips(counts) {
   $('#tfs').innerHTML = TF_LABELS.map((tf, k) => `<button type="button" class="chip" data-k="${k}" aria-pressed="${S.tfOn[k]}" title="${S.tfOn[k] ? 'Leave out' : 'Include'} ${tf}">${tf}${counts ? `<b>${fmt(counts[k])}</b>` : ''}</button>`).join('');
