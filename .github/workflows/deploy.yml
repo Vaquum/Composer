@@ -66,16 +66,20 @@ jobs:
       - name: Sync the checkout
         run: rsync -az --delete --exclude .git --exclude .env ./ "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/"
       - name: Start
-        run: ssh "$DEPLOY_USER@$DEPLOY_HOST" "cd '$DEPLOY_DIR' && docker compose up -d --build --remove-orphans && docker compose ps"
+        run: |
+          # DEPLOY_DIR is expanded here, on purpose, and sent quoted
+          # shellcheck disable=SC2029
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" "cd '$DEPLOY_DIR' && docker compose up -d --build --remove-orphans && docker compose ps"
       - name: Check that Composer answers
         run: |
           # the server reads the five kline files before it answers, so allow it a few minutes
           probe() { ssh "$DEPLOY_USER@$DEPLOY_HOST" "curl -s -o /dev/null -w '%{http_code}' --max-time 30 http://127.0.0.1:8488/healthz || printf 000"; }
           code=000
-          for attempt in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             code=$(probe || printf 000)
             test "$code" = "200" && break
             sleep 10
           done
           test "$code" = "200"
+          # shellcheck disable=SC2029
           ssh "$DEPLOY_USER@$DEPLOY_HOST" "cd '$DEPLOY_DIR' && docker compose ps --format '{{.Name}} {{.Status}}'"
