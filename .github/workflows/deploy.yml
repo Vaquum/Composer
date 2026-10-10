@@ -18,9 +18,10 @@ jobs:
     if: ${{ needs.check.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    # The host and its deploy key are the organisation's TDW secrets, as for the other services on the host.
     env:
-      DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
-      DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+      DEPLOY_HOST: ${{ secrets.TDW_IP }}
+      DEPLOY_USER: ${{ secrets.TDW_USER }}
       DEPLOY_DIR: ${{ vars.DEPLOY_DIR }}
       DEPLOY_KNOWN_HOSTS: ${{ vars.DEPLOY_KNOWN_HOSTS }}
     steps:
@@ -41,14 +42,22 @@ jobs:
           test -n "$DEPLOY_USER"
           test -n "$DEPLOY_DIR"
           test -n "$DEPLOY_KNOWN_HOSTS"
-      - uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
-      - name: Pin the host key
+      - name: Configure SSH with the host key pinned
+        env:
+          TDW_KEY: ${{ secrets.TDW_KEY }}
         run: |
+          set -euo pipefail
+          test -n "$TDW_KEY"
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          printf '%s\n' "$TDW_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          # the host must present the key pinned in DEPLOY_KNOWN_HOSTS, whatever address TDW_IP names it by
+          pinned=$(printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | awk '{print $2" "$3}')
+          scanned=$(ssh-keyscan -t ed25519 "$DEPLOY_HOST" 2>/dev/null | awk '{print $2" "$3}')
+          test -n "$scanned"
+          test "$scanned" = "$pinned"
+          printf '%s %s\n' "$DEPLOY_HOST" "$pinned" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
       - name: Sync the checkout
         run: rsync -az --delete --exclude .git --exclude .env ./ "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/"

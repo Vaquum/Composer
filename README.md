@@ -62,5 +62,6 @@ record for the host, and Portal's landing page has Composer's card.
 Every push to `main` deploys through `.github/workflows/deploy.yml`, which first runs the checks of
 `.github/workflows/check.yml` and continues only if they passed for that exact commit; then it syncs
 the checkout to the host with rsync, runs `docker compose up -d --build`, and checks over SSH that
-Composer answers. It needs the secret `DEPLOY_SSH_KEY` and the variables `DEPLOY_HOST`,
-`DEPLOY_USER`, `DEPLOY_DIR` and `DEPLOY_KNOWN_HOSTS`, as the other services on the host do.
+Composer answers. It reaches the host with the organisation's `TDW_IP`, `TDW_USER` and `TDW_KEY`
+secrets, as the other services on the host do, and the repository variables `DEPLOY_DIR` and
+`DEPLOY_KNOWN_HOSTS`, the host key it must present.
