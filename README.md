@@ -43,11 +43,12 @@ it answers.
 
 ```sh
 python3 -m unittest discover -s tests -v
-python3 -c "import bars; open('bars.bin', 'wb').write(bars.read(bars.current()))"
-node checks/similarity-windows.mjs matcher.js bars.bin
-node checks/similarity-look.mjs matcher.js bars.bin
-node checks/similarity-equivalence.mjs matcher.js bars.bin
+python3 checks/with_bars.py checks/similarity-windows.mjs
+python3 checks/with_bars.py checks/similarity-look.mjs
+python3 checks/with_bars.py checks/similarity-equivalence.mjs
 ```
+
+`with_bars.py` reads the current bars as the server does, once, and runs the check on them.
 
 ## Deploy
 

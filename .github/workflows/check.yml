@@ -35,13 +35,11 @@ jobs:
       - run: pip install -r requirements.txt
       - name: Unit tests
         run: python -m unittest discover -s tests -v
-      - name: Read the current bars from the Vaquum HuggingFace files
-        run: python -c "import bars; open('bars.bin', 'wb').write(bars.read(bars.current()))"
-      - name: Similarity ranking against an independent brute force
-        run: node checks/similarity-windows.mjs matcher.js bars.bin
+      - name: Similarity ranking against an independent brute force, on the current bars
+        run: python checks/with_bars.py checks/similarity-windows.mjs
       - name: Two-bar colours and proportions
-        run: node checks/similarity-look.mjs matcher.js bars.bin
+        run: python checks/with_bars.py checks/similarity-look.mjs
       - name: Bounded search against the unbounded one
-        run: node checks/similarity-equivalence.mjs matcher.js bars.bin
+        run: python checks/with_bars.py checks/similarity-equivalence.mjs
       - name: The container builds
         run: docker build -t composer:check .
