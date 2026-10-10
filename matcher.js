@@ -490,7 +490,7 @@ async function search(q, id, report) {
     for (const r of ranked) { const R = BARS[r.k], e = r.s + r.span - 1; addSet(r.k, R, r.s, r.picks, e, outcomeInto(R, e, oo)); }
     setKind = 'closest';
   }
-  const panes = { kind: setKind, n: setN, readings: !!READ, rows: [], next: null, byTf: setTf.map(([m, k]) => wilson(k, m)), after: AFTER, cont: null, near: [] };
+  const panes = { kind: setKind, n: setN, readings: !!READ, rows: [], next: null, byTf: setTf.map(([m, k]) => wilson(k, m)), tfN: setTf.map(([m]) => m), after: AFTER, cont: null, near: [] };
   if (READ) {
     for (let g = 0; g < n; g++) for (let r = 0; r < NR; r++) {
       if (r === NR - 1 && g !== n - 1) continue;

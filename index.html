@@ -160,6 +160,42 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
 .codebox .dom { font-size: 12px; color: var(--ink-3); }
 .link { font-size: 12px; color: var(--ai); }
 
+/* the panes: what sets the matching windows apart (left), and what the shape became (right) */
+.work { flex: 1; display: grid; grid-template-columns: minmax(248px, 290px) minmax(0, 1fr) minmax(256px, 300px); align-items: stretch; }
+.pane { padding: 16px 16px 20px; display: flex; flex-direction: column; gap: 12px; font-size: 13px; min-width: 0; }
+.lpane { border-right: 1px solid var(--hair); }
+.rpane { border-left: 1px solid var(--hair); }
+.ph { display: flex; align-items: baseline; gap: 8px; }
+.ph .k { font: 600 18px/1 var(--font-mincho); }
+.ph h2, .ph h3 { margin: 0; font: 600 15px/1.3 var(--font-mincho); }
+.pcap { margin: 0; color: var(--ink-2); font-size: 12.5px; }
+.pfoot { margin: 0; color: var(--ink-2); font-size: 11.5px; }
+.psec { border-top: 1px solid var(--hair); padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.prows { display: flex; flex-direction: column; gap: 9px; }
+.prow .pl { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.prow .pg { color: var(--ink-2); font-size: 11.5px; }
+.prow .pv, .prate .pv, .pnear small { font-family: var(--font-code); white-space: nowrap; }
+.prow .pv span, .prate .pv span { color: var(--ink-2); }
+.trk { position: relative; height: 12px; margin-top: 3px; border-radius: 6px; background: var(--paper-2); }
+.trk i { position: absolute; display: block; }
+.trk .bd { top: 3px; bottom: 3px; border-radius: 3px; background: var(--ink-3); opacity: .5; }
+.trk .dt { top: 50%; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; border-radius: 50%; background: var(--ink); }
+.trk .tk { top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--ink-2); }
+.pchips { display: flex; flex-wrap: wrap; gap: 6px; }
+.pchips span { font: 500 12px/1.3 var(--font-code); padding: 4px 7px; border-radius: 6px; border: 1px solid var(--hair); }
+.pchips span em { font-style: normal; color: var(--ink-2); }
+.prate { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--hair); padding-bottom: 6px; }
+.pnear { display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid var(--hair); border-radius: 8px; padding: 8px 10px; }
+.pnear small { display: block; color: var(--ink-2); font-size: 11.5px; }
+.pnear button { flex: none; font-size: 12px; padding: 6px 10px; min-height: 32px; border-radius: 6px; border: 1px solid var(--ai); color: var(--ai); }
+.pnear button:hover { background: var(--ai-soft); }
+.plink { align-self: flex-start; font-size: 12px; color: var(--ai); }
+@media (max-width: 1180px) {
+  .work { grid-template-columns: minmax(0, 1fr); }
+  .stage { order: -1; }
+  .lpane, .rpane { border: 0; border-top: 1px solid var(--hair); }
+}
+
 @media (max-width: 900px) {
   .cvwrap { min-height: 62vh; }
   .hint { right: 24px; top: 56px; }
@@ -194,6 +230,19 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
     </div>
   </header>
 
+  <div class="work">
+  <aside class="pane lpane" aria-label="What sets the matching windows apart">
+    <div class="ph"><span class="k" lang="ja" aria-hidden="true">組</span><h2>What sets them apart</h2></div>
+    <p class="pcap" id="lcap">The windows that match your drawing, read the way the cube explorer reads a cell, against every window.</p>
+    <div class="prows" id="lrows"></div>
+    <button type="button" class="plink" id="lmore" hidden></button>
+    <div class="psec">
+      <div class="ph"><span class="k" lang="ja" aria-hidden="true">次</span><h3>What came next</h3></div>
+      <p class="pcap" id="lnext" style="color: var(--ink)"></p>
+      <div class="pchips" id="ltf"></div>
+    </div>
+    <p class="pfoot">Volume, trades and USDT per trade against the median of the eleven bars before each bar; maker share of its volume; range and close minus open in the ATR at the bar before; the last bar's close in the prior UTC day's range. 95% intervals, t for means and Wilson for rates; nothing for fewer than 30 windows.</p>
+  </aside>
   <main class="stage" aria-label="Composition">
     <div class="cvwrap" id="cvwrap">
       <canvas id="cv" tabindex="0" aria-label="Bar composition. Drag shadows and body edges; left and right arrows choose a bar; up and down arrows move it; space changes its color; plus and minus add or remove a bar; the bracket keys bring the bars closer together or further apart; P starts pinning relations."></canvas>
@@ -252,6 +301,18 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
       <div class="codebox"><code id="code"></code><button type="button" class="link" id="copy">Copy</button><span class="dom" id="dom"></span></div>
     </footer>
   </main>
+  <aside class="pane rpane" aria-label="What the shape became">
+    <div class="ph"><span class="k" lang="ja" aria-hidden="true">続</span><h2>What it became</h2></div>
+    <p class="pcap" id="rcap">The bars after the windows that match, in your drawing's own scale.</p>
+    <div id="rbecame" style="display: flex; flex-direction: column; gap: 6px"></div>
+    <p class="pfoot" id="rfan"></p>
+    <div class="psec">
+      <div class="ph"><span class="k" lang="ja" aria-hidden="true">隣</span><h3>One comparison away</h3></div>
+      <p class="pcap" id="ncap"></p>
+      <div id="rnear" style="display: flex; flex-direction: column; gap: 8px"></div>
+    </div>
+  </aside>
+  </div>
 </div>
 
 <script>
@@ -756,6 +817,7 @@ const Stage = {
     if (this.snapV !== null) { const y = Math.round(Y(this.snapV)) + 0.5; ctx.strokeStyle = COL.ai; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke(); }
     for (const g of this.ghosts) this.drawCandle(ctx, G, g.x, g.dv, g.col, g.a);
     S.bars.forEach((b, i) => this.drawBar(ctx, G, i));
+    this.drawFan(ctx, G);
     this.drawTrace(ctx, G);
     this.drawSkeleton(ctx, G);
     this.drawPins(ctx, G);
@@ -814,6 +876,41 @@ const Stage = {
     else { ctx.font = `500 13px ${FONT_MIN}`; ctx.fillText(String(i + 1), cx, gy + 6); }
     if (selLabel) { ctx.strokeStyle = COL.ai; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(cx - 13, gy + 30); ctx.quadraticCurveTo(cx, gy + 28, cx + 13, gy + 30.5); ctx.stroke(); ctx.lineCap = 'butt'; }
     ctx.globalAlpha = 1;
+  },
+  // 続: the bars after the windows that match, each scaled so its own low and high sit on the drawing's, as a fan of
+  // their closes (10 to 90%, 25 to 75% and the median) from the last bar's close, with the shape's high and low carried on
+  drawFan(ctx, G) {
+    const r = Match.result, c = r && r.panes && r.panes.cont;
+    if (!c || (this.drag && this.drag.moved) || c.fan.length < 1) return;
+    let lo = Infinity, hi = -Infinity;
+    for (const b of S.bars) { lo = Math.min(lo, b.dv[0]); hi = Math.max(hi, b.dv[3]); }
+    const n = S.bars.length, last = S.bars[n - 1], lx = (last.x == null ? G.xs[n - 1] : last.x) + G.bw / 2;
+    const step = Math.min(G.spacing, (G.w - 70 - lx) / (c.fan.length + 0.4));
+    if (!(step >= 10) || !(hi > lo)) return;
+    const Y = u => this.Y(lo + u * (hi - lo), G), xs = c.fan.map((_, j) => lx + (j + 1) * step);
+    const y0 = this.Y(dirOf(n - 1) >= 0 ? last.dv[2] : last.dv[1], G);
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, G.plotTop - 24, G.w, G.plotH + 48); ctx.clip();
+    ctx.globalAlpha = (Match.current() ? 1 : 0.35) * (this.trace ? 0.3 : 1);
+    const band = (a, b, alpha) => {
+      ctx.beginPath(); ctx.moveTo(lx, y0);
+      c.fan.forEach((qs, j) => ctx.lineTo(xs[j], Y(qs[b])));
+      for (let j = c.fan.length - 1; j >= 0; j--) ctx.lineTo(xs[j], Y(c.fan[j][a]));
+      ctx.closePath(); ctx.fillStyle = COL.ai; const g = ctx.globalAlpha; ctx.globalAlpha = g * alpha; ctx.fill(); ctx.globalAlpha = g;
+    };
+    band(0, 4, 0.1); band(1, 3, 0.18);
+    ctx.strokeStyle = COL.ai; ctx.lineWidth = 1.8; ctx.beginPath(); ctx.moveTo(lx, y0); c.fan.forEach((qs, j) => ctx.lineTo(xs[j], Y(qs[2]))); ctx.stroke();
+    ctx.setLineDash([2, 4]); ctx.lineWidth = 1; ctx.strokeStyle = COL['ink-2'];
+    const end = xs[xs.length - 1];
+    for (const u of [0, 1]) { const y = Math.round(Y(u)) + 0.5; ctx.beginPath(); ctx.moveTo(lx + 4, y); ctx.lineTo(end, y); ctx.stroke(); }
+    ctx.setLineDash([]);
+    ctx.font = `400 11.5px ${FONT_UI}`; ctx.textAlign = 'right'; ctx.fillStyle = COL['ink-2'];
+    const p = w => (w ? `${Math.round(w[0] * 100)}%` : '–');
+    ctx.textBaseline = 'bottom'; ctx.fillText(`high broken ${p(c.aboveHigh)}`, end, Math.round(Y(1)) - 3);
+    ctx.textBaseline = 'top'; ctx.fillText(`low broken ${p(c.belowLow)}`, end, Math.round(Y(0)) + 3);
+    ctx.font = `500 12px ${FONT_MIN}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = COL.ai;
+    ctx.fillText(`続 ${c.fan.length}`, end, G.plotBottom + 34);
+    ctx.restore();
   },
   // 写し: an instance from the history traced over the drawing, scaled to the drawing's height, one BTCUSDT bar per drawn bar
   drawTrace(ctx, G) {
@@ -917,14 +1014,22 @@ const Match = {
     loadBars()
       .then(buffer => this.worker.postMessage({ type: 'bars', buffer }, [buffer]))
       .catch(err => this.fail(`The BTCUSDT klines could not be loaded (${err.message}). Composer still works; reload to try again.`));
+    // what traded in each bar, for the left pane; matching never waits for it
+    fetch('activity').then(r => { if (!r.ok) throw new Error(`the server answered ${r.status}`); return r.arrayBuffer(); })
+      .then(buffer => this.worker.postMessage({ type: 'activity', buffer }, [buffer]))
+      .catch(err => { Panes.readings = 'failed'; Panes.note = err.message; if (this.result) Panes.render(this.result); });
     this.schedule(true);
   },
-  fail(msg) { this.failed = true; $('#prog').hidden = true; $('#mmsg').textContent = msg; $('#emaki').innerHTML = ''; },
+  // the result on screen answers the drawing as it stands
+  current() { return !!this.result && this.result.id === this.id; },
+  fail(msg) { this.failed = true; $('#prog').hidden = true; $('#mmsg').textContent = msg; $('#emaki').innerHTML = ''; Panes.clear(); },
   onmsg(m) {
     if (m.type === 'ready') { this.ready = true; this.until = m.to; if (!this.result) $('#mmsg').textContent = `Searching the BTCUSDT history, ${day(m.from)} to ${day(m.to)}…`; return; }
     if (m.type === 'error') { this.fail(`The BTCUSDT klines could not be read: ${m.message}`); return; }
     if (m.type === 'progress') { if (m.id === this.id) { $('#prog').hidden = false; $('#prog i').style.width = `${(m.f * 100).toFixed(1)}%`; } return; }
-    if (m.type === 'result' && m.id === this.id) { this.result = m; this.render(); }
+    if (m.type === 'readings') { Panes.readings = 'ready'; if (this.result) { this.sentKey = ''; this.send(); } return; }
+    if (m.type === 'readings-error') { Panes.readings = 'failed'; Panes.note = m.message; if (this.result) Panes.render(this.result); return; }
+    if (m.type === 'result' && m.id === this.id) { this.result = m; this.render(); Panes.render(m); App.redraw(); }
   },
   query() {
     const held = heldNow();
@@ -1041,6 +1146,90 @@ async function loadBars() {
   if (!(bytes.length > 5 && String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3], bytes[4]) === 'CBAR1')) throw new Error('the server sent something other than bars');
   return bytes.buffer;
 }
+/* ================= the panes: what sets the matching windows apart, and what the shape became ================= */
+const READ_NAME = {
+  vol: ['Activity', 'volume vs the 11 before'], trades: ['Activity', 'trades vs the 11 before'], size: ['Trade size', 'USDT per trade vs before'],
+  maker: ['Aggression', 'maker share of volume'], range: ['Movement', 'range in ATR'], net: ['Movement', 'close minus open in ATR'], day: ['Location', "close in the prior day's range"],
+};
+const pct = (x, d = 1) => `${(x * 100).toFixed(d)}%`;
+const Panes = {
+  all: false, readings: 'loading', note: '',
+  value(row, x) {
+    if (row.log) return `${Math.exp(x).toFixed(2)}×`;
+    if (row.key === 'maker') return pct(x);
+    if (row.key === 'day') return pct(x, 0);
+    return `${x > 0 && row.key === 'net' ? '+' : ''}${x.toFixed(2)}`.replace('-', '−');
+  },
+  // a band (the set's 95% interval), a dot (its mean) and a tick (all windows), on a scale with room around all three
+  track(lo, hi, v, ref) {
+    const a = Math.min(lo, ref), b = Math.max(hi, ref), pad = (b - a) * 0.6 || 0.05, mn = a - pad, mx = b + pad, at = x => (x - mn) / (mx - mn) * 100;
+    return `<div class="trk" aria-hidden="true"><i class="bd" style="left:${at(lo).toFixed(2)}%;width:${(at(hi) - at(lo)).toFixed(2)}%"></i><i class="dt" style="left:${at(v).toFixed(2)}%"></i><i class="tk" style="left:${at(ref).toFixed(2)}%"></i></div>`;
+  },
+  clear() { for (const id of ['lrows', 'lnext', 'ltf', 'rbecame', 'rfan', 'ncap', 'rnear']) $('#' + id).innerHTML = ''; $('#lmore').hidden = true; },
+  render(r) {
+    const P = r.panes; if (!P) return;
+    const n = P.n, F = r.filter, plural = n === 1 ? '' : 's';
+    const who = P.kind === 'hold' ? `${fmt(n)} window${plural} hold what you hold${r.stretch ? `, with up to ${r.stretch} bar${r.stretch > 1 ? 's' : ''} skipped` : ''}`
+      : P.kind === 'twins' ? `${fmt(n)} window${plural} match the drawing exactly` : `Fewer than 30 exact twins, so the ${fmt(n)} closest windows stand in`;
+    $('#lcap').textContent = `${who}${F ? `, each followed by a next bar that ${nextWords(F)}` : ''}, on the timeframes shown. Each reading against every window there, the largest difference first: the dot and band are these windows with their 95% interval, the tick is all windows.`;
+    // what sets them apart
+    let rows = '';
+    if (P.readings && n >= 30) {
+      const all = P.rows.slice().sort((a, b) => Math.abs(b.d) - Math.abs(a.d)), shown = this.all ? all : all.slice(0, 10);
+      rows = shown.map(w => {
+        const [group, name] = READ_NAME[w.key];
+        return `<div class="prow"><div class="pl"><span><span class="pg">${group}</span> bar ${w.bar + 1} ${name}</span><span class="pv"><b>${this.value(w, w.set[0])}</b> <span>vs ${this.value(w, w.all[0])}</span></span></div>${this.track(w.set[1], w.set[2], w.set[0], w.all[0])}</div>`;
+      }).join('');
+      const more = $('#lmore'); more.hidden = all.length <= 10; more.textContent = this.all ? 'Show the ten largest' : `Show all ${all.length}`;
+    } else {
+      $('#lmore').hidden = true;
+      rows = `<p class="pcap">${n < 30 ? 'Fewer than 30 windows: no readings yet.' : this.readings === 'failed' ? `What traded in each bar could not be read (${esc(this.note)}); the shape's own panes still work.` : 'Reading what traded in each bar…'}</p>`;
+    }
+    $('#lrows').innerHTML = rows;
+    // what came next
+    const base = r.base.n ? r.base.up / r.base.n : NaN, nx = P.next;
+    $('#lnext').textContent = F ? `Only windows whose next bar ${nextWords(F)} are in this set.`
+      : !nx ? 'Fewer than 30 of them have a next bar.'
+      : `The next bar rose ${pct(nx[0])} (${pct(nx[1])}–${pct(nx[2])}) of the time, against ${pct(base)} for all windows: ${nx[1] > base || nx[2] < base ? 'a clear difference' : 'no clear difference'}.`;
+    $('#ltf').innerHTML = F ? '' : TF_LABELS.map((tf, k) => (this.on(k) ? `<span>${tf} ${P.byTf[k] ? pct(P.byTf[k][0]) : '–'} <em>n ${fmt(P.tfN[k])}</em></span>` : '')).join('');
+    // what it became
+    const c = P.cont;
+    if (!c) {
+      $('#rcap').textContent = `Fewer than 30 of the windows have ${P.after} bars after them.`;
+      $('#rbecame').innerHTML = ''; $('#rfan').textContent = '';
+    } else {
+      $('#rcap').textContent = `The ${P.after} bars after ${fmt(c.n)} of them, each scaled so its own low and high sit on your drawing's: the fan on the canvas${c.sampled < c.n ? `, its bands from a sample of ${fmt(c.sampled)}` : ''}.`;
+      const rate = (label, w) => `<div class="prate"><span>${label}</span><span class="pv"><b>${w ? pct(w[0]) : '–'}</b> <span>${w ? `${pct(w[1])}–${pct(w[2])}` : ''}</span></span></div>`;
+      $('#rbecame').innerHTML = rate("Broke above the shape's high", c.aboveHigh) + rate("Broke below the shape's low", c.belowLow) + rate(`Closed above bar ${S.bars.length}'s close after ${P.after}`, c.aboveClose);
+      const q = c.fan[c.fan.length - 1], f2 = x => x.toFixed(2).replace('-', '−');
+      $('#rfan').textContent = `By the ${P.after === 6 ? 'sixth' : P.after + 'th'} bar their median close sits at ${f2(q[2])} of the shape's height (0 its low, 1 its high); half end between ${f2(q[1])} and ${f2(q[3])}.`;
+    }
+    // one comparison away
+    $('#ncap').textContent = `Drawings that differ from yours in a single comparison, how often the history holds each on the timeframes shown, and how the next bar went${P.kind === 'twins' && nx && !F ? `. Yours: ${fmt(n)} windows, ${pct(nx[0])}` : ''}.`;
+    $('#rnear').innerHTML = P.near.length ? P.near.map((nb, i) => `<div class="pnear"><span>${esc(this.nearWord(nb))}<small>${fmt(nb.n)} window${nb.n === 1 ? '' : 's'}${nb.up ? ` · next rose ${pct(nb.up[0])} (${pct(nb.up[1])}–${pct(nb.up[2])})` : ''}</small></span><button type="button" data-i="${i}" title="Put its closest instance on the canvas">Try it</button></div>`).join('')
+      : '<p class="pcap">No window on the timeframes shown differs from it in a single comparison.</p>';
+  },
+  on(k) { return Match.sent && Match.sent.q.tfs[k]; },
+  // a comparison in words, the later bar end first: "Bar 2's close below bar 1's low"
+  nearWord(nb) {
+    const id = identity(), ba = nb.a >> 2, bb = nb.b >> 2, A = epName(id.d[ba], nb.a & 3), B = epName(id.d[bb], nb.b & 3);
+    return `Bar ${bb + 1}'s ${B} ${nb.rel < 0 ? 'above' : nb.rel > 0 ? 'below' : 'level with'} ${ba === bb ? 'its' : `bar ${ba + 1}'s`} ${A}`;
+  },
+  // put a neighbour's closest instance on the canvas, scaled to the drawing's height: the drawing then is that pattern exactly
+  tryNear(i) {
+    const nb = Match.result && Match.result.panes && Match.result.panes.near[i];
+    if (!nb || nb.bars.length !== S.bars.length) return;
+    let cmin = Infinity, cmax = -Infinity, imin = Infinity, imax = -Infinity;
+    for (const b of S.bars) { cmin = Math.min(cmin, b.v[0]); cmax = Math.max(cmax, b.v[3]); }
+    for (const [, h, l] of nb.bars) { imin = Math.min(imin, l); imax = Math.max(imax, h); }
+    const f = p => cmin + (p - imin) / (imax - imin || 1) * (cmax - cmin);
+    pushHist();
+    nb.bars.forEach(([o, h, l, c], k) => { const b = S.bars[k]; b.v.set([f(l), f(Math.min(o, c)), f(Math.max(o, c)), f(h)]); if (c !== o) b.d = c > o ? 'u' : 'd'; });
+    Stage.fit(); refresh();
+  },
+};
+$('#lmore').addEventListener('click', () => { Panes.all = !Panes.all; if (Match.result) Panes.render(Match.result); });
+$('#rnear').addEventListener('click', e => { const b = e.target.closest('button[data-i]'); if (b) Panes.tryNear(+b.dataset.i); });
 // timeframe chips: how many windows hold (or, with nothing held, how many exact twins), and whether each timeframe is included
 function renderChips(counts) {
   $('#tfs').innerHTML = TF_LABELS.map((tf, k) => `<button type="button" class="chip" data-k="${k}" aria-pressed="${S.tfOn[k]}" title="${S.tfOn[k] ? 'Leave out' : 'Include'} ${tf}">${tf}${counts ? `<b>${fmt(counts[k])}</b>` : ''}</button>`).join('');
