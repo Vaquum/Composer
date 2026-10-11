@@ -3,10 +3,12 @@
 Compose bar patterns in Filang's g1 language and find the closest ones in BTCUSDT history, at
 `https://composer.vaquum.fi` behind the Vaquum portal login.
 
-Draw any number of bars (each bar after the first takes its colour from where it sits: BTCUSDT
-trades around the clock, so a bar opens where the previous one closed, and a body above that close
-is green, one below it red), hold the relations that must stay true (pins, a skeleton, colours), let
-the drawn bars skip bars of history (stretch), and filter on what the next bar did. Composer
+Draw any number of bars, chained as BTCUSDT bars are: the market trades around the clock, so every
+bar after the first opens exactly where the previous one closed. You place each bar's close and
+shadows, and a bar is green when it closes above its open and red when below; each joint is an exact
+tie in the g1 pattern, which matching compares exactly. Hold the relations that must stay true
+(pins, a skeleton, colours), let the drawn bars skip bars of history (stretch), and filter on what
+the next bar did. Composer
 searches the 15m, 30m, 1h, 2h and 4h BTCUSDT bars in the browser and shows the closest windows,
 ranked by how they look: colours first, then shape, then sizes, with a small charge for each
 comparison that flips. Prices are compared exactly as the engine does, in integer cents.

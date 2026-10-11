@@ -316,7 +316,7 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
   <main class="stage" aria-label="Composition">
     <div class="cvwrap" id="cvwrap">
       <canvas id="cv" tabindex="0" aria-label="Bar composition. Drag shadows and body edges; left and right arrows choose a bar; up and down arrows move it; space changes the first bar's colour, and every later bar's colour follows from where it sits against the previous close; plus and minus add or remove a bar; the bracket keys bring the bars closer together or further apart; P starts pinning relations."></canvas>
-      <p class="hint" id="hint">Drag a shadow or a body edge · drag a body to move it · tap the first bar to change its colour; the others follow from where they sit · hold ⌥ to pass levels freely</p>
+      <p class="hint" id="hint">Each bar opens where the one before it closed · drag a close, a shadow or a body · tap the first bar to change its colour · hold ⌥ to pass levels freely</p>
       <div class="dock">
         <label class="space" title="Space between the bars · [ and ] · pinch on the paper">
           <span class="ma" lang="ja" aria-hidden="true">間</span>
@@ -447,6 +447,35 @@ function markSet(list) {
   return out;
 }
 /* ---- end of the feel ---- */
+/* ---- the chain: pure functions, checked by checks/chain.mjs ---- */
+// BTCUSDT trades around the clock, so every bar opens where the previous bar closed. A drawn bar is [low, body bottom,
+// body top, high] with a direction; its open and close are the body's ends in that direction. The free prices of a
+// drawing are the first bar's open and every bar's close, low and high; every later open is the previous close.
+const closeOf = (v, d) => (d === 'u' ? v[2] : v[1]);
+const openOf = (v, d) => (d === 'u' ? v[1] : v[2]);
+function chainParams(bars) {
+  return { o0: openOf(bars[0].v, bars[0].d), c: bars.map(b => closeOf(b.v, b.d)), l: bars.map(b => b.v[0]), h: bars.map(b => b.v[3]), d: bars.map(b => b.d) };
+}
+// the bars those prices make: each body runs from its open to its close, its colour is which way it went (a bar that
+// closes where it opened is a doji and keeps the direction it had), and its shadows reach at least its body
+function chainBars(P) {
+  return P.c.map((c, i) => {
+    const o = i ? P.c[i - 1] : P.o0, lo = Math.min(o, c), hi = Math.max(o, c);
+    return { v: [Math.min(P.l[i], lo), lo, hi, Math.max(P.h[i], hi)], d: c > o ? 'u' : c < o ? 'd' : P.d[i] };
+  });
+}
+const copyParams = P => ({ o0: P.o0, c: P.c.slice(), l: P.l.slice(), h: P.h.slice(), d: P.d.slice() });
+// moving a bar: the first moves whole; a later one swings from where it opened, its close and shadows moving together
+// while its open stays on the previous close
+function moveParams(P, i, dv) {
+  const Q = copyParams(P);
+  if (i === 0) Q.o0 += dv;
+  Q.c[i] += dv; Q.l[i] += dv; Q.h[i] += dv;
+  return Q;
+}
+// the first bar's colour is chosen by trading its open and close: its body stays, and the next bar opens at its other end
+function flipParams(P) { const Q = copyParams(P); Q.o0 = P.c[0]; Q.c[0] = P.o0; Q.d[0] = P.d[0] === 'u' ? 'd' : 'u'; return Q; }
+/* ---- end of the chain ---- */
 function rr(ctx, x, y, w, h, r) { r = Math.max(0, Math.min(r, w / 2, h / 2)); ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
 function fitCanvas(cv, w, h) {
   const dpr = Math.min(2, window.devicePixelRatio || 1), W = Math.round(w * dpr), H = Math.round(h * dpr);
@@ -518,16 +547,9 @@ const SEG_NAME = { 0: 'lower shadow', 1: 'body', 2: 'upper shadow' };
 const PART_K = { L: 0, B: 1, T: 2, H: 3 };
 const KIND_LETTER = ['O', 'H', 'L', 'C', 'B', 'T'];
 const dirOf = i => { const b = S.bars[i]; return b.v[1] === b.v[2] ? 0 : b.d === 'u' ? 1 : -1; };
-// 陽陰 follow the bars. BTCUSDT trades around the clock, so each bar opens where the previous bar closed: a bar after the
-// first opens at the end of its body nearer the previous close, so a body above that close rose (green) and one below it
-// fell (red). A body centred on the previous close keeps its colour. Only the first bar's colour is chosen.
-function followColours() {
-  for (let i = 1; i < S.bars.length; i++) {
-    const p = S.bars[i - 1], b = S.bars[i], close = p.d === 'u' ? p.v[2] : p.v[1];
-    const fromBottom = Math.abs(b.v[1] - close), fromTop = Math.abs(b.v[2] - close);
-    if (fromBottom < fromTop) b.d = 'u'; else if (fromTop < fromBottom) b.d = 'd';
-  }
-}
+// 鎖: the drawing keeps the chain after every change, and every bar's colour is which way it went from its open
+function chain() { setBars(chainBars(chainParams(S.bars))); }
+function setBars(out) { S.bars.forEach((b, i) => { b.v.set(out[i].v); b.d = out[i].d; }); }
 function ohlcOf(i) { const [l, lo, hi, h] = S.bars[i].v, d = dirOf(i); return d >= 0 ? [lo, h, l, hi] : [hi, h, l, lo]; }
 function kindOf(bar, part) {
   if (part === 'H') return 1; if (part === 'L') return 2;
@@ -588,17 +610,18 @@ function heldNow() {
 
 const Ops = {
   select(i) { i = clamp(i, 0, S.bars.length - 1); if (S.sel === i) return; S.sel = i; refresh(); },
-  // only the first bar's colour is chosen; every later bar's follows from where it sits (followColours)
-  flip(i) { const b = S.bars[i]; if (i > 0 || !S.colored || b.v[1] === b.v[2]) return; pushHist(); b.d = b.d === 'u' ? 'd' : 'u'; refresh(); },
+  // only the first bar's colour is chosen; every later bar's is which way it went from the previous close (the chain)
+  flip(i) { const b = S.bars[i]; if (i > 0 || !S.colored || b.v[1] === b.v[2]) return; pushHist(); setBars(chainBars(flipParams(chainParams(S.bars)))); Stage.fit(); refresh(); },
   add() {
     if (S.bars.length >= MAXN) return;
     pushHist();
+    // the new bar carries on the way the last one went, from where it closed
     const last = S.bars[S.bars.length - 1], span = Stage.view.thi - Stage.view.tlo;
     const range = last.v[3] - last.v[0] || span * 0.12;
     const shift = 0.55 * range * (last.d === 'd' ? -1 : 1);
     S.bars.push(newBar(Array.from(last.v, x => x + shift), last.d));
     S.sel = S.bars.length - 1;
-    Stage.fit(); refresh();
+    chain(); Stage.fit(); refresh();
   },
   remove() {
     if (S.bars.length <= MINN) return;
@@ -611,7 +634,7 @@ const Ops = {
   },
   nudge(i, px) {
     const G = Stage.geom(), dv = px * (Stage.view.hi - Stage.view.lo) / G.plotH;
-    pushHist(); for (let k = 0; k < 4; k++) S.bars[i].v[k] += dv;
+    pushHist(); setBars(chainBars(moveParams(chainParams(S.bars), i, dv)));
     Stage.fit(); refresh();
   },
   restore(st) {
@@ -683,7 +706,7 @@ function namesOf(id) {
 }
 
 /* ================= the paper ================= */
-const HINT_DRAW = 'Drag a shadow or a body edge · drag a body to move it · tap the first bar to change its colour; the others follow from where they sit · hold ⌥ to pass levels freely';
+const HINT_DRAW = 'Each bar opens where the one before it closed · drag a close, a shadow or a body · tap the first bar to change its colour · hold ⌥ to pass levels freely';
 const HINT_PIN = 'Tap two points to hold how they relate · tap a body to hold its colour · tap a knot to let it go · Esc when done';
 const Stage = {
   wrap: $('#cvwrap'), cv: $('#cv'), hint: $('#hint'),
@@ -843,11 +866,14 @@ const Stage = {
     if (!h) return '';
     const b = S.bars[h.bar], d = identity().d[h.bar], name = k => { const n = epName(d, k); return EP_JA[n] && S.colored ? `${n} · ${EP_JA[n]}` : n; };
     if (h.kind === 'grip') return `Bar ${h.bar + 1} · drag to move it`;
-    if (h.kind === 'move') return !S.colored ? 'drag to move this bar' : h.bar === 0 ? 'drag to move · tap to change colour' : 'drag to move · its colour follows from the previous close';
-    if (h.kind === 'doji') return 'drag up or down to open a body';
+    if (h.kind === 'move') return h.bar === 0 ? (S.colored ? 'drag to move · tap to change colour' : 'drag to move this bar') : `drag to swing its close and shadows · it opens where Bar ${h.bar} closed`;
+    if (h.kind === 'doji') return h.bar === 0 ? 'drag up or down to open a body' : 'drag its close up or down: up rises, down falls';
     if (h.part === 'H') return b.v[3] === b.v[2] ? 'pull up for an upper shadow' : name(3);
     if (h.part === 'L') return b.v[0] === b.v[1] ? 'pull down for a lower shadow' : name(0);
-    return name(h.part === 'T' ? 2 : 1);
+    const k = h.part === 'T' ? 2 : 1;
+    // a later bar's open is the previous bar's close: holding it moves both
+    if (h.bar > 0 && b.v[1] !== b.v[2] && k === (b.d === 'u' ? 1 : 2)) return `${name(k)} · where Bar ${h.bar} closed · drag to move both`;
+    return name(k);
   },
   // where a point sits against its neighbours, in words
   relWord(i, k) {
@@ -877,7 +903,7 @@ const Stage = {
     if (S.sel !== h.bar) Ops.select(h.bar);
     // the drawing stays exactly where it is under the pointer: a frame still easing stops where it is, not where it was going
     this.view.tgt.set(this.view.cur); this.view.vel.fill(0);
-    this.drag = { ...h, y0: p.y, base: S.bars.map(b => Float64Array.from(b.v)), start: snap(), moved: false };
+    this.drag = { ...h, y0: p.y, base: S.bars.map(b => Float64Array.from(b.v)), P: chainParams(S.bars), start: snap(), moved: false };
     this.ptr = p; App.kick();
   },
   move(e) {
@@ -890,54 +916,73 @@ const Stage = {
   // edges give like rubber (give), and near another level the part eases onto it, rests there exactly and eases off
   // again (detent); ⌥ passes levels freely. Everything is measured in px on the frame as it stood at the press, which
   // stays still until you let go and then grows, if it must, to take the drawing in.
+  // 鎖: a drag moves one of the drawing's free prices (a close, the first bar's open, a low or a high) and the chain makes
+  // the bars from them, so the next bar opens where the moved one closes and every colour is which way its bar went.
   dragTo(p, free) {
-    const d = this.drag, G = this.geom(), i = d.bar, b = S.bars[i], own = d.base[i];
+    const d = this.drag, G = this.geom(), i = d.bar, n = S.bars.length, own = d.base[i], P0 = d.P;
     const raw = p.y - d.y0, dy = eased(raw);
     if (!d.moved && Math.abs(raw) >= SLOP) { d.moved = true; if (d.kind === 'move' || d.kind === 'grip') this.cv.style.cursor = 'grabbing'; }
     const Y = v => this.Y(v, G), per = (this.view.hi - this.view.lo) / G.plotH, V = y => this.view.lo + (G.plotBottom - y) * per;
     const top = 6, bottom = G.h - 6;
-    const others = []; d.base.forEach((v, j) => { if (j !== i) for (let k = 0; k < 4; k++) others.push(v[k]); });
+    // where each bar's open and close sat at the press, and the prices this drag carries; every other price is a level
+    const oK = j => (P0.d[j] === 'u' ? 1 : 2), cK = j => 3 - oK(j);
+    const carried = new Set(), carry = (j, k) => carried.add(j * 4 + k);
+    const levels = () => { const out = []; d.base.forEach((v, j) => { for (let k = 0; k < 4; k++) if (!carried.has(j * 4 + k)) out.push(v[k]); }); return out; };
+    let P, lead;
     this.snapV = null; this.snapA = 0;
     if (d.kind === 'move' || d.kind === 'grip') {
-      // the places where one of this bar's prices meets another bar's, as offsets from where the bar started
+      // the first bar moves whole; a later one swings from its open, its close and shadows moving together
+      const moving = i === 0 ? [0, 1, 2, 3] : [0, cK(i), 3];
+      for (const k of moving) carry(i, k);
+      if (i + 1 < n) carry(i + 1, oK(i + 1));
+      // the places where one of the moving prices meets a level, as offsets from where the bar started
       const marks = [];
-      for (let k = 0; k < 4; k++) for (const o of others) marks.push({ y: Y(o) - Y(own[k]), k, o });
+      for (const o of levels()) for (const k of moving) marks.push({ y: Y(o) - Y(own[k]), k, o });
       // a bar that starts near a level starts at rest where it is, so that level's pull never moves it at the press
-      if (marks.some(m => Math.abs(m.y) < DETENT_REACH)) marks.push({ y: 0, k: 0, o: own[0], start: true });
+      if (marks.some(m => Math.abs(m.y) < DETENT_REACH)) marks.push({ y: 0, k: moving[0], o: own[moving[0]], start: true });
       const set = markSet(marks), lo = top - Y(own[3]), hi = bottom - Y(own[0]);
       const u = lo < hi ? give(dy, lo, hi) : dy, r = free ? null : detent(u, set.map(m => m.y));
-      if (r && r.at) {
-        const m = set[r.j], shift = m.o - own[m.k];
-        for (let k = 0; k < 4; k++) b.v[k] = own[k] === own[m.k] ? m.o : own[k] + shift;
-      } else {
-        const shift = -(r ? r.y : u) * per;
-        for (let k = 0; k < 4; k++) b.v[k] = own[k] + shift;
-      }
-      if (r && r.j >= 0 && !set[r.j].start) { this.snapV = set[r.j].o; this.snapA = r.near; d.lead = set[r.j].k; } else d.lead = 0;
+      const m = r && r.at ? set[r.j] : null;
+      P = moveParams(P0, i, m ? m.o - own[m.k] : -(r ? r.y : u) * per);
+      // resting on a level is meeting it exactly: the prices that met it take its value, not a sum that may round
+      if (m) { const at = own[m.k]; if (i === 0 && P0.o0 === at) P.o0 = m.o; if (P0.c[i] === at) P.c[i] = m.o; if (P0.l[i] === at) P.l[i] = m.o; if (P0.h[i] === at) P.h[i] = m.o; }
+      if (r && r.j >= 0 && !set[r.j].start) { this.snapV = set[r.j].o; this.snapA = r.near; lead = set[r.j].k; }
     } else {
-      // a doji opens toward the side you pull, and closes again if you come back through it
-      if (d.kind === 'doji') { d.kind = 'end'; d.opens = true; }
-      if (d.opens) {
-        const up = dy < 0; d.part = up ? 'T' : 'B';
-        d.group = up ? (own[3] === own[2] ? [2, 3] : [2]) : (own[0] === own[1] ? [1, 0] : [1]);
+      // the free price the part is: a shadow's end, a close, the first bar's open, or the open of a later bar, which is
+      // the previous bar's close; a doji's point is its close. A close carries the shadow ends that sit on it
+      // which one is decided once, at the press: a close that crosses its open and turns the bar stays the held close
+      if (d.which == null) {
+        let w = 'c', of = i;
+        if (d.part === 'H') w = 'h';
+        else if (d.part === 'L') w = 'l';
+        else if (!(d.kind === 'doji' || own[1] === own[2]) && (d.part === 'T' ? 2 : 1) !== cK(i)) { if (i === 0) w = 'o0'; else of = i - 1; }
+        d.which = w; d.of = of; d.kind = 'end';
       }
-      const lead = d.group[0], u0 = Y(own[lead]), marks = others.map(o => ({ y: Y(o), v: o }));
-      for (let k = 0; k < 4; k++) if (!d.group.includes(k)) marks.push({ y: Y(own[k]), v: own[k] });
+      const which = d.which, j = d.of, flush = [];   // shadow ends that sit on a moving end, as [bar, 'h' | 'l']
+      const sits = (q, k) => { if (k === 2 && d.base[q][3] === d.base[q][2]) { carry(q, 3); flush.push([q, 'h']); } if (k === 1 && d.base[q][0] === d.base[q][1]) { carry(q, 0); flush.push([q, 'l']); } };
+      let from;
+      if (which === 'h') { carry(i, 3); from = P0.h[i]; }
+      else if (which === 'l') { carry(i, 0); from = P0.l[i]; }
+      else if (which === 'o0') { carry(0, oK(0)); sits(0, oK(0)); from = P0.o0; }
+      else { carry(j, cK(j)); sits(j, cK(j)); if (j + 1 < n) { carry(j + 1, oK(j + 1)); sits(j + 1, oK(j + 1)); } from = P0.c[j]; }
+      const u0 = Y(from), marks = levels().map(o => ({ y: Y(o), v: o }));
       // a part that starts near a level starts at rest where it is, so that level's pull never moves it at the press
-      if (marks.some(m => Math.abs(m.y - u0) < DETENT_REACH)) marks.push({ y: u0, v: own[lead], start: true });
+      if (marks.some(m => Math.abs(m.y - u0) < DETENT_REACH)) marks.push({ y: u0, v: from, start: true });
       const set = markSet(marks), u = give(u0 + dy, top, bottom), r = free ? null : detent(u, set.map(m => m.y));
       const v = r && r.at ? set[r.j].v : V(r ? r.y : u);
       if (r && r.j >= 0 && !set[r.j].start) { this.snapV = set[r.j].v; this.snapA = r.near; }
-      // the part pushes the bar's other prices ahead of it, and they come back when it does
-      for (let k = 0; k < 4; k++) {
-        if (d.group.includes(k)) b.v[k] = v;
-        else if (k > lead && own[k] < v) b.v[k] = v;
-        else if (k < lead && own[k] > v) b.v[k] = v;
-        else b.v[k] = own[k];
-      }
-      d.lead = lead;
+      P = copyParams(P0);
+      if (which === 'h') P.h[i] = v; else if (which === 'l') P.l[i] = v; else if (which === 'o0') P.o0 = v; else P.c[j] = v;
+      for (const [q, s] of flush) P[s][q] = v;
     }
-    b.dv.set(b.v); b.vv.fill(0);
+    // the bars the prices make; the ones that changed follow the pointer directly
+    const out = chainBars(P);
+    S.bars.forEach((b, q) => { if (b.d !== out[q].d || b.v.some((x, k) => x !== out[q].v[k])) { b.v.set(out[q].v); b.d = out[q].d; b.dv.set(b.v); b.vv.fill(0); } });
+    // what the held part is now: a close may have crossed its open and turned the bar
+    const nd = S.bars[i].d;
+    if (lead == null) lead = d.which === 'h' ? 3 : d.which === 'l' ? 0 : d.which === 'o0' || (d.which === 'c' && d.of === i - 1) ? (nd === 'u' ? 1 : 2) : (nd === 'u' ? 2 : 1);
+    if (d.kind === 'end') d.part = ['L', 'B', 'T', 'H'][lead];
+    d.lead = lead;
     d.word = this.relWord(i, d.lead);
     refresh();
   },
@@ -947,8 +992,8 @@ const Stage = {
     const d = this.drag; if (!d) return;
     this.drag = null; this.snapV = null; this.snapA = 0; this.cv.style.cursor = '';
     if (!d.moved) {
-      // a tap: whatever the press moved by a hair goes back exactly
-      const b = S.bars[d.bar]; b.v.set(d.base[d.bar]); b.dv.set(b.v); b.vv.fill(0);
+      // a tap: whatever the press moved by a hair, on the bar or its neighbours, goes back exactly
+      S.bars.forEach((b, q) => { if (b.d !== d.P.d[q] || b.v.some((x, k) => x !== d.base[q][k])) { b.v.set(d.base[q]); b.d = d.P.d[q]; b.dv.set(b.v); b.vv.fill(0); } });
       if (d.kind === 'move') Ops.flip(d.bar);
       refresh(); return;
     }
@@ -974,10 +1019,16 @@ const Stage = {
       const ly = Math.max(y, lastY + 13); lastY = ly;
       ctx.fillStyle = COL['ink-3']; ctx.fillText(String(rank), G.w - 24, ly);
     }
-    // exact ties between bars: the only equalities the engine sees
+    // 鎖: each bar opens where the one before it closed, a hairline from that close to this open
+    ctx.strokeStyle = COL['ink-3']; ctx.lineWidth = 1; ctx.globalAlpha = this.trace ? 0.25 : 0.6;
+    for (let i = 1; i < G.N; i++) {
+      const a = S.bars[i - 1], c = S.bars[i], y = Y(closeOf(a.dv, a.d)), x0 = a.x + G.bw / 2, x1 = c.x - G.bw / 2;
+      if (x1 > x0) { ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke(); }
+    }
+    // exact ties between bars, besides the chain itself: the only equalities the engine sees
     ctx.strokeStyle = COL.ai; ctx.lineWidth = 1; ctx.setLineDash([3, 4]); ctx.globalAlpha = this.trace ? 0.3 : 0.8;
     for (let i = 0; i < G.N; i++) for (let j = i + 1; j < G.N; j++) {
-      const a = S.bars[i], c = S.bars[j], done = new Set();
+      const a = S.bars[i], c = S.bars[j], done = new Set(j === i + 1 ? [closeOf(a.v, a.d)] : []);
       for (let k = 0; k < 4; k++) for (let q = 0; q < 4; q++) if (a.v[k] === c.v[q] && !done.has(a.v[k])) {
         done.add(a.v[k]); const y = Math.round(Y(a.dv[k])) + 0.5;
         ctx.beginPath(); ctx.moveTo(a.x, y); ctx.lineTo(c.x, y); ctx.stroke();
@@ -1632,7 +1683,7 @@ const App = {
   },
 };
 function refresh() {
-  followColours();
+  chain();
   Match.drawnKey = Match.key();
   Stage.dropStale();
   const n = S.bars.length;
