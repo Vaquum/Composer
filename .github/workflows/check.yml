@@ -37,6 +37,8 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: The page and its reference
         run: node checks/page.mjs
+      - name: The feel of a drag, continuous with no jump
+        run: node checks/drag.mjs
       - name: Similarity ranking against an independent brute force, on the current bars
         run: python checks/with_bars.py checks/similarity-windows.mjs
       - name: Two-bar colours and proportions
