@@ -886,6 +886,8 @@ const Stage = {
       // the places where one of this bar's prices meets another bar's, as offsets from where the bar started
       const marks = [];
       for (let k = 0; k < 4; k++) for (const o of others) marks.push({ y: Y(o) - Y(own[k]), k, o });
+      // a bar that starts near a level starts at rest where it is, so that level's pull never moves it at the press
+      if (marks.some(m => Math.abs(m.y) < DETENT_REACH)) marks.push({ y: 0, k: 0, o: own[0], start: true });
       const set = markSet(marks), lo = top - Y(own[3]), hi = bottom - Y(own[0]);
       const u = lo < hi ? give(dy, lo, hi) : dy, r = free ? null : detent(u, set.map(m => m.y));
       if (r && r.at) {
@@ -895,7 +897,7 @@ const Stage = {
         const shift = -(r ? r.y : u) * per;
         for (let k = 0; k < 4; k++) b.v[k] = own[k] + shift;
       }
-      if (r && r.j >= 0) { this.snapV = set[r.j].o; this.snapA = r.near; d.lead = set[r.j].k; } else d.lead = 0;
+      if (r && r.j >= 0 && !set[r.j].start) { this.snapV = set[r.j].o; this.snapA = r.near; d.lead = set[r.j].k; } else d.lead = 0;
     } else {
       // a doji opens toward the side you pull, and closes again if you come back through it
       if (d.kind === 'doji') { d.kind = 'end'; d.opens = true; }
@@ -903,11 +905,13 @@ const Stage = {
         const up = dy < 0; d.part = up ? 'T' : 'B';
         d.group = up ? (own[3] === own[2] ? [2, 3] : [2]) : (own[0] === own[1] ? [1, 0] : [1]);
       }
-      const lead = d.group[0], marks = others.map(o => ({ y: Y(o), v: o }));
+      const lead = d.group[0], u0 = Y(own[lead]), marks = others.map(o => ({ y: Y(o), v: o }));
       for (let k = 0; k < 4; k++) if (!d.group.includes(k)) marks.push({ y: Y(own[k]), v: own[k] });
-      const set = markSet(marks), u = give(Y(own[lead]) + dy, top, bottom), r = free ? null : detent(u, set.map(m => m.y));
+      // a part that starts near a level starts at rest where it is, so that level's pull never moves it at the press
+      if (marks.some(m => Math.abs(m.y - u0) < DETENT_REACH)) marks.push({ y: u0, v: own[lead], start: true });
+      const set = markSet(marks), u = give(u0 + dy, top, bottom), r = free ? null : detent(u, set.map(m => m.y));
       const v = r && r.at ? set[r.j].v : V(r ? r.y : u);
-      if (r && r.j >= 0) { this.snapV = set[r.j].v; this.snapA = r.near; }
+      if (r && r.j >= 0 && !set[r.j].start) { this.snapV = set[r.j].v; this.snapA = r.near; }
       // the part pushes the bar's other prices ahead of it, and they come back when it does
       for (let k = 0; k < 4; k++) {
         if (d.group.includes(k)) b.v[k] = v;
