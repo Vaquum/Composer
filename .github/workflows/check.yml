@@ -39,6 +39,8 @@ jobs:
         run: node checks/page.mjs
       - name: The feel of a drag, continuous with no jump
         run: node checks/drag.mjs
+      - name: The chain, each bar opening at the previous close
+        run: node checks/chain.mjs
       - name: Similarity ranking against an independent brute force, on the current bars
         run: python checks/with_bars.py checks/similarity-windows.mjs
       - name: Two-bar colours and proportions
