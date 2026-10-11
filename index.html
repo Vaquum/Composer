@@ -244,6 +244,15 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
   .ref { position: static; height: auto; align-self: stretch; }
   .stage { min-height: 0; overflow-y: auto; scrollbar-width: thin; }
   .cvwrap { min-height: 300px; }
+  /* the paper takes what is left, so whatever is below it keeps one height while its words change: the status keeps
+     two lines and the progress bar its place, the names one line, the two sentences two, and the code one */
+  .status { height: 36px; line-height: 18px; }
+  .status .msg { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .prog[hidden] { display: block; visibility: hidden; }
+  .names { flex-wrap: nowrap; height: 24px; overflow: hidden; white-space: nowrap; }
+  .desc { height: 40px; }
+  .desc span { line-height: 19px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .codebox code { flex: 1 0 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 }
 
 @media (max-width: 900px) {
@@ -680,11 +689,16 @@ const Stage = {
   wrap: $('#cvwrap'), cv: $('#cv'), hint: $('#hint'),
   view: { cur: new Float64Array([0, 100]), vel: new Float64Array(2), tgt: new Float64Array([0, 100]), get lo() { return this.cur[0]; }, get hi() { return this.cur[1]; }, get tlo() { return this.tgt[0]; }, get thi() { return this.tgt[1]; } },
   ghosts: [], drag: null, hov: null, ptr: null, snapV: null, snapA: 0, fanA: 0, ready: false,
+  plot: { cur: new Float64Array(2), vel: new Float64Array(2), tgt: new Float64Array(2), ready: false },
   pinFrom: null, pinHov: null, pinPress: null, trace: null,
   geom() {
     const w = this.wrap.clientWidth, h = this.wrap.clientHeight, N = S.bars.length;
-    // the plot starts below the hint, which wraps onto several lines on a phone
-    const plotTop = Math.max(70, this.hint.offsetTop + this.hint.offsetHeight + 24), plotBottom = Math.max(plotTop + 160, h - 84);
+    // the plot starts below the hint, which wraps onto several lines on a phone. Where it starts and ends follows the
+    // canvas, but eases there and holds still while you drag, so a change of layout around the paper never jumps the drawing
+    const top = Math.max(70, this.hint.offsetTop + this.hint.offsetHeight + 24), P = this.plot;
+    P.tgt[0] = top; P.tgt[1] = Math.max(top + 160, h - 84);
+    if (!P.ready || calm()) { P.cur.set(P.tgt); P.vel.fill(0); P.ready = h > 0; }
+    const plotTop = P.cur[0], plotBottom = P.cur[1];
     // bar width follows the count and the screen; 間 sets the pitch, from nearly touching to as far apart as fits
     // 続: the fan's six steps always keep their places beside the bars, each FAN_PITCH of a bar's, so the bars never
     // shift sideways when an answer arrives; the bars and the fan are centred together and always fit across the paper
@@ -720,6 +734,8 @@ const Stage = {
     let busy = false;
     const fast = calm(), span = this.view.thi - this.view.tlo;
     if (!this.drag && springArr(this.view.cur, this.view.vel, this.view.tgt, 2, fast ? 40 : 7, dt, span * 1e-4)) busy = true;
+    this.geom();
+    if (!this.drag && springArr(this.plot.cur, this.plot.vel, this.plot.tgt, 2, fast ? 40 : 9, dt, 0.05)) busy = true;
     const G = this.geom(), id = identity(), kc = 1 - Math.exp(-(fast ? 40 : 6) * dt);
     S.bars.forEach((b, i) => {
       const tx = G.xs[i];
