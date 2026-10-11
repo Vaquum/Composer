@@ -307,7 +307,7 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
   <main class="stage" aria-label="Composition">
     <div class="cvwrap" id="cvwrap">
       <canvas id="cv" tabindex="0" aria-label="Bar composition. Drag shadows and body edges; left and right arrows choose a bar; up and down arrows move it; space changes the first bar's colour, and every later bar's colour follows from where it sits against the previous close; plus and minus add or remove a bar; the bracket keys bring the bars closer together or further apart; P starts pinning relations."></canvas>
-      <p class="hint" id="hint">Drag a shadow or a body edge · drag a body to move it · tap the first bar to change its colour; the others follow from where they sit · hold ⌥ to place without snapping</p>
+      <p class="hint" id="hint">Drag a shadow or a body edge · drag a body to move it · tap the first bar to change its colour; the others follow from where they sit · hold ⌥ to pass levels freely</p>
       <div class="dock">
         <label class="space" title="Space between the bars · [ and ] · pinch on the paper">
           <span class="ma" lang="ja" aria-hidden="true">間</span>
@@ -399,6 +399,45 @@ function springArr(x, v, t, n, w, dt, eps) {
   }
   return moving;
 }
+/* ---- the feel of a drag: pure functions of the pointer, checked by checks/drag.mjs ---- */
+// A press barely moves what it holds until it is clearly a drag, then the part catches up with the pointer within a few px:
+// continuous, monotonic, and one to one beyond about two slops.
+const SLOP = 3;
+const eased = dy => dy * (1 - Math.exp(-(dy * dy) / (SLOP * SLOP)));
+// Past the canvas edge the part gives like rubber instead of stopping at a wall: it slows smoothly and never quite
+// reaches GIVE px beyond the edge.
+const GIVE = 28;
+function give(u, lo, hi) {
+  if (u < lo) return lo - GIVE * (1 - Math.exp((u - lo) / GIVE));
+  if (u > hi) return hi + GIVE * (1 - Math.exp((hi - u) / GIVE));
+  return u;
+}
+// 寄せ: near a level the part eases onto it, rests there exactly for a short stretch, and eases off again. `marks` are px,
+// ascending and distinct; a mark's reach stops halfway to its neighbours, so reaches never overlap and the place is a
+// continuous, monotonic function of the pointer with a matching slope where each reach begins and ends. Returns the
+// place, the mark it is near (-1 for none), whether it rests on that mark exactly, and how near it is (0 to 1).
+const DETENT_REACH = 9, DETENT_REST = 2.5;
+function detent(u, marks, reach = DETENT_REACH, rest = DETENT_REST) {
+  let j = -1, best = Infinity;
+  for (let i = 0; i < marks.length; i++) { const d = Math.abs(u - marks[i]); if (d < best) { best = d; j = i; } }
+  if (j < 0) return { y: u, j: -1, at: false, near: 0 };
+  const m = marks[j];
+  const r = Math.min(reach, j > 0 ? (m - marks[j - 1]) / 2 : reach, j < marks.length - 1 ? (marks[j + 1] - m) / 2 : reach);
+  if (!(r > 0) || best >= r) return { y: u, j: -1, at: false, near: 0 };
+  const p = Math.min(rest, r * 0.35);
+  if (best <= p) return { y: m, j, at: true, near: 1 };
+  // a cubic from rest (slope 0) to the pointer's own pace (slope 1 in px) across the rest of the reach
+  const x = (best - p) / (r - p), k = (r - p) / r, h = (3 - k) * x * x + (k - 2) * x * x * x;
+  return { y: m + Math.sign(u - m) * r * h, j, at: false, near: 1 - x };
+}
+// marks in px, ascending, one per place
+function markSet(list) {
+  list.sort((a, b) => a.y - b.y);
+  const out = [];
+  for (const m of list) if (!out.length || m.y - out[out.length - 1].y > 1e-6) out.push(m);
+  return out;
+}
+/* ---- end of the feel ---- */
 function rr(ctx, x, y, w, h, r) { r = Math.max(0, Math.min(r, w / 2, h / 2)); ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
 function fitCanvas(cv, w, h) {
   const dpr = Math.min(2, window.devicePixelRatio || 1), W = Math.round(w * dpr), H = Math.round(h * dpr);
@@ -430,8 +469,8 @@ const KANJI = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九'
 const ORD_JA = Array.from({ length: 20 }, (_, i) => { const n = i + 1, t = Math.floor(n / 10), u = n % 10; return (t ? (t > 1 ? KANJI[t] : '') + '十' : '') + (u ? KANJI[u] : '') + '本目'; });
 // the engine keys and counts windows up to ten bars; matching on held relations reads the bars directly, so compositions may go further
 const MINN = 2, MAXN = 20;
-// a step of the fan takes this share of a bar's place across the paper
-const FAN_PITCH = 0.62;
+// a step of the fan takes this share of a bar's place across the paper; the matcher's fan looks six bars ahead
+const FAN_PITCH = 0.62, FAN_STEPS = 6;
 const TF_LABELS = ['15m', '30m', '1h', '2h', '4h'];
 
 /* ================= the composition: free prices, exact order ================= */
@@ -635,22 +674,21 @@ function namesOf(id) {
 }
 
 /* ================= the paper ================= */
-const HINT_DRAW = 'Drag a shadow or a body edge · drag a body to move it · tap the first bar to change its colour; the others follow from where they sit · hold ⌥ to place without snapping';
+const HINT_DRAW = 'Drag a shadow or a body edge · drag a body to move it · tap the first bar to change its colour; the others follow from where they sit · hold ⌥ to pass levels freely';
 const HINT_PIN = 'Tap two points to hold how they relate · tap a body to hold its colour · tap a knot to let it go · Esc when done';
 const Stage = {
   wrap: $('#cvwrap'), cv: $('#cv'), hint: $('#hint'),
   view: { cur: new Float64Array([0, 100]), vel: new Float64Array(2), tgt: new Float64Array([0, 100]), get lo() { return this.cur[0]; }, get hi() { return this.cur[1]; }, get tlo() { return this.tgt[0]; }, get thi() { return this.tgt[1]; } },
-  ghosts: [], drag: null, hov: null, ptr: null, snapV: null, ready: false,
+  ghosts: [], drag: null, hov: null, ptr: null, snapV: null, snapA: 0, fanA: 0, ready: false,
   pinFrom: null, pinHov: null, pinPress: null, trace: null,
   geom() {
     const w = this.wrap.clientWidth, h = this.wrap.clientHeight, N = S.bars.length;
     // the plot starts below the hint, which wraps onto several lines on a phone
     const plotTop = Math.max(70, this.hint.offsetTop + this.hint.offsetHeight + 24), plotBottom = Math.max(plotTop + 160, h - 84);
     // bar width follows the count and the screen; 間 sets the pitch, from nearly touching to as far apart as fits
-    // 続: with a fan to draw, its six steps take places beside the bars, each FAN_PITCH of a bar's, and the bars and the
-    // fan are centred together, so both always fit across the paper
-    const steps = Match.result && Match.result.panes && Match.result.panes.cont ? Match.result.panes.cont.fan.length : 0;
-    const fanSlots = steps ? steps * FAN_PITCH + 1 : 0;
+    // 続: the fan's six steps always keep their places beside the bars, each FAN_PITCH of a bar's, so the bars never
+    // shift sideways when an answer arrives; the bars and the fan are centred together and always fit across the paper
+    const fanSlots = FAN_STEPS * FAN_PITCH + 1;
     const room = Math.max(24, (w - 150) / (N + fanSlots)), bw = clamp(Math.min(210, room) * 0.4, 6, 68);
     const tight = bw * 1.22, airy = Math.max(tight, Math.min(room, 340));
     const spacing = tight * Math.pow(airy / tight, S.space);
@@ -677,7 +715,6 @@ const Stage = {
     if (force || !this.ready || mn < inLo || mx > inHi || span < cur * 0.4) { this.view.tgt[0] = lo; this.view.tgt[1] = hi; }
     if (!this.ready || calm()) { this.view.cur.set(this.view.tgt); this.view.vel.fill(0); this.ready = true; }
   },
-  settle() { this.view.cur.set(this.view.tgt); this.view.vel.fill(0); for (const b of S.bars) { b.dv.set(b.v); b.vv.fill(0); } },
   retire(b) { this.ghosts.push({ dv: Float64Array.from(b.dv), x: b.x, col: b.col ? b.col.slice() : COL.rgb.z.slice(), a: b.a }); },
   step(dt) {
     let busy = false;
@@ -700,6 +737,9 @@ const Stage = {
     this.ghosts = this.ghosts.filter(g => g.a > 0.01);
     if (this.ghosts.length) busy = true;
     if (this.trace && this.trace.a < 1) { this.trace.a = Math.min(1, this.trace.a + dt * (fast ? 40 : 4)); busy = true; }
+    // the fan leaves quickly when a drag begins and returns slowly once the history answers the drawing as it stands
+    const fanT = this.drag && this.drag.moved ? 0 : Match.fresh() ? 1 : 0;
+    if (Math.abs(fanT - this.fanA) > 0.004) { this.fanA += (fanT - this.fanA) * (1 - Math.exp(-(fast ? 60 : fanT > this.fanA ? 6 : 16) * dt)); busy = true; } else this.fanA = fanT;
     return busy;
   },
   hit(px, py) {
@@ -709,7 +749,8 @@ const Stage = {
       if (Math.abs(px - cx) > G.spacing / 2) continue;
       if (py < G.plotTop - 40) return null;
       if (py > G.plotBottom + 12) return { kind: 'grip', bar: i };
-      const yL = this.Y(b.v[0], G), yB = this.Y(b.v[1], G), yT = this.Y(b.v[2], G), bodyH = yB - yT;
+      // what you grab is what you see, even while the bar is still easing to where it goes
+      const yB = this.Y(b.dv[1], G), yT = this.Y(b.dv[2], G), bodyH = yB - yT;
       const noU = b.v[3] === b.v[2], noL = b.v[0] === b.v[1];
       if (bodyH < 6) {
         if (Math.abs(py - (yT + yB) / 2) <= 10) return { kind: 'doji', bar: i };
@@ -818,40 +859,56 @@ const Stage = {
     e.preventDefault(); this.cv.focus({ preventScroll: true });
     this.cv.setPointerCapture(e.pointerId);
     if (S.sel !== h.bar) Ops.select(h.bar);
-    this.settle();
+    // the drawing stays exactly where it is under the pointer: a frame still easing stops where it is, not where it was going
+    this.view.tgt.set(this.view.cur); this.view.vel.fill(0);
     this.drag = { ...h, y0: p.y, base: S.bars.map(b => Float64Array.from(b.v)), start: snap(), moved: false };
     this.ptr = p; App.kick();
   },
   move(e) {
     const p = this.local(e); this.ptr = p;
     if (S.pinMode) { this.pinHov = this.pinHit(p.x, p.y); this.cv.style.cursor = this.pinHov ? 'pointer' : 'crosshair'; App.redraw(); return; }
-    const d = this.drag;
-    if (!d) { const h = this.hit(p.x, p.y); this.hov = h; this.cv.style.cursor = !h ? '' : h.kind === 'move' || h.kind === 'grip' ? 'grab' : 'ns-resize'; App.redraw(); return; }
-    if (!d.moved && Math.abs(p.y - d.y0) < 3) return;
-    if (!d.moved) { d.moved = true; if (d.kind === 'move' || d.kind === 'grip') this.cv.style.cursor = 'grabbing'; }
-    const G = this.geom(), i = d.bar, b = S.bars[i], base = d.base, own = base[i];
-    const per = (this.view.hi - this.view.lo) / G.plotH, free = e.altKey;
-    let dv = -(p.y - d.y0) * per;
-    if (d.kind === 'doji') {
-      const up = dv > 0; d.kind = 'end'; d.part = up ? 'T' : 'B';
-      d.group = up ? (own[3] === own[2] ? [2, 3] : [2]) : (own[0] === own[1] ? [1, 0] : [1]);
-    }
-    const others = []; base.forEach((v, j) => { if (j !== i) for (let k = 0; k < 4; k++) others.push(v[k]); });
-    this.snapV = null;
+    if (!this.drag) { const h = this.hit(p.x, p.y); this.hov = h; this.cv.style.cursor = !h ? '' : h.kind === 'move' || h.kind === 'grip' ? 'grab' : 'ns-resize'; App.redraw(); return; }
+    this.dragTo(p, e.altKey);
+  },
+  // The part you hold is a continuous, monotonic function of the pointer: a press eases into a drag (eased), the canvas
+  // edges give like rubber (give), and near another level the part eases onto it, rests there exactly and eases off
+  // again (detent); ⌥ passes levels freely. Everything is measured in px on the frame as it stood at the press, which
+  // stays still until you let go and then grows, if it must, to take the drawing in.
+  dragTo(p, free) {
+    const d = this.drag, G = this.geom(), i = d.bar, b = S.bars[i], own = d.base[i];
+    const raw = p.y - d.y0, dy = eased(raw);
+    if (!d.moved && Math.abs(raw) >= SLOP) { d.moved = true; if (d.kind === 'move' || d.kind === 'grip') this.cv.style.cursor = 'grabbing'; }
+    const Y = v => this.Y(v, G), per = (this.view.hi - this.view.lo) / G.plotH, V = y => this.view.lo + (G.plotBottom - y) * per;
+    const top = 6, bottom = G.h - 6;
+    const others = []; d.base.forEach((v, j) => { if (j !== i) for (let k = 0; k < 4; k++) others.push(v[k]); });
+    this.snapV = null; this.snapA = 0;
     if (d.kind === 'move' || d.kind === 'grip') {
-      dv = clamp(dv, this.view.lo - own[0], this.view.hi - own[3]);
-      let best = null, bd = free ? 0 : 8 * per;
-      for (let k = 0; k < 4; k++) for (const o of others) { const diff = own[k] + dv - o; if (Math.abs(diff) < bd) { bd = Math.abs(diff); best = { k, target: o, dv: dv - diff }; } }
-      if (best) dv = best.dv;
-      for (let k = 0; k < 4; k++) b.v[k] = best && own[k] === own[best.k] ? best.target : own[k] + dv;
-      if (best) this.snapV = best.target;
-      d.lead = best ? best.k : 0;
+      // the places where one of this bar's prices meets another bar's, as offsets from where the bar started
+      const marks = [];
+      for (let k = 0; k < 4; k++) for (const o of others) marks.push({ y: Y(o) - Y(own[k]), k, o });
+      const set = markSet(marks), lo = top - Y(own[3]), hi = bottom - Y(own[0]);
+      const u = lo < hi ? give(dy, lo, hi) : dy, r = free ? null : detent(u, set.map(m => m.y));
+      if (r && r.at) {
+        const m = set[r.j], shift = m.o - own[m.k];
+        for (let k = 0; k < 4; k++) b.v[k] = own[k] === own[m.k] ? m.o : own[k] + shift;
+      } else {
+        const shift = -(r ? r.y : u) * per;
+        for (let k = 0; k < 4; k++) b.v[k] = own[k] + shift;
+      }
+      if (r && r.j >= 0) { this.snapV = set[r.j].o; this.snapA = r.near; d.lead = set[r.j].k; } else d.lead = 0;
     } else {
-      const lead = d.group[0];
-      let v = clamp(own[lead] + dv, this.view.lo, this.view.hi), bd = free ? 0 : 8 * per, snapTo = null;
-      for (const o of others) { const diff = Math.abs(o - v); if (diff < bd) { bd = diff; snapTo = o; } }
-      if (!free) for (let k = 0; k < 4; k++) { if (d.group.includes(k)) continue; const diff = Math.abs(own[k] - v); if (diff < Math.min(bd, 6 * per)) { bd = diff; snapTo = own[k]; } }
-      if (snapTo !== null) { v = snapTo; this.snapV = v; }
+      // a doji opens toward the side you pull, and closes again if you come back through it
+      if (d.kind === 'doji') { d.kind = 'end'; d.opens = true; }
+      if (d.opens) {
+        const up = dy < 0; d.part = up ? 'T' : 'B';
+        d.group = up ? (own[3] === own[2] ? [2, 3] : [2]) : (own[0] === own[1] ? [1, 0] : [1]);
+      }
+      const lead = d.group[0], marks = others.map(o => ({ y: Y(o), v: o }));
+      for (let k = 0; k < 4; k++) if (!d.group.includes(k)) marks.push({ y: Y(own[k]), v: own[k] });
+      const set = markSet(marks), u = give(Y(own[lead]) + dy, top, bottom), r = free ? null : detent(u, set.map(m => m.y));
+      const v = r && r.at ? set[r.j].v : V(r ? r.y : u);
+      if (r && r.j >= 0) { this.snapV = set[r.j].v; this.snapA = r.near; }
+      // the part pushes the bar's other prices ahead of it, and they come back when it does
       for (let k = 0; k < 4; k++) {
         if (d.group.includes(k)) b.v[k] = v;
         else if (k > lead && own[k] < v) b.v[k] = v;
@@ -868,8 +925,13 @@ const Stage = {
     // a drag that began before pin mode was switched on still ends as a drag, so its search is scheduled
     if (S.pinMode && !this.drag) { if (e && e.type === 'pointerup') this.pinUp(this.local(e)); return; }
     const d = this.drag; if (!d) return;
-    this.drag = null; this.snapV = null; this.cv.style.cursor = '';
-    if (!d.moved) { if (d.kind === 'move') Ops.flip(d.bar); App.redraw(); return; }
+    this.drag = null; this.snapV = null; this.snapA = 0; this.cv.style.cursor = '';
+    if (!d.moved) {
+      // a tap: whatever the press moved by a hair goes back exactly
+      const b = S.bars[d.bar]; b.v.set(d.base[d.bar]); b.dv.set(b.v); b.vv.fill(0);
+      if (d.kind === 'move') Ops.flip(d.bar);
+      refresh(); return;
+    }
     const changed = S.bars.some((b, i) => b.v.some((x, k) => x !== d.base[i][k]));
     if (changed) pushHist(d.start);
     this.fit(); refresh();
@@ -902,7 +964,11 @@ const Stage = {
       }
     }
     ctx.setLineDash([]); ctx.globalAlpha = 1;
-    if (this.snapV !== null) { const y = Math.round(Y(this.snapV)) + 0.5; ctx.strokeStyle = COL.ai; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke(); }
+    // the level a dragged part is easing onto, drawn in as it comes near and full once it rests there
+    if (this.snapV !== null && this.snapA > 0.02) {
+      const y = Math.round(Y(this.snapV)) + 0.5;
+      ctx.strokeStyle = COL.ai; ctx.lineWidth = 1.2; ctx.globalAlpha = this.snapA * this.snapA; ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke(); ctx.globalAlpha = 1;
+    }
     for (const g of this.ghosts) this.drawCandle(ctx, G, g.x, g.dv, g.col, g.a);
     S.bars.forEach((b, i) => this.drawBar(ctx, G, i));
     this.drawFan(ctx, G);
@@ -969,7 +1035,7 @@ const Stage = {
   // their closes (10 to 90%, 25 to 75% and the median) from the last bar's close, with the shape's high and low carried on
   drawFan(ctx, G) {
     const r = Match.result, c = r && r.panes && r.panes.cont;
-    if (!c || (this.drag && this.drag.moved) || c.fan.length < 1) return;
+    if (!c || c.fan.length < 1 || this.fanA < 0.01) return;
     let lo = Infinity, hi = -Infinity;
     for (const b of S.bars) { lo = Math.min(lo, b.dv[0]); hi = Math.max(hi, b.dv[3]); }
     const n = S.bars.length, last = S.bars[n - 1], lx = (last.x == null ? G.xs[n - 1] : last.x) + G.bw / 2;
@@ -979,7 +1045,7 @@ const Stage = {
     const y0 = this.Y(dirOf(n - 1) >= 0 ? last.dv[2] : last.dv[1], G);
     ctx.save();
     ctx.beginPath(); ctx.rect(0, G.plotTop - 24, G.w, G.plotH + 48); ctx.clip();
-    ctx.globalAlpha = (Match.current() ? 1 : 0.35) * (this.trace ? 0.3 : 1);
+    ctx.globalAlpha = this.fanA * (this.trace ? 0.3 : 1);
     const band = (a, b, alpha) => {
       ctx.beginPath(); ctx.moveTo(lx, y0);
       c.fan.forEach((qs, j) => ctx.lineTo(xs[j], Y(qs[b])));
@@ -1092,6 +1158,7 @@ new ResizeObserver(() => App.redraw()).observe(Stage.wrap);
 /* ================= the history: one matcher, three ways of holding, mixed as you like ================= */
 const Match = {
   worker: null, ready: false, failed: false, id: 0, shown: 0, sentKey: '', timer: 0, sent: null, result: null, sticky: -1,
+  drawnKey: '', resultKey: '',
   start() {
     try {
       const el = document.getElementById('matcher-src'), src = el ? el.textContent.trim() : '';
@@ -1110,6 +1177,9 @@ const Match = {
   },
   // the result on screen answers the drawing as it stands
   current() { return !!this.result && this.result.id === this.id; },
+  // the result on screen answers the drawing as it is drawn now, not only the last search sent
+  fresh() { return !!this.result && this.resultKey === this.drawnKey; },
+  key() { return JSON.stringify(this.query().q); },
   fail(msg) { this.failed = true; $('#prog').hidden = true; $('#mmsg').textContent = msg; $('#emaki').innerHTML = ''; Panes.clear(); },
   onmsg(m) {
     if (m.type === 'ready') { this.ready = true; this.until = m.to; if (!this.result) $('#mmsg').textContent = `Searching the BTCUSDT history, ${day(m.from)} to ${day(m.to)}…`; return; }
@@ -1117,18 +1187,18 @@ const Match = {
     if (m.type === 'progress') { if (m.id === this.id) { $('#prog').hidden = false; $('#prog i').style.width = `${(m.f * 100).toFixed(1)}%`; } return; }
     if (m.type === 'readings') { Panes.readings = 'ready'; if (this.result) { this.sentKey = ''; this.send(); } return; }
     if (m.type === 'readings-error') { Panes.readings = 'failed'; Panes.note = m.message; if (this.result) Panes.render(this.result); return; }
-    if (m.type === 'result' && m.id === this.id) { this.result = m; this.render(); Panes.render(m); Stage.fit(); App.redraw(); }
+    if (m.type === 'result' && m.id === this.id) { this.result = m; this.resultKey = this.sentKey; this.render(); Panes.render(m); Stage.fit(); App.redraw(); }
   },
   query() {
     const held = heldNow();
     const nx = S.next, next = nx.dir ? { dir: nx.dir, measure: nx.measure, value: nx.measure === 'bps' ? nx.bps : nx.measure === 'atr' ? nx.atr : 0 } : null;
     return { held, q: { bars: S.bars.map((_, i) => ohlcOf(i)), oriented: S.colored, holds: held.map(h => h.h), stretch: S.stretch, x: S.x, tfs: S.tfOn.map(Number), next } };
   },
-  // ask again once the drawing is still; while a bar is being dragged the last answer stays, dimmed
+  // ask again once the drawing is still; while a bar is held the last answer stays, dimmed once the bar moves
   schedule(now) {
     if (this.failed || !this.worker) return;
     clearTimeout(this.timer);
-    if (Stage.drag && Stage.drag.moved) { $('#emaki').classList.add('stale'); return; }
+    if (Stage.drag) { if (Stage.drag.moved) $('#emaki').classList.add('stale'); return; }
     this.timer = setTimeout(() => this.send(), now ? 0 : 140);
   },
   send() {
@@ -1543,6 +1613,7 @@ const App = {
 };
 function refresh() {
   followColours();
+  Match.drawnKey = Match.key();
   Stage.dropStale();
   const n = S.bars.length;
   $('#nb').innerHTML = `<b>${n}</b>bars`;
