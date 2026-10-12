@@ -68,12 +68,12 @@ button:disabled { cursor: default; }
 .icon:disabled { opacity: .3; }
 
 .stage { flex: 1; display: flex; flex-direction: column; }
-.cvwrap { position: relative; flex: 1; min-height: 360px; }
+.cvwrap { position: relative; flex: 1; min-height: max(360px, var(--forecast-min-height, 0px)); }
 .cvwrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; outline: none; }
-.hint { position: absolute; left: 28px; top: 18px; right: 400px; margin: 0; font-size: 12px; color: var(--ink-3); pointer-events: none; transition: color .4s; }
+.hint { position: absolute; left: 28px; top: 56px; right: 24px; margin: 0; font-size: 12px; color: var(--ink-3); pointer-events: none; transition: color .4s; }
 /* the paper narrows beside the panes and the reference: the hint then goes under the dock instead of into a thin column */
 .cvwrap { container-type: inline-size; }
-@container (max-width: 760px) { .hint { right: 24px; top: 56px; } }
+@container (max-width: 800px) { .hint { top: 96px; } .forecast-controls { top: 54px !important; } }
 .hint.pinning { color: var(--ai); }
 .dock { position: absolute; right: 24px; top: 12px; display: flex; align-items: center; gap: 10px; }
 .space { display: flex; align-items: center; gap: 7px; height: 34px; padding: 0 12px 0 11px; border-radius: 9px; background: var(--paper-2); cursor: pointer; }
@@ -96,6 +96,43 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
 .bars button:disabled { opacity: .3; }
 .bars .nb { min-width: 64px; text-align: center; font-size: 12.5px; color: var(--ink-2); }
 .bars .nb b { font: 500 15px/1 var(--font-mincho); color: var(--ink); margin-inline-end: 4px; }
+
+.forecast-controls { position: absolute; top: 14px; left: 24px; display: flex; align-items: center; gap: 8px; }
+.forecast-controls .chip { height: 30px; }
+.forecast-panel, .forecast-grid { position: absolute; padding: 10px 12px; background: var(--paper); border-radius: 8px; box-shadow: 0 0 0 1px var(--hair); font-size: 12px; }
+.forecast-panel { max-width: 540px; }
+.forecast-caption, .forecast-method { color: var(--ink-2); font-size: 11px; line-height: 1.45; }
+.forecast-method { margin-top: 7px; }
+.forecast-crumbs { display: flex; flex-wrap: wrap; gap: 3px 6px; align-items: center; margin-bottom: 5px; font-size: 11px; }
+.forecast-crumbs button { min-height: 24px; text-decoration: underline; text-underline-offset: 3px; }
+.forecast-crumbs span { color: var(--ink-3); }
+.forecast-path-head, .forecast-path { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 6px; align-items: center; width: 100%; }
+.forecast-path-head { color: var(--ink-2); font-size: 11px; margin-top: 7px; }
+.forecast-steps { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); text-align: center; }
+.forecast-path { padding: 3px 0; text-align: left; border-radius: 5px; }
+.forecast-path[aria-pressed="true"] { background: var(--paper-2); }
+.forecast-path strong { font: 500 18px/1 var(--font-code); text-align: center; }
+.forecast-mini { display: block; min-width: 0; }
+.forecast-mini svg { display: block; width: 100%; height: 38px; }
+.forecast-mini .forecast-steps { font-size: 12px; color: var(--ink-2); line-height: 1; }
+.forecast-mini .cu { fill: var(--up); } .forecast-mini .cd { fill: var(--down); } .forecast-mini .cz { fill: var(--flat); }
+.forecast-branch-list { position: relative; padding-left: 54px; margin-top: 8px; }
+.forecast-branch-list > svg { position: absolute; left: 0; top: 0; width: 52px; height: 100%; fill: none; stroke: var(--ai); opacity: .65; }
+.forecast-branch { width: 100%; height: 68px; margin: 2px 0; padding: 8px; border-radius: 5px; background: var(--paper-2); text-align: left; }
+.forecast-branch > span { display: flex; justify-content: space-between; gap: 8px; }
+.forecast-branch strong { font: 500 18px/1.2 var(--font-code); }
+.forecast-branch small { display: block; font-size: 11px; color: var(--ink-2); margin-top: 4px; }
+.forecast-branch:disabled { opacity: .55; }
+.forecast-grid { bottom: 12px; }
+.forecast-grid table { border-collapse: collapse; table-layout: fixed; width: 100%; font-size: 11px; }
+.forecast-grid th { font-weight: 400; color: var(--ink-2); text-align: center; padding: 2px 0; }
+.forecast-grid th:first-child { width: 48px; text-align: left; }
+.forecast-grid td { padding: 2px; }
+.forecast-cell { width: 100%; min-height: 25px; border-radius: 3px; font: 400 11px/1 var(--font-code); font-variant-numeric: tabular-nums; background: color-mix(in srgb, var(--ai) calc(var(--odds) * 100%), var(--paper)); }
+.forecast-cell[data-state="U"] { background: color-mix(in srgb, var(--up) calc(var(--odds) * 100%), var(--paper)); }
+.forecast-cell[data-state="D"] { background: color-mix(in srgb, var(--down) calc(var(--odds) * 100%), var(--paper)); }
+.forecast-cell[aria-pressed="true"] { box-shadow: inset 0 0 0 1px var(--ink-2); }
+@media (pointer: coarse) { .forecast-crumbs button { min-height: 36px; } .forecast-cell { min-height: 36px; } }
 
 /* the history answers: three ways of matching, mixed freely, and a scroll of instances */
 .match { border-top: 1px solid var(--hair); padding-block: 12px 4px; padding-inline: 12px 4px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
@@ -217,7 +254,7 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
   .work > .pane, .work > .ref { min-height: 0; overflow-y: auto; scrollbar-width: thin; }
   .ref { position: static; height: auto; align-self: stretch; }
   .stage { min-height: 0; overflow-y: auto; scrollbar-width: thin; }
-  .cvwrap { min-height: 300px; }
+  .cvwrap { min-height: max(300px, var(--forecast-min-height, 0px)); }
   /* the paper takes what is left, so whatever is below it keeps one height while its words change: the status keeps
      two lines and the progress bar its place, the names one line, the two sentences two, and the code one */
   .status { height: 36px; line-height: 18px; }
@@ -230,8 +267,7 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
 }
 
 @media (max-width: 900px) {
-  .cvwrap { min-height: 62vh; }
-  .hint { right: 24px; top: 56px; }
+  .cvwrap { min-height: max(62vh, var(--forecast-min-height, 0px)); }
   .ident { grid-template-columns: minmax(0, 1fr); padding-inline: 4px; }
 }
 @media (max-width: 600px) {
@@ -299,6 +335,16 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
   <main class="stage" aria-label="Composition">
     <div class="cvwrap" id="cvwrap">
       <canvas id="cv" tabindex="0" aria-label="Bar composition. Drag shadows and body edges; left and right arrows choose a bar; up and down arrows move it; space changes the first bar's colour, and every later bar's colour follows from where it sits against the previous close; plus and minus add or remove a bar; the bracket keys bring the bars closer together or further apart; P starts pinning relations."></canvas>
+      <div class="forecast-controls" id="forecast-controls">
+        <div class="seg" id="forecast-modes" role="group" aria-label="Continuation view">
+          <button type="button" data-view="fan" aria-pressed="true" aria-controls="forecast-panel">Fan</button>
+          <button type="button" data-view="paths" aria-pressed="false" aria-controls="forecast-panel">Paths</button>
+          <button type="button" data-view="branches" aria-pressed="false" aria-controls="forecast-panel">Branches</button>
+        </div>
+        <button type="button" class="chip" id="forecast-toggle" aria-pressed="false" aria-controls="forecast-grid">Grid</button>
+      </div>
+      <section class="forecast-panel" id="forecast-panel" aria-label="Continuation scenarios" hidden></section>
+      <section class="forecast-grid" id="forecast-grid" aria-label="Bar-by-bar probability grid" hidden></section>
       <p class="hint" id="hint">Each bar opens where the one before it closed · drag a close, a shadow or a body · tap the first bar to change its colour · hold ⌥ to pass levels freely</p>
       <div class="dock">
         <label class="space" title="Space between the bars · [ and ] · pinch on the paper">
@@ -381,6 +427,7 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
 </div>
 
 <script src="pane-designs.js"></script>
+<script src="forecast.js"></script>
 <script>
 (() => {
 'use strict';
@@ -704,6 +751,86 @@ function namesOf(id) {
 /* ================= the paper ================= */
 const HINT_DRAW = 'Each bar opens where the one before it closed · drag a close, a shadow or a body · tap the first bar to change its colour · hold ⌥ to pass levels freely';
 const HINT_PIN = 'Tap two points to hold how they relate · tap a body to hold its colour · tap a knot to let it go · Esc when done';
+const Forecast = {
+  view: 'fan', grid: false, prefix: '', selected: '', source: null, rendered: '',
+  panel: $('#forecast-panel'), table: $('#forecast-grid'),
+  init() {
+    try {
+      const saved = JSON.parse(localStorage.getItem('ashi.forecast'));
+      if (['fan', 'paths', 'branches'].includes(saved?.view)) this.view = saved.view;
+      if (typeof saved?.grid === 'boolean') this.grid = saved.grid;
+    } catch (err) { /* start with the fan and the grid off */ }
+    $('#forecast-modes').addEventListener('click', e => {
+      const b = e.target.closest('button[data-view]'); if (b) this.choose(b.dataset.view);
+    });
+    $('#forecast-toggle').addEventListener('click', () => { this.grid = !this.grid; this.remember(); App.redraw(); });
+    for (const el of [this.panel, this.table]) el.addEventListener('click', e => {
+      const b = e.target.closest('button'); if (!b || b.disabled || !this.source) return;
+      if (b.dataset.path) this.selected = b.dataset.path;
+      else if (b.dataset.prefix != null) this.select(b.dataset.prefix);
+      Stage.fit(true); App.redraw();
+    });
+    this.controls();
+    new ResizeObserver(() => App.redraw()).observe(this.panel);
+    new ResizeObserver(() => App.redraw()).observe(this.table);
+  },
+  controls() {
+    $('#forecast-modes').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.view === this.view)));
+    $('#forecast-toggle').setAttribute('aria-pressed', String(this.grid));
+  },
+  remember() {
+    this.controls();
+    try { localStorage.setItem('ashi.forecast', JSON.stringify({ view: this.view, grid: this.grid })); } catch (err) { /* preferences remain usable without storage */ }
+  },
+  choose(view) {
+    if (!['fan', 'paths', 'branches'].includes(view)) return;
+    this.view = view; this.remember(); Stage.fit(true); App.redraw();
+  },
+  select(prefix) {
+    if (!this.source || !/^[UID]{0,6}$/.test(prefix)) return;
+    const set = ForecastViews.subset(this.source, prefix); if (!set.n) return;
+    this.prefix = prefix; this.selected = set.sequences[0][0];
+  },
+  example(c) {
+    if (!c || c !== this.source || !(this.view === 'paths' || this.prefix.length)) return null;
+    return c.examples?.[this.selected] || null;
+  },
+  compact(w, lx) { return this.view === 'paths' || w - lx - 24 < 290; },
+  reserve(w, lx, top) {
+    const grid = this.grid ? (this.table.hidden ? 160 : this.table.offsetHeight) + 16 : 0;
+    const panel = this.view !== 'fan' && this.compact(w, lx) ? (this.panel.hidden ? 320 : this.panel.offsetHeight) + 16 : 0;
+    const extra = grid + panel;
+    const height = extra ? Math.ceil(top + extra + 244) : 0;
+    if (Stage.wrap.style.getPropertyValue('--forecast-min-height') !== `${height}px`) Stage.wrap.style.setProperty('--forecast-min-height', `${height}px`);
+    return extra;
+  },
+  sync(G) {
+    const c = Match.fresh() ? Match.result?.panes?.cont : null;
+    if (c && c !== this.source) { this.prefix = ''; this.selected = c.sequences[0][0]; }
+    const changed = c !== this.source; this.source = c;
+    this.panel.hidden = this.view === 'fan'; this.table.hidden = !this.grid;
+    const message = Match.failed ? 'Continuation unavailable.' : Match.result && !Match.fresh() ? 'Updating the continuation…' : Match.result ? 'Fewer than 30 complete continuations; no probability estimate.' : 'Loading the continuation…';
+    const key = `${this.view}|${this.grid}|${this.prefix}|${this.selected}|${c ? '' : message}`;
+    if (changed || this.rendered !== key) {
+      this.rendered = key;
+      this.panel.innerHTML = c ? this.view === 'paths' ? ForecastViews.paths(c, this.prefix, this.selected) : ForecastViews.branches(c, this.prefix) : `<p class="forecast-caption">${message}</p>`;
+      this.table.innerHTML = c ? ForecastViews.grid(c, this.prefix) : `<p class="forecast-caption">${message}</p>`;
+      if (c && changed) Stage.fit(true);
+      App.redraw();
+    }
+    const lx = G.xs[G.N - 1] + G.bw / 2, aligned = G.fanStep >= 38;
+    // Grid columns share the fan's x positions where each percentage fits; narrow paper uses labeled full-width columns.
+    const gridWidth = aligned ? 72 + G.fanStep * FAN_STEPS : G.w - 24;
+    const gridLeft = aligned ? lx + G.fanStep / 2 - 60 : 12;
+    this.table.style.left = `${Math.max(12, Math.min(gridLeft, G.w - gridWidth - 12))}px`;
+    this.table.style.width = `${Math.min(gridWidth, G.w - 24)}px`;
+    const compact = this.compact(G.w, lx);
+    this.panel.style.left = `${compact ? Math.max(12, Math.min(lx, G.w - 540 - 12)) : lx + 12}px`;
+    this.panel.style.width = `${compact ? Math.min(540, G.w - 24) : G.w - lx - 36}px`;
+    this.panel.style.top = compact ? '' : `${G.plotTop}px`;
+    this.panel.style.bottom = compact ? `${this.grid ? this.table.offsetHeight + 28 : 12}px` : '';
+  },
+};
 const Stage = {
   wrap: $('#cvwrap'), cv: $('#cv'), hint: $('#hint'),
   view: { cur: new Float64Array([0, 100]), vel: new Float64Array(2), tgt: new Float64Array([0, 100]), get lo() { return this.cur[0]; }, get hi() { return this.cur[1]; }, get tlo() { return this.tgt[0]; }, get thi() { return this.tgt[1]; } },
@@ -715,9 +842,6 @@ const Stage = {
     // the plot starts below the hint, which wraps onto several lines on a phone. Where it starts and ends follows the
     // canvas, but eases there and holds still while you drag, so a change of layout around the paper never jumps the drawing
     const top = Math.max(70, this.hint.offsetTop + this.hint.offsetHeight + 24), P = this.plot;
-    P.tgt[0] = top; P.tgt[1] = Math.max(top + 160, h - 84);
-    if (!P.ready || calm()) { P.cur.set(P.tgt); P.vel.fill(0); P.ready = h > 0; }
-    const plotTop = P.cur[0], plotBottom = P.cur[1];
     // bar width follows the count and the screen; 間 sets the pitch, from nearly touching to as far apart as fits
     // 続: the fan's six steps always keep their places beside the bars, each FAN_PITCH of a bar's, so the bars never
     // shift sideways when an answer arrives; the bars and the fan are centred together and always fit across the paper
@@ -726,7 +850,12 @@ const Stage = {
     const tight = bw * 1.22, airy = Math.max(tight, Math.min(room, 340));
     const spacing = tight * Math.pow(airy / tight, S.space);
     const x0 = (w - ((N - 1) + fanSlots) * spacing) / 2;
-    return { w, h, N, plotTop, plotBottom, plotH: plotBottom - plotTop, spacing, bw, fanStep: FAN_PITCH * spacing, xs: S.bars.map((_, i) => x0 + i * spacing) };
+    const xs = S.bars.map((_, i) => x0 + i * spacing);
+    const extra = Forecast.reserve(w, xs[N - 1] + bw / 2, top);
+    P.tgt[0] = top; P.tgt[1] = Math.max(top + 160, h - 84 - extra);
+    if (!P.ready || calm()) { P.cur.set(P.tgt); P.vel.fill(0); P.ready = h > 0; }
+    const plotTop = P.cur[0], plotBottom = P.cur[1];
+    return { w, h, N, plotTop, plotBottom, plotH: plotBottom - plotTop, spacing, bw, fanStep: FAN_PITCH * spacing, xs };
   },
   Y(v, G) { const { lo, hi } = this.view; return G.plotBottom - (v - lo) / (hi - lo) * G.plotH; },
   // frame the composition with room to pull past its extremes, and the whole fan when there is one; stay still unless
@@ -740,6 +869,8 @@ const Stage = {
       // the fan's closes are in the shape's own scale: 0 is the drawing's low, 1 its high
       let a = Infinity, z = -Infinity;
       for (const q of c.fan) { a = Math.min(a, q[0]); z = Math.max(z, q[4]); }
+      const example = Forecast.example(c);
+      if (example) for (const [, h, l] of example.bars) { a = Math.min(a, l); z = Math.max(z, h); }
       const fLo = mn + a * (mx - mn), fHi = mn + z * (mx - mn), pad = (fHi - fLo) * 0.06;
       lo = Math.min(lo, fLo - pad); hi = Math.max(hi, fHi + pad); mn = Math.min(mn, fLo); mx = Math.max(mx, fHi);
     }
@@ -1039,6 +1170,8 @@ const Stage = {
     for (const g of this.ghosts) this.drawCandle(ctx, G, g.x, g.dv, g.col, g.a);
     S.bars.forEach((b, i) => this.drawBar(ctx, G, i));
     this.drawFan(ctx, G);
+    this.drawExample(ctx, G);
+    Forecast.sync(G);
     this.drawTrace(ctx, G);
     this.drawSkeleton(ctx, G);
     this.drawPins(ctx, G);
@@ -1101,6 +1234,7 @@ const Stage = {
   // 続: the bars after the windows that match, each scaled so its own low and high sit on the drawing's, as a fan of
   // their closes (10 to 90%, 25 to 75% and the median) from the last bar's close, with the shape's high and low carried on
   drawFan(ctx, G) {
+    if (Forecast.view !== 'fan') return;
     const r = Match.result, c = r && r.panes && r.panes.cont;
     if (!c || c.fan.length < 1 || this.fanA < 0.01) return;
     let lo = Infinity, hi = -Infinity;
@@ -1131,6 +1265,32 @@ const Stage = {
     ctx.textBaseline = 'top'; ctx.fillText(`low broken ${p(c.belowLow)}`, end, Math.round(Y(0)) + 3);
     ctx.font = `500 12px ${FONT_MIN}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = COL.ai;
     ctx.fillText(`続 ${c.fan.length}`, end, G.plotBottom + 34);
+    ctx.restore();
+  },
+  drawExample(ctx, G) {
+    if (!Match.fresh() || this.fanA < .01) return;
+    const c = Match.result?.panes?.cont, example = Forecast.example(c);
+    if (!example) return;
+    let lo = Infinity, hi = -Infinity;
+    for (const b of S.bars) { lo = Math.min(lo, b.dv[0]); hi = Math.max(hi, b.dv[3]); }
+    if (!(hi > lo)) return;
+    const Y = u => this.Y(lo + u * (hi - lo), G), last = S.bars[G.N - 1];
+    const lx = (last.x == null ? G.xs[G.N - 1] : last.x) + G.bw / 2;
+    ctx.save(); ctx.beginPath(); ctx.rect(0, G.plotTop - 24, G.w, G.plotH + 80); ctx.clip();
+    ctx.globalAlpha = this.fanA * (this.trace ? .3 : .9);
+    ctx.strokeStyle = COL.ai; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(lx, this.Y(closeOf(last.dv, last.d), G));
+    example.bars.forEach((b, j) => ctx.lineTo(lx + (j + 1) * G.fanStep, Y(b[3]))); ctx.stroke();
+    if (Forecast.view === 'paths') example.bars.forEach(([o, h, l, c], j) => {
+      const x = lx + (j + 1) * G.fanStep, bw = Math.max(3, Math.min(G.bw * .6, G.fanStep * .5));
+      ctx.fillStyle = c > o ? COL.up : c < o ? COL.down : COL.flat;
+      ctx.fillRect(x - .8, Y(h), 1.6, Math.max(1, Y(l) - Y(h)));
+      ctx.fillRect(x - bw / 2, Y(Math.max(o, c)), bw, Math.max(2, Math.abs(Y(o) - Y(c))));
+      ctx.fillStyle = COL['ink-2']; ctx.font = `400 11px ${FONT_UI}`; ctx.textAlign = 'center';
+      ctx.fillText(`+${j + 1}`, x, G.plotBottom + 34);
+    });
+    ctx.fillStyle = COL['ink-2']; ctx.font = `400 11px ${FONT_UI}`; ctx.textAlign = 'left';
+    ctx.fillText('Historical example', lx + 4, G.plotTop - 10);
     ctx.restore();
   },
   // 写し: an instance from the history traced over the drawing, scaled to the drawing's height, one BTCUSDT bar per drawn bar
@@ -1516,6 +1676,11 @@ const REF_TOPICS = [
     read: "Broke above the shape's high: some bar of the next six went above the window's own high. Broke below the shape's low: likewise, below its low. Closed above the last bar's close: the sixth bar's close against the window's last close. Each is a share of the windows with six bars after them, with its Wilson 95% interval. A window can break both ways.",
     use: 'Compare a break with its opposite, and with the drawings one comparison away.',
     targets: [{ label: 'Show the rates', selector: '#rbecame' }] },
+  { id: 'scenarios', group: 'What it became', title: 'Bar-by-bar probabilities',
+    purpose: 'Read the probabilities of progressive sequences beside the composition.',
+    read: 'Fan keeps the close distribution. Paths ranks complete six-bar sequences; its candles are one historical example per sequence, not the probability of those exact prices. Above means the close exceeds the matching window’s high, Below means it is below its low, and Inside includes both boundaries. Branches shows the next close conditional on earlier choices; its overall rate uses all complete matching windows. Grid shows those same conditional close rates by future bar. Counts cover every complete continuation, even when the fan uses a sample. Each probability has a Wilson 95% interval; fewer than 30 supporting windows gives counts without an estimate.',
+    use: 'Choose Fan, Paths or Branches on the canvas. Grid independently shows or hides the table. Choose a branch or the next grid column to condition subsequent bars; the breadcrumb returns to an earlier choice. These selections do not change the composition or the matching cohort.',
+    targets: [{ label: 'Show continuation controls', selector: '#forecast-controls' }] },
   { id: 'near', group: 'What it became', title: 'One comparison away',
     purpose: 'Find the drawings next to yours, and whether any of them reads differently.',
     read: "Windows of your drawing's length, with its colours, that differ from it in exactly one comparison between bar ends, grouped by that comparison and listed by how many windows the history holds on the timeframes shown. Next rose is the share whose next bar rose, with its Wilson 95% interval. The next-bar filter does not apply here.",
@@ -1764,6 +1929,7 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', onTheme);
 // inside Portal (served under /composer/), offer the way back to the Portal landing
 if (/^\/composer(\/|$)/.test(location.pathname)) $('#home').hidden = false;
 Panes.init();
+Forecast.init();
 Stage.fit(true);
 refresh();
 Match.start();

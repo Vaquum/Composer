@@ -27,6 +27,7 @@ PAGES = {
     '/matcher.js': ('matcher.js', 'text/javascript; charset=utf-8'),
     '/pane-designs.js': ('pane-designs.js', 'text/javascript; charset=utf-8'),
     '/panes.css': ('panes.css', 'text/css; charset=utf-8'),
+    '/forecast.js': ('forecast.js', 'text/javascript; charset=utf-8'),
 }
 REFRESH_SECONDS = 3600
 

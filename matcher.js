@@ -531,6 +531,7 @@ async function search(q, id, report) {
       // At most 3^6 mutually exclusive sequences. Counts cover every complete window, not the fan sample.
       sequences: ordered.map(({ key, n }) => [key, n]),
       paths: ordered.slice(0, 4).map(s => ({ ...s, rate: wilson(s.n, cont[0]) })),
+      examples: Object.fromEntries(ordered.map(({ key, bars, start }) => [key, { bars, start }])),
     };
   }
   panes.near = [...near].sort((a, b) => b[1].n - a[1].n).slice(0, 6).map(([at, v]) => {
