@@ -52,4 +52,4 @@ jobs:
       - name: The panes against an independent recomputation
         run: python checks/with_bars.py checks/panes.mjs
       - name: The container builds
-        run: docker build -t composer:check .
+        run: python checks/container.py
