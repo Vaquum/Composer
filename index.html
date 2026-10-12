@@ -146,6 +146,7 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
 .forecast-cell[data-state="U"] { background: color-mix(in srgb, var(--up) calc(var(--odds) * 100%), var(--paper)); }
 .forecast-cell[data-state="D"] { background: color-mix(in srgb, var(--down) calc(var(--odds) * 100%), var(--paper)); }
 .forecast-cell[aria-pressed="true"], .forecast-cell:hover { box-shadow: inset 0 0 0 1px var(--ink-2); }
+.forecast-cell-empty { display: flex; align-items: center; justify-content: center; color: var(--ink-3); }
 .forecast-evidence { margin: 2px 0 0; font-size: 11px; color: var(--ink-2); line-height: 14px; min-height: 14px; }
 .forecast-detail { font-size: 11px; line-height: 1.4; color: var(--ink-2); }
 .forecast-detail strong { font-weight: 500; color: var(--ink); }
@@ -810,7 +811,7 @@ const Forecast = {
       const b = e.target.closest('button[data-view]'); if (b) this.choose(b.dataset.view);
     });
     $('#forecast-toggle').addEventListener('click', () => { this.grid = !this.grid; this.remember(); App.redraw(); });
-    $('#forecast-retry').addEventListener('click', e => { e.stopPropagation(); Match.retry(); });
+    $('#forecast-retry').addEventListener('click', e => { e.stopPropagation(); if (e.detail === 0) this.focusRequested = 'mode'; Match.retry(); });
     this.panel.addEventListener('click', e => {
       const b = e.target.closest('button'); if (!b || b.disabled || !this.source || !this.current) return;
       if (b.dataset.path) this.selected = b.dataset.path;
@@ -881,12 +882,13 @@ const Forecast = {
       const token = restore ? { path: active.dataset.path, prefix: active.dataset.prefix, step: active.dataset.step, state: active.dataset.state } : null;
       $('#forecast-trail').innerHTML = ForecastViews.crumbs(this.prefix);
       this.body.innerHTML = c ? ForecastViews[this.view](c, this.prefix, this.selected) : ForecastViews.empty(this.view);
-      $('#forecast-grid-content').innerHTML = c ? ForecastViews.grid(c, this.prefix) : '';
+      $('#forecast-grid-content').innerHTML = c ? ForecastViews.grid(c, this.prefix) : ForecastViews.emptyGrid();
       $('#forecast-detail').innerHTML = c ? ForecastViews.detail(c, this.prefix, this.selected, this.view) : '<strong>No probability estimate yet</strong><p>Estimates need 30 matched windows with all six following bars. Your composition stays editable.</p>';
       $('#forecast-evidence').textContent = c ? 'Above / Inside / Below the combo range · focus or tap a cell for its 95% interval' : 'Estimates need 30 complete continuations.';
       if (this.focusRequested || token) {
         let target = null;
-        if (this.focusRequested === 'grid') target = this.table.querySelector('[data-prefix]');
+        if (this.focusRequested === 'mode' && (!active || active === document.body || this.panel.contains(active))) target = $('#forecast-modes').querySelector('[aria-pressed="true"]');
+        else if (this.focusRequested === 'grid') target = this.table.querySelector('[data-prefix]');
         else if (this.focusRequested === 'paths') target = this.body.querySelector('[aria-pressed="true"]');
         else if (this.focusRequested === 'branches') target = this.body.querySelector('button:not([disabled])');
         else if (token) target = [...this.panel.querySelectorAll('button')].find(b => token.path ? b.dataset.path === token.path : token.step != null ? b.dataset.step === token.step && b.dataset.state === token.state : token.prefix != null && b.dataset.prefix === token.prefix);

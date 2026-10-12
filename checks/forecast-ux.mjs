@@ -61,6 +61,8 @@ for (const view of ['fan','paths','branches']) {
   F.choose(view); F.grid=!F.grid; F.sync(G); assert.equal(F.reserve(1000,320,100),initialLayout);
 }
 assert.match(V.empty('paths'),/aria-hidden="true"/); assert.doesNotMatch(V.empty('paths'),/\d%/,'skeletons cannot fabricate rates');
+assert.equal((V.emptyGrid().match(/<td>/g)||[]).length,18,'loading preserves all future-bar grid slots');
+assert.doesNotMatch(V.emptyGrid(),/\d%/,'loading grid never fabricates probabilities');
 assert.match(V.paths(data),/Whole-sequence probability/);
 assert.match(html,/\.forecast-panel \{[^}]*grid-template-rows: 64px 180px 120px/);
 assert.match(html,/prefers-reduced-motion/);
@@ -79,4 +81,24 @@ for (let j=0;j<css.length;j++) {
 }
 assert.equal(depth,0,'no unclosed media/container rule');
 assert.match(css,/\.dock \{ position: absolute/,'existing canvas dock styling is retained');
+
+// Exercise the real retry and worker-generation guards, including late errors from the discarded request.
+const mStart=html.indexOf('const Match = {'),mEnd=html.indexOf('// a day as the cards write it',mStart);
+const workers=[],barLoads=[],activityLoads=[]; let failures=0;
+class Worker {
+  constructor(){this.messages=[];workers.push(this);}
+  postMessage(m){this.messages.push(m);}
+  terminate(){this.terminated=true;}
+}
+const deferred=list=>new Promise((resolve,reject)=>list.push({resolve,reject}));
+const panes={readings:'ready',render(){throw Error('an obsolete activity request cannot change panes');}};
+const R=new Function('$','Worker','document','loadBars','fetch','Panes','App','Stage',html.slice(mStart,mEnd)+'\nreturn Match;')($,Worker,{getElementById:()=>null},()=>deferred(barLoads),()=>deferred(activityLoads),panes,{redraw(){}},{drag:null});
+R.schedule=()=>{}; R.key=()=> 'same-combo'; R.fail=()=>failures++; R.result={panes:{cont:data}};R.resultKey='same-combo';R.drawnKey='same-combo';
+R.start(); const retained=R.result; R.failed=true; R.retry();
+assert.equal(workers[0].terminated,true); assert.equal(R.result,retained);assert.equal(R.resultKey,'');assert.equal(R.failed,false);assert.equal(panes.readings,'loading');
+barLoads[0].reject(Error('obsolete request')); activityLoads[0].reject(Error('obsolete activity'));
+barLoads[1].resolve(new ArrayBuffer(1)); activityLoads[1].resolve({ok:true,arrayBuffer:async()=>new ArrayBuffer(1)});
+await new Promise(resolve=>setImmediate(resolve));
+assert.equal(failures,0,'late errors cannot undo a retry'); assert.equal(workers[0].messages.length,0);
+assert.deepEqual(workers[1].messages.map(m=>m.type),['bars','activity']);
 console.log('All modes and states retain geometry; refresh retains DOM and choices; stale interactions, sparse results, retries, responsive fit and candle alignment pass.');

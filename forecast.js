@@ -72,6 +72,9 @@ const ForecastViews = (() => {
     const n = view === 'paths' ? 4 : 3;
     return `<div class="forecast-skeleton" aria-hidden="true">${Array.from({ length:n }, () => '<div><i></i><span>–</span></div>').join('')}</div>`;
   }
+  function emptyGrid() {
+    return `<table aria-hidden="true"><thead><tr><th>Close</th>${Array.from({length:6},(_,j)=>`<th>+${j+1}</th>`).join('')}</tr></thead><tbody>${states.map(s=>`<tr><th>${names[s]}</th>${Array.from({length:6},()=>'<td><span class="forecast-cell forecast-cell-empty">–</span></td>').join('')}</tr>`).join('')}</tbody></table>`;
+  }
   // A response is committed atomically. Temporary absence never clears the previous snapshot or its selections.
   function reconcile(previous, { fresh, failed, data, key }) {
     let source = previous.source, sourceKey = previous.sourceKey || '', prefix = previous.prefix || '', selected = previous.selected || '';
@@ -94,5 +97,5 @@ const ForecastViews = (() => {
     const height = coarse ? 488 : 400, width = Math.min(580, Math.max(0, w - 24));
     return { height, width, left: Math.max(12, Math.min(lx + 12, w - width - 12)), reserve: height + 16, minHeight: Math.ceil(top + height + 260) };
   }
-  return { states, names, words, percent, rate, interval, subset, outcomes, crumbs, paths, branches, grid, fan, detail, empty, reconcile, layout };
+  return { states, names, words, percent, rate, interval, subset, outcomes, crumbs, paths, branches, grid, fan, detail, empty, emptyGrid, reconcile, layout };
 })();
