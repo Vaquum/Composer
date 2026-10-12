@@ -72,6 +72,7 @@ it answers.
 ```sh
 python3 -m unittest discover -s tests -v
 node checks/page.mjs
+node checks/pane-designs.mjs
 python3 checks/with_bars.py checks/similarity-windows.mjs
 python3 checks/with_bars.py checks/similarity-look.mjs
 python3 checks/with_bars.py checks/similarity-equivalence.mjs
