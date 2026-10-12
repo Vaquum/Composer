@@ -43,10 +43,10 @@ const ForecastViews = (() => {
   }
   function branches(c, prefix = '') {
     const set = outcomes(c, prefix), j = prefix.length;
-    if (j === c.fan.length) return `<div class="forecast-complete"><span>Complete sequence: ${label(rate(set.n, c.n))}</span><strong>${label(rate(set.n, c.n))}</strong><span>of all matched windows</span><button type="button" data-prefix="${prefix.slice(0, -1)}">Back one bar</button></div>`;
+    if (j === c.fan.length) return `<div class="forecast-complete"><span>Complete sequence</span><strong>${label(rate(set.n, c.n))}</strong><span>of all matched windows</span><button type="button" data-prefix="${prefix.slice(0, -1)}">Back one bar</button></div>`;
     const children = set.grid[j];
     const links = children.map((n, i) => `<path d="M2 108 C27 108 25 ${36 + i * 72} 50 ${36 + i * 72}" stroke-width="${set.n ? Math.max(.6, 10 * n / set.n) : .6}"/>`).join('');
-    return `<div class="forecast-caption">Bar +${j + 1} · ${count(set.n)} supporting windows · choose the next close</div><div class="forecast-branch-list"><svg viewBox="0 0 52 216" preserveAspectRatio="none" aria-hidden="true">${links}</svg>${states.map((s, i) => `<button type="button" class="forecast-branch" data-prefix="${prefix + s}" ${!children[i] ? 'disabled' : ''} title="${interval(children[i], set.n)}"><span>${names[s]} <strong>${label(rate(children[i], set.n))}</strong></span><small>${label(rate(children[i], c.n))} overall · ${count(children[i])} windows</small></button>`).join('')}</div>`;
+    return `<div class="forecast-caption">Bar +${j + 1} · ${count(set.n)} supporting windows</div><div class="forecast-branch-list"><svg viewBox="0 0 52 216" preserveAspectRatio="none" aria-hidden="true">${links}</svg>${states.map((s, i) => `<button type="button" class="forecast-branch" data-prefix="${prefix + s}" ${!children[i] ? 'disabled' : ''} title="${interval(children[i], set.n)}"><span>${names[s]} <strong>${label(rate(children[i], set.n))}</strong></span><small>${label(rate(children[i], c.n))} overall · ${count(children[i])} windows</small></button>`).join('')}</div>`;
   }
   function grid(c, prefix = '') {
     const set = outcomes(c, prefix), steps = c.fan.length;

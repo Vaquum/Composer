@@ -130,7 +130,7 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
 .forecast-branch { width: 100%; height: 49px; margin: 2px 0; padding: 5px 8px; border-radius: 5px; background: var(--paper-2); text-align: left; transition: background .16s ease; }
 .forecast-branch > span { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
 .forecast-branch strong { font: 500 18px/1.2 var(--font-code); }
-.forecast-branch small { display: block; font-size: 11px; color: var(--ink-2); line-height: 15px; }
+.forecast-branch small { display: block; font-size: 11px; color: var(--ink-2); line-height: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .forecast-branch:disabled { opacity: .55; }
 .forecast-complete { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; }
 .forecast-complete > strong { font: 500 28px/1.2 var(--font-code); }
