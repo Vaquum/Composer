@@ -23,6 +23,12 @@ broke the shape's high and low, and the drawings one comparison away, each of wh
 the canvas. Every number follows Grid: 95% intervals, Wilson for rates, t for means, nothing for
 fewer than 30 windows.
 
+Each pane has its own design pill and previous/next arrows: **Signal first** highlights the
+largest finding, **Comparison ledger** aligns selected and all-window values, and **Bar by bar**
+organizes readings by drawn bar and continuation by time. The pill also offers direct selection.
+Choices are remembered independently in this browser; changing a design never changes the cohort.
+Measurement details and the remaining readings expand below the primary findings.
+
 The reference (the ⓘ in the header) explains how to read the panels, in the pattern of the cube
 explorer's System reference: a full-height pane on the left that pushes the workspace right, one
 Purpose, Read and Use per topic, and Show, which highlights the part a topic is about and dims the
@@ -52,6 +58,7 @@ it answers.
 
 - `index.html`: the page.
 - `matcher.js`: the matcher, run by the page as a Web Worker.
+- `pane-designs.js` and `panes.css`: the three pane layouts, using the matcher's live results.
 - `bars.py`: reads the kline files and encodes them for the page.
 - `server.py`: serves the page, `matcher.js`, `/bars`, `/activity` (each bar's volume, quote
   volume, trades and maker volume, for the panes) and `/healthz` on `127.0.0.1` only.

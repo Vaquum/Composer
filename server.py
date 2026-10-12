@@ -25,6 +25,8 @@ PAGES = {
     '/': ('index.html', 'text/html; charset=utf-8'),
     '/index.html': ('index.html', 'text/html; charset=utf-8'),
     '/matcher.js': ('matcher.js', 'text/javascript; charset=utf-8'),
+    '/pane-designs.js': ('pane-designs.js', 'text/javascript; charset=utf-8'),
+    '/panes.css': ('panes.css', 'text/css; charset=utf-8'),
 }
 REFRESH_SECONDS = 3600
 
