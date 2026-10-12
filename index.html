@@ -165,35 +165,9 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
 
 /* the panes: what sets the matching windows apart (left), and what the shape became (right) */
 .work { flex: 1; display: grid; grid-template-columns: minmax(248px, 290px) minmax(0, 1fr) minmax(256px, 300px); align-items: stretch; }
-.pane { padding: 16px 16px 20px; display: flex; flex-direction: column; gap: 12px; font-size: 13px; min-width: 0; }
+.pane { padding: 16px 16px 20px; display: flex; flex-direction: column; min-width: 0; }
 .lpane { border-right: 1px solid var(--hair); }
 .rpane { border-left: 1px solid var(--hair); }
-.ph { display: flex; align-items: baseline; gap: 8px; }
-.ph .k { font: 600 18px/1 var(--font-mincho); }
-.ph h2, .ph h3 { margin: 0; font: 600 15px/1.3 var(--font-mincho); }
-.pcap { margin: 0; color: var(--ink-2); font-size: 12.5px; }
-.pfoot { margin: 0; color: var(--ink-2); font-size: 11.5px; }
-.psec { border-top: 1px solid var(--hair); padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
-.prows { display: flex; flex-direction: column; gap: 9px; }
-.prow .pl { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-.prow .pg { color: var(--ink-2); font-size: 11.5px; }
-.prow .pv, .prate .pv, .pnear small { font-family: var(--font-code); white-space: nowrap; }
-.prow .pv span, .prate .pv span { color: var(--ink-2); }
-.trk { position: relative; height: 12px; margin-top: 3px; border-radius: 6px; background: var(--paper-2); }
-.trk i { position: absolute; display: block; }
-.trk .bd { top: 3px; bottom: 3px; border-radius: 3px; background: var(--ink-3); opacity: .5; }
-.trk .dt { top: 50%; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; border-radius: 50%; background: var(--ink); }
-.trk .tk { top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--ink-2); }
-.pchips { display: flex; flex-wrap: wrap; gap: 6px; }
-.pchips span { font: 500 12px/1.3 var(--font-code); padding: 4px 7px; border-radius: 6px; border: 1px solid var(--hair); }
-.pchips span em { font-style: normal; color: var(--ink-2); }
-.prate { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--hair); padding-bottom: 6px; }
-.pnear { display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid var(--hair); border-radius: 8px; padding: 8px 10px; }
-.pnear > span { flex: 1; min-width: 0; }
-.pnear small { display: block; color: var(--ink-2); font-size: 11.5px; white-space: normal; }
-.pnear button { flex: none; font-size: 12px; padding: 6px 10px; min-height: 32px; border-radius: 6px; border: 1px solid var(--ai); color: var(--ai); }
-.pnear button:hover { background: var(--ai-soft); }
-.plink { align-self: flex-start; font-size: 12px; color: var(--ai); }
 @media (max-width: 1180px) {
   .work { grid-template-columns: minmax(0, 1fr); }
   .stage { order: -1; }
@@ -309,14 +283,18 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
       <button type="button" class="pane-step" data-step="1" aria-label="Next left pane design">›</button>
       <div class="pane-menu" id="left-design-menu" role="menu" aria-label="Left pane designs" hidden></div>
     </div>
-    <div class="ph"><h2>What differs</h2></div>
-    <div class="pane-context" id="lcap">Loading the matching windows…</div>
-    <div class="prows" id="lrows"></div>
-    <div class="psec" id="lnextsec">
-      <div class="ph"><h3>Next bar rose</h3></div>
-      <div id="lnext"></div>
+    <header class="pane-header">
+      <h2>What differs</h2>
+      <div class="pane-context" id="lcap">Loading the matching windows…</div>
+    </header>
+    <div class="pane-body">
+      <div class="pane-section pane-flow prows" id="lrows"></div>
+      <section class="pane-section pane-next" id="lnextsec">
+        <h3>Next bar rose</h3>
+        <div id="lnext"></div>
+      </section>
+      <details class="pane-section pane-details" data-detail="left-method"><summary>How these readings are measured</summary><div id="lmethod"></div></details>
     </div>
-    <details class="pane-details" data-detail="left-method"><summary>How these readings are measured</summary><div id="lmethod"></div></details>
   </aside>
   <main class="stage" aria-label="Composition">
     <div class="cvwrap" id="cvwrap">
@@ -383,17 +361,21 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
       <button type="button" class="pane-step" data-step="1" aria-label="Next right pane design">›</button>
       <div class="pane-menu" id="right-design-menu" role="menu" aria-label="Right pane designs" hidden></div>
     </div>
-    <div class="ph"><h2>What followed</h2></div>
-    <div class="pane-context" id="rcap">Loading the continuation…</div>
-    <section class="psec" id="rnextsec" hidden><h3>Next bar rose</h3><div id="rnext"></div></section>
-    <div id="rbecame"></div>
-    <div id="rfan"></div>
-    <div class="psec" id="rnearsec">
-      <div class="ph"><span class="k" lang="ja" aria-hidden="true">隣</span><h3>One comparison away</h3></div>
-      <p class="pcap" id="ncap"></p>
-      <div id="rnear" style="display: flex; flex-direction: column; gap: 8px"></div>
+    <header class="pane-header">
+      <h2>What followed</h2>
+      <div class="pane-context" id="rcap">Loading the continuation…</div>
+    </header>
+    <div class="pane-body">
+      <section class="pane-section pane-next" id="rnextsec" hidden><h3>Next bar rose</h3><div id="rnext"></div></section>
+      <div class="pane-section pane-flow" id="rbecame"></div>
+      <div class="pane-section pane-flow" id="rfan"></div>
+      <section class="pane-section pane-next" id="rnearsec">
+        <h3>One comparison away</h3>
+        <p class="pcap" id="ncap"></p>
+        <div class="pane-neighbors" id="rnear"></div>
+      </section>
+      <details class="pane-section pane-details" data-detail="right-method"><summary>How to read the continuation</summary><div id="rmethod"></div></details>
     </div>
-    <details class="pane-details" data-detail="right-method"><summary>How to read the continuation</summary><div id="rmethod"></div></details>
   </aside>
   </div>
 </div>
@@ -1471,7 +1453,7 @@ const Panes = {
         $('#rfan').innerHTML = PaneDesigns.terminal(P);
         $('#rmethod').innerHTML = PaneDesigns.rightMethod(P.after);
         $('#ncap').textContent = 'One changed bar-end comparison · selected timeframes';
-        $('#rnear').innerHTML = P.near.length ? P.near.map((nb,i) => `<div class="pnear"><span>${esc(this.nearWord(nb))}<small>${fmt(nb.n)} windows${nb.up ? ` · next rose ${pct(nb.up[0])} · 95% ${pct(nb.up[1])}–${pct(nb.up[2])}` : ' · next-bar estimate unavailable'}</small></span><button type="button" data-i="${i}" title="Put its closest instance on the canvas">Try it</button></div>`).join('') : '<p class="pcap">No neighboring patterns found on these timeframes.</p>';
+        $('#rnear').innerHTML = P.near.length ? P.near.map((nb,i) => `<div class="pnear"><span>${esc(this.nearWord(nb))}<small>${fmt(nb.n)} windows${nb.up ? ` · next rose ${pct(nb.up[0])} · 95% interval ${pct(nb.up[1])}–${pct(nb.up[2])}` : ' · next-bar estimate unavailable'}</small></span><button type="button" data-i="${i}" title="Put its closest instance on the canvas">Try it</button></div>`).join('') : '<p class="pcap">No neighboring patterns found on these timeframes.</p>';
       }
       pane.dataset.view = variant;
       const remembered = this.details.get(side + '-' + variant);

@@ -73,7 +73,7 @@ const PaneDesigns = (() => {
     if (!c) return `<p class="pcap">Fewer than 30 complete ${P.after}-bar continuations: no estimate.</p>`;
     const breaks = rate("Broke the shape's high",c.aboveHigh,'up',variant === 'signal')+rate("Broke the shape's low",c.belowLow,'down')+'<p class="pane-note">A window can break both levels.</p>';
     const end = `<section class="pane-group"><h3>At bar ${P.after}</h3>${rate('Closed above the last drawn close',c.aboveClose)}</section>`;
-    return variant === 'signal' ? breaks+end : `<section class="pane-group"><h3>${variant === 'bars' ? 'During the next '+P.after+' bars' : 'Crossed during those '+P.after+' bars'}</h3>${breaks}${variant === 'ledger' ? '<div class="pane-scale"><span>0% of windows</span><span>100%</span></div>' : ''}</section>`+end;
+    return variant === 'signal' ? `<section class="pane-group">${breaks}</section>`+end : `<section class="pane-group"><h3>${variant === 'bars' ? 'During the next '+P.after+' bars' : 'Crossed during those '+P.after+' bars'}</h3>${breaks}${variant === 'ledger' ? '<div class="pane-scale"><span>0% of windows</span><span>100%</span></div>' : ''}</section>`+end;
   }
   function terminal(P) {
     const c=P.cont;
