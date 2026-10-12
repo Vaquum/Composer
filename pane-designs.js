@@ -51,7 +51,7 @@ const PaneDesigns = (() => {
       return '<p class="pane-order">Largest differences first</p>'+table(first)+`<p class="pane-note">${count} of ${first.length} intervals exclude the all-window mean.</p>`+remaining+detail('intervals',`95% intervals · all ${all.length} readings`,legend()+all.map(w=>reading(w)).join(''));
     }
     const lead = first[0], delta = difference(lead), rest = first.slice(1);
-    return `<div class="pane-hero"><p class="pane-hero-label">Largest difference · Bar ${lead.bar+1} ${label(lead).toLowerCase()}</p><p class="pane-hero-value">${value(lead,lead.set[0])}<span class="pane-unit">${unit(lead)}</span></p><p class="pane-hero-compare">All ${displayed(lead,lead.all[0])}${delta ? ' · <strong>'+delta+'</strong>' : ''}</p>${track(lead)}</div>`+legend()+
+    return `<div class="pane-hero" data-reading="${lead.bar}-${lead.key}"><p class="pane-hero-label">Largest difference · Bar ${lead.bar+1} ${label(lead).toLowerCase()}</p><p class="pane-hero-value">${value(lead,lead.set[0])}<span class="pane-unit">${unit(lead)}</span></p><p class="pane-hero-compare">All ${displayed(lead,lead.all[0])}${delta ? ' · <strong>'+delta+'</strong>' : ''}</p>${track(lead)}</div>`+legend()+
       [...new Set(rest.map(w=>groups[w.key]))].map(group=>`<section class="pane-group"><h3>${group}${group === 'Activity' || group === 'Trade size' ? '<span class="pane-unit">vs prior 11 bars</span>' : ''}</h3>${rest.filter(w=>groups[w.key]===group).map(w=>reading(w)).join('')}</section>`).join('')+remaining;
   }
   function meter(w, direction = 'selected', reference = null) {
