@@ -73,69 +73,78 @@ button:disabled { cursor: default; }
 .hint { position: absolute; left: 28px; top: 56px; right: 24px; margin: 0; font-size: 12px; color: var(--ink-3); pointer-events: none; transition: color .4s; }
 /* the paper narrows beside the panes and the reference: the hint then goes under the dock instead of into a thin column */
 .cvwrap { container-type: inline-size; }
-@container (max-width: 800px) { .hint { top: 96px; } .forecast-controls { top: 54px !important; } }
-.hint.pinning { color: var(--ai); }
-.dock { position: absolute; right: 24px; top: 12px; display: flex; align-items: center; gap: 10px; }
-.space { display: flex; align-items: center; gap: 7px; height: 34px; padding: 0 12px 0 11px; border-radius: 9px; background: var(--paper-2); cursor: pointer; }
-.space .ma { font: 500 15px/1 var(--font-mincho); color: var(--ink-2); margin-inline-end: 3px; }
-.space .ico { width: 14px; height: 14px; flex: none; fill: var(--ink-3); }
-input[type="range"] { -webkit-appearance: none; appearance: none; height: 22px; margin: 0; background: transparent; cursor: pointer; }
-input[type="range"]:focus-visible { outline: none; }
-input[type="range"]::-webkit-slider-runnable-track { height: 1px; background: var(--ink-3); }
-input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; margin-top: -6.5px; border-radius: 50%; background: var(--paper); box-shadow: 0 0 0 1.5px var(--ink-2); transition: box-shadow .3s; }
-input[type="range"]:hover::-webkit-slider-thumb, input[type="range"]:active::-webkit-slider-thumb { box-shadow: 0 0 0 1.5px var(--ink); }
-input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 1.5px var(--ai), 0 0 0 5px var(--ai-soft); }
-input[type="range"]::-moz-range-track { height: 1px; background: var(--ink-3); }
-input[type="range"]::-moz-range-thumb { width: 14px; height: 14px; border: 0; border-radius: 50%; background: var(--paper); box-shadow: 0 0 0 1.5px var(--ink-2); }
-input[type="range"]:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 1.5px var(--ai), 0 0 0 5px var(--ai-soft); }
-input[type="range"]:disabled { cursor: default; opacity: .4; }
-.space input { width: 112px; }
-.bars { display: flex; align-items: center; gap: 4px; padding: 3px; border-radius: 9px; background: var(--paper-2); }
-.bars button { width: 30px; height: 28px; border-radius: 6px; font: 400 18px/1 var(--font-mincho); color: var(--ink); transition: background .3s, opacity .3s; }
-.bars button:hover:not(:disabled) { background: var(--paper); box-shadow: 0 0 0 1px var(--hair); }
-.bars button:disabled { opacity: .3; }
-.bars .nb { min-width: 64px; text-align: center; font-size: 12.5px; color: var(--ink-2); }
-.bars .nb b { font: 500 15px/1 var(--font-mincho); color: var(--ink); margin-inline-end: 4px; }
-
-.forecast-controls { position: absolute; top: 14px; left: 24px; display: flex; align-items: center; gap: 8px; }
+@container (max-width: 800px) { .hint { top: 96px; } .forecast-controls { position: absolute; top: 14px; left: 24px; display: flex; align-items: center; gap: 8px; }
 .forecast-controls .chip { height: 30px; }
-.forecast-panel, .forecast-grid { position: absolute; padding: 10px 12px; background: var(--paper); border-radius: 8px; box-shadow: 0 0 0 1px var(--hair); font-size: 12px; }
-.forecast-panel { max-width: 540px; }
-.forecast-panel[data-updating="true"], .forecast-grid[data-updating="true"] { opacity: .55; pointer-events: none; }
-.forecast-update { position: absolute; right: 24px; top: 56px; min-height: 20px; color: var(--ink-2); font-size: 12px; }
-.forecast-caption, .forecast-method { color: var(--ink-2); font-size: 11px; line-height: 1.45; }
-.forecast-method { margin-top: 7px; }
-.forecast-crumbs { display: flex; flex-wrap: wrap; gap: 3px 6px; align-items: center; margin-bottom: 5px; font-size: 11px; }
-.forecast-crumbs button { min-height: 24px; text-decoration: underline; text-underline-offset: 3px; }
+.forecast-panel { position: absolute; bottom: 12px; padding: 12px; display: grid; grid-template-rows: 64px 180px 120px; gap: 6px; background: var(--paper); border-radius: 9px; box-shadow: 0 0 0 1px var(--hair); font-size: 12px; container-type: inline-size; }
+.forecast-head { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
+.forecast-headline { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 18px; }
+.forecast-message { font-size: 12px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.forecast-panel[data-phase="refreshing"] .forecast-message, .forecast-panel[data-phase="error"] .forecast-message { color: var(--ink); }
+.forecast-retry { font-size: 12px; color: var(--ai); text-decoration: underline; text-underline-offset: 3px; }
+.forecast-body, .forecast-secondary { min-width: 0; min-height: 0; }
+.forecast-body { transition: opacity .16s ease; }
+.forecast-panel[data-phase="refreshing"] .forecast-body, .forecast-panel[data-phase="refreshing"] .forecast-secondary,
+.forecast-panel[data-phase="error"] .forecast-body[data-previous="true"], .forecast-panel[data-phase="error"] .forecast-secondary[data-previous="true"] { opacity: .48; }
+.forecast-caption, .forecast-method { color: var(--ink-2); font-size: 11px; line-height: 1.4; }
+.forecast-crumbs { display: flex; flex-wrap: wrap; gap: 2px 5px; align-items: center; font-size: 11px; min-height: 22px; }
+.forecast-crumbs button { min-height: 22px; padding: 1px 3px; border-radius: 4px; }
+.forecast-crumbs button:hover { background: var(--paper-2); }
 .forecast-crumbs span { color: var(--ink-3); }
 .forecast-path-head, .forecast-path { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 6px; align-items: center; width: 100%; }
-.forecast-path-head { color: var(--ink-2); font-size: 11px; margin-top: 7px; }
+.forecast-path-head { color: var(--ink-2); font-size: 11px; margin-top: 3px; line-height: 14px; }
 .forecast-steps { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); text-align: center; }
-.forecast-path { padding: 3px 0; text-align: left; border-radius: 5px; }
-.forecast-path[aria-pressed="true"] { background: var(--paper-2); }
+.forecast-path { padding: 2px 0; text-align: left; border-radius: 5px; height: 33px; transition: background .16s ease; }
+.forecast-path:hover, .forecast-path[aria-pressed="true"] { background: var(--paper-2); }
 .forecast-path strong { font: 500 18px/1 var(--font-code); text-align: center; }
 .forecast-mini { display: block; min-width: 0; }
-.forecast-mini svg { display: block; width: 100%; height: 38px; }
-.forecast-mini .forecast-steps { font-size: 12px; color: var(--ink-2); line-height: 1; }
+.forecast-mini svg { display: block; width: 100%; height: 18px; }
+.forecast-mini .forecast-steps { font-size: 11px; color: var(--ink-2); line-height: 11px; }
 .forecast-mini .cu { fill: var(--up); } .forecast-mini .cd { fill: var(--down); } .forecast-mini .cz { fill: var(--flat); }
-.forecast-branch-list { position: relative; padding-left: 54px; margin-top: 8px; }
-.forecast-branch-list > svg { position: absolute; left: 0; top: 0; width: 52px; height: 100%; fill: none; stroke: var(--ai); opacity: .65; }
-.forecast-branch { width: 100%; height: 68px; margin: 2px 0; padding: 8px; border-radius: 5px; background: var(--paper-2); text-align: left; }
-.forecast-branch > span { display: flex; justify-content: space-between; gap: 8px; }
+.forecast-other { margin-top: 2px; }
+.forecast-branch-list { position: relative; padding-left: 42px; margin-top: 4px; }
+.forecast-branch-list > svg { position: absolute; left: 0; top: 0; width: 40px; height: 100%; fill: none; stroke: var(--ai); opacity: .65; }
+.forecast-branch { width: 100%; height: 49px; margin: 2px 0; padding: 5px 8px; border-radius: 5px; background: var(--paper-2); text-align: left; transition: background .16s ease; }
+.forecast-branch > span { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
 .forecast-branch strong { font: 500 18px/1.2 var(--font-code); }
-.forecast-branch small { display: block; font-size: 11px; color: var(--ink-2); margin-top: 4px; }
+.forecast-branch small { display: block; font-size: 11px; color: var(--ink-2); line-height: 15px; }
 .forecast-branch:disabled { opacity: .55; }
-.forecast-grid { bottom: 12px; }
+.forecast-complete { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; }
+.forecast-complete > strong { font: 500 28px/1.2 var(--font-code); }
+.forecast-complete > button { color: var(--ai); padding: 5px; }
+.forecast-secondary { border-top: 1px solid var(--hair); padding-top: 4px; }
+.forecast-grid { width: 100%; }
+.forecast-grid > div > .forecast-caption { display: none; }
 .forecast-grid table { border-collapse: collapse; table-layout: fixed; width: 100%; font-size: 11px; }
-.forecast-grid th { font-weight: 400; color: var(--ink-2); text-align: center; padding: 2px 0; }
-.forecast-grid th:first-child { width: 48px; text-align: left; }
-.forecast-grid td { padding: 2px; }
+.forecast-grid th { font-weight: 400; color: var(--ink-2); text-align: center; padding: 0; height: 16px; }
+.forecast-grid th:first-child { width: 46px; text-align: left; }
+.forecast-grid td { padding: 1px 2px; }
 .forecast-cell { width: 100%; min-height: 25px; border-radius: 3px; font: 400 11px/1 var(--font-code); font-variant-numeric: tabular-nums; background: color-mix(in srgb, var(--ai) calc(var(--odds) * 100%), var(--paper)); }
 .forecast-cell[data-state="U"] { background: color-mix(in srgb, var(--up) calc(var(--odds) * 100%), var(--paper)); }
 .forecast-cell[data-state="D"] { background: color-mix(in srgb, var(--down) calc(var(--odds) * 100%), var(--paper)); }
-.forecast-cell[aria-pressed="true"] { box-shadow: inset 0 0 0 1px var(--ink-2); }
+.forecast-cell[aria-pressed="true"], .forecast-cell:hover { box-shadow: inset 0 0 0 1px var(--ink-2); }
+.forecast-evidence { margin: 2px 0 0; font-size: 11px; color: var(--ink-2); line-height: 14px; min-height: 14px; }
+.forecast-detail { font-size: 11px; line-height: 1.4; color: var(--ink-2); }
+.forecast-detail strong { font-weight: 500; color: var(--ink); }
+.forecast-detail p { margin: 4px 0; }
+.forecast-fan-rates { margin: 4px 0; }
+.forecast-fan-rate { display: grid; grid-template-columns: 1fr auto; align-items: baseline; min-height: 45px; padding: 3px 0; }
+.forecast-fan-rate strong { font: 500 18px/1 var(--font-code); }
+.forecast-fan-rate small { grid-column: 1 / -1; color: var(--ink-2); font-size: 11px; }
+.forecast-skeleton { padding-top: 8px; }
+.forecast-skeleton > div { height: 36px; margin: 4px 0; display: flex; align-items: center; justify-content: space-between; gap: 18px; background: var(--paper-2); border-radius: 5px; padding: 7px 12px; }
+.forecast-skeleton i { width: 55%; height: 5px; background: var(--hair); border-radius: 3px; }
+.forecast-skeleton span { color: var(--ink-3); }
 .forecast-status { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-@media (pointer: coarse) { .forecast-crumbs button { min-height: 36px; } .forecast-cell { min-height: 36px; } }
+.pane[data-updating="true"] .pane-body { opacity: .55; transition: opacity .16s ease; }
+@media (pointer: coarse) {
+  .forecast-panel { grid-template-rows: 80px 210px 162px; }
+  .forecast-crumbs button { min-height: 28px; }
+  .forecast-path { height: 39px; }
+  .forecast-mini svg { height: 24px; }
+  .forecast-branch { height: 58px; }
+  .forecast-cell { min-height: 36px; }
+}
+@media (prefers-reduced-motion: reduce) { .forecast-body, .forecast-path, .forecast-branch, .pane[data-updating="true"] .pane-body { transition: none; } }
 
 /* the history answers: three ways of matching, mixed freely, and a scroll of instances */
 .match { border-top: 1px solid var(--hair); padding-block: 12px 4px; padding-inline: 12px 4px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
@@ -346,10 +355,18 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
         </div>
         <button type="button" class="chip" id="forecast-toggle" aria-pressed="false" aria-controls="forecast-grid">Grid</button>
       </div>
-      <section class="forecast-panel" id="forecast-panel" aria-label="Continuation scenarios" hidden></section>
-      <section class="forecast-grid" id="forecast-grid" aria-label="Bar-by-bar probability grid" hidden></section>
+      <section class="forecast-panel" id="forecast-panel" aria-label="Continuation scenarios">
+        <header class="forecast-head">
+          <div class="forecast-headline"><span class="forecast-message" id="forecast-message"></span><button type="button" class="forecast-retry" id="forecast-retry" hidden>Retry</button></div>
+          <div id="forecast-trail"></div>
+        </header>
+        <div class="forecast-body" id="forecast-body"></div>
+        <div class="forecast-secondary" id="forecast-secondary">
+          <section class="forecast-grid" id="forecast-grid" aria-label="Bar-by-bar probability grid" hidden><div id="forecast-grid-content"></div><p class="forecast-evidence" id="forecast-evidence"></p></section>
+          <div class="forecast-detail" id="forecast-detail"></div>
+        </div>
+      </section>
       <p class="forecast-status" id="forecast-status" role="status" aria-live="polite"></p>
-      <span class="forecast-update" id="forecast-update" aria-hidden="true"></span>
       <p class="hint" id="hint">Each bar opens where the one before it closed · drag a close, a shadow or a body · tap the first bar to change its colour · hold ⌥ to pass levels freely</p>
       <div class="dock">
         <label class="space" title="Space between the bars · [ and ] · pinch on the paper">
@@ -757,8 +774,8 @@ function namesOf(id) {
 const HINT_DRAW = 'Each bar opens where the one before it closed · drag a close, a shadow or a body · tap the first bar to change its colour · hold ⌥ to pass levels freely';
 const HINT_PIN = 'Tap two points to hold how they relate · tap a body to hold its colour · tap a knot to let it go · Esc when done';
 const Forecast = {
-  view: 'fan', grid: false, prefix: '', selected: '', source: null, sourceKey: '', rendered: '', focusRequested: '', current: false,
-  panel: $('#forecast-panel'), table: $('#forecast-grid'),
+  view: 'fan', grid: false, prefix: '', selected: '', source: null, sourceKey: '', rendered: '', focusRequested: '', current: false, phase: 'loading',
+  panel: $('#forecast-panel'), table: $('#forecast-grid'), body: $('#forecast-body'), secondary: $('#forecast-secondary'),
   init() {
     try {
       const saved = JSON.parse(localStorage.getItem('ashi.forecast'));
@@ -769,17 +786,21 @@ const Forecast = {
       const b = e.target.closest('button[data-view]'); if (b) this.choose(b.dataset.view);
     });
     $('#forecast-toggle').addEventListener('click', () => { this.grid = !this.grid; this.remember(); App.redraw(); });
-    for (const el of [this.panel, this.table]) el.addEventListener('click', e => {
+    $('#forecast-retry').addEventListener('click', e => { e.stopPropagation(); Match.retry(); });
+    this.panel.addEventListener('click', e => {
       const b = e.target.closest('button'); if (!b || b.disabled || !this.source || !this.current) return;
       if (b.dataset.path) this.selected = b.dataset.path;
       else if (b.dataset.prefix != null) this.select(b.dataset.prefix);
-      if (e.detail === 0) this.focusRequested = el.id;
+      else if (b.dataset.evidence) { this.inspect(b); return; }
+      if (e.detail === 0) this.focusRequested = b.closest('#forecast-grid') ? 'grid' : b.dataset.path ? 'paths' : 'branches';
       App.redraw();
     });
+    for (const type of ['pointerover', 'focusin']) this.table.addEventListener(type, e => {
+      const b = e.target.closest('.forecast-cell'); if (b && this.current) this.inspect(b);
+    });
     this.controls();
-    new ResizeObserver(() => App.redraw()).observe(this.panel);
-    new ResizeObserver(() => App.redraw()).observe(this.table);
   },
+  inspect(b) { $('#forecast-evidence').textContent = `+${Number(b.dataset.step) + 1} ${ForecastViews.names[b.dataset.state]} · ${b.dataset.evidence}`; },
   controls() {
     $('#forecast-modes').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.view === this.view)));
     $('#forecast-toggle').setAttribute('aria-pressed', String(this.grid));
@@ -801,61 +822,69 @@ const Forecast = {
     if (!c || c !== this.source || !(this.view === 'paths' || this.prefix.length)) return null;
     return c.examples?.[this.selected] || null;
   },
-  compact(w, lx) { return this.view === 'paths' || w - lx - 24 < 290; },
   reserve(w, lx, top) {
-    const grid = this.grid ? 216 : 0;
-    const panel = this.view !== 'fan' && this.compact(w, lx) ? 400 : 0;
-    const extra = grid + panel;
-    // An expanded branch list needs its own vertical space even on wide paper, or it would cover the grid/toolbar.
-    const main = this.view === 'branches' && !this.compact(w, lx) ? 400 : 160;
-    const height = extra || this.view === 'branches' ? Math.ceil(top + extra + main + 84) : 0;
-    if (Stage.wrap.style.getPropertyValue('--forecast-min-height') !== `${height}px`) Stage.wrap.style.setProperty('--forecast-min-height', `${height}px`);
-    return extra;
+    const L = ForecastViews.layout(w, lx, top, matchMedia('(pointer: coarse)').matches);
+    const height = `${L.minHeight}px`;
+    if (Stage.wrap.style.getPropertyValue('--forecast-min-height') !== height) Stage.wrap.style.setProperty('--forecast-min-height', height);
+    return L.reserve;
   },
   sync(G) {
-    this.current = Match.fresh() && !Match.failed;
-    const next = this.current ? Match.result?.panes?.cont : undefined;
-    const changed = this.current && next !== this.source;
-    if (changed) {
-      if (Match.resultKey !== this.sourceKey) { this.prefix = ''; this.selected = next?.sequences[0][0] || ''; }
-      this.source = next; this.sourceKey = Match.resultKey;
+    const next = ForecastViews.reconcile(this, { fresh: Match.fresh(), failed: Match.failed, data: Match.result?.panes?.cont, key: Match.resultKey });
+    const changed = next.source !== this.source;
+    Object.assign(this, next);
+    const c = this.source, updating = this.phase === 'loading' || this.phase === 'refreshing';
+    this.panel.dataset.phase = this.phase;
+    this.panel.setAttribute('aria-busy', String(updating));
+    this.body.inert = this.secondary.inert = $('#forecast-trail').inert = !this.current;
+    this.body.dataset.previous = this.secondary.dataset.previous = String(!!c && !this.current);
+    this.table.hidden = !this.grid; $('#forecast-detail').hidden = this.grid;
+    $('#forecast-retry').hidden = this.phase !== 'error';
+    const messages = {
+      ready: `${c?.n.toLocaleString('en-GB') || ''} complete matches · next 6 bars`,
+      refreshing: 'Updating · showing the previous result',
+      loading: 'Finding matching continuations…',
+      sparse: 'Not enough complete continuations',
+      error: c ? 'Update failed · showing the previous result' : 'Continuation unavailable',
+    };
+    $('#forecast-message').textContent = messages[this.phase];
+    for (const pane of document.querySelectorAll('.pane')) {
+      pane.dataset.updating = String(!!Match.result && !this.current); pane.setAttribute('aria-busy', String(updating));
     }
-    const c = this.source;
-    this.panel.dataset.updating = String(!this.current); this.table.dataset.updating = String(!this.current);
-    $('#forecast-update').textContent = !this.current && c ? Match.failed ? 'Update failed · previous result' : 'Updating · previous result' : '';
-    this.panel.hidden = this.view === 'fan'; this.table.hidden = !this.grid;
-    const message = Match.failed ? 'Continuation unavailable.' : Match.result && !Match.fresh() ? 'Updating the continuation…' : Match.result ? 'Fewer than 30 complete continuations; no probability estimate.' : 'Loading the continuation…';
-    const key = `${this.view}|${this.grid}|${this.prefix}|${this.selected}|${c ? '' : message}`;
+    const key = `${this.view}|${this.grid}|${this.prefix}|${this.selected}|${!!c}`;
     if (changed || this.rendered !== key) {
       this.rendered = key;
-      this.panel.innerHTML = c ? this.view === 'paths' ? ForecastViews.paths(c, this.prefix, this.selected) : ForecastViews.branches(c, this.prefix) : `<p class="forecast-caption">${message}</p>`;
-      this.table.innerHTML = c ? ForecastViews.grid(c, this.prefix) : `<p class="forecast-caption">${message}</p>`;
-      $('#forecast-status').textContent = c ? `${this.view}, grid ${this.grid ? 'on' : 'off'}. ${this.prefix ? ForecastViews.words(this.prefix) + '. ' : ''}${ForecastViews.subset(c, this.prefix).n} supporting windows.` : message;
-      if (this.focusRequested) {
-        const el = $('#' + this.focusRequested);
-        const target = el.querySelector('.forecast-branch:not([disabled]), .forecast-cell:not([disabled]), .forecast-path[aria-pressed="true"]') || el.querySelector('.forecast-crumbs button:last-child');
-        if (target) target.focus({ preventScroll: true });
+      const active = document.activeElement, restore = this.panel.contains(active) && !!active?.dataset;
+      const token = restore ? { path: active.dataset.path, prefix: active.dataset.prefix, step: active.dataset.step, state: active.dataset.state } : null;
+      $('#forecast-trail').innerHTML = ForecastViews.crumbs(this.prefix);
+      this.body.innerHTML = c ? ForecastViews[this.view](c, this.prefix, this.selected) : ForecastViews.empty(this.view);
+      $('#forecast-grid-content').innerHTML = c ? ForecastViews.grid(c, this.prefix) : '';
+      $('#forecast-detail').innerHTML = c ? ForecastViews.detail(c, this.prefix, this.selected, this.view) : '<strong>No probability estimate yet</strong><p>Estimates need 30 matched windows with all six following bars. Your composition stays editable.</p>';
+      $('#forecast-evidence').textContent = c ? 'Above / Inside / Below the combo range · focus or tap a cell for its 95% interval' : 'Estimates need 30 complete continuations.';
+      if (this.focusRequested || token) {
+        let target = null;
+        if (this.focusRequested === 'grid') target = this.table.querySelector('[data-prefix]');
+        else if (this.focusRequested === 'paths') target = this.body.querySelector('[aria-pressed="true"]');
+        else if (this.focusRequested === 'branches') target = this.body.querySelector('button:not([disabled])');
+        else if (token) target = [...this.panel.querySelectorAll('button')].find(b => token.path ? b.dataset.path === token.path : token.step != null ? b.dataset.step === token.step && b.dataset.state === token.state : token.prefix != null && b.dataset.prefix === token.prefix);
+        if (!target) target = $('#forecast-trail').querySelector('button:last-child');
+        if (target && this.current) target.focus({ preventScroll: true });
         this.focusRequested = '';
       }
+      if (!calm() && this.current && this.body.animate) this.body.animate([{ opacity:.65 },{ opacity:1 }],{ duration:160,easing:'ease-out' });
       App.redraw();
     }
-    const lx = G.xs[G.N - 1] + G.bw / 2, aligned = G.fanStep >= 38;
-    // Grid columns share the fan's x positions where each percentage fits; narrow paper uses labeled full-width columns.
-    const gridWidth = aligned ? 72 + G.fanStep * FAN_STEPS : G.w - 24;
-    const gridLeft = aligned ? lx + G.fanStep / 2 - 60 : 12;
-    this.table.style.left = `${Math.max(12, Math.min(gridLeft, G.w - gridWidth - 12))}px`;
-    this.table.style.width = `${Math.min(gridWidth, G.w - 24)}px`;
-    const compact = this.compact(G.w, lx);
-    this.panel.style.left = `${compact ? Math.max(12, Math.min(lx, G.w - 540 - 12)) : lx + 12}px`;
-    this.panel.style.width = `${compact ? Math.min(540, G.w - 24) : G.w - lx - 36}px`;
-    this.panel.style.top = compact ? '' : `${G.plotTop}px`;
-    this.panel.style.bottom = compact ? `${this.grid ? 228 : 12}px` : '';
+    if (!c) $('#forecast-detail').innerHTML = this.phase === 'error' ? '<strong>Could not load the continuation</strong><p>Retry keeps your drawing, view and grid preferences.</p>' : '<strong>No probability estimate yet</strong><p>Estimates need 30 matched windows with all six following bars. Your composition stays editable.</p>';
+    const status = `${messages[this.phase]}. ${this.prefix ? ForecastViews.words(this.prefix) + '. ' : ''}${this.view}, grid ${this.grid ? 'on' : 'off'}.`;
+    if ($('#forecast-status').textContent !== status) $('#forecast-status').textContent = status;
+    const L = ForecastViews.layout(G.w, G.xs[G.N - 1] + G.bw / 2, G.plotTop, matchMedia('(pointer: coarse)').matches);
+    this.panel.style.left = `${L.left}px`; this.panel.style.width = `${L.width}px`; this.panel.style.height = `${L.height}px`;
   },
 };
 const Stage = {
   wrap: $('#cvwrap'), cv: $('#cv'), hint: $('#hint'),
   view: { cur: new Float64Array([0, 100]), vel: new Float64Array(2), tgt: new Float64Array([0, 100]), get lo() { return this.cur[0]; }, get hi() { return this.cur[1]; }, get tlo() { return this.tgt[0]; }, get thi() { return this.tgt[1]; } },
   ghosts: [], drag: null, hov: null, ptr: null, snapV: null, snapA: 0, fanA: 0, ready: false,
+  fanWeight: 1, exampleWeight: 0, futureBars: null,
   plot: { cur: new Float64Array(2), vel: new Float64Array(2), tgt: new Float64Array(2), ready: false },
   pinFrom: null, pinHov: null, pinPress: null, trace: null,
   geom() {
@@ -901,6 +930,7 @@ const Stage = {
   retire(b) { this.ghosts.push({ dv: Float64Array.from(b.dv), x: b.x, col: b.col ? b.col.slice() : COL.rgb.z.slice(), a: b.a }); },
   step(dt) {
     let busy = false;
+    Forecast.sync(this.geom());
     const fast = calm(), span = this.view.thi - this.view.tlo;
     if (!this.drag && springArr(this.view.cur, this.view.vel, this.view.tgt, 2, fast ? 40 : 7, dt, span * 1e-4)) busy = true;
     this.geom();
@@ -923,8 +953,20 @@ const Stage = {
     if (this.ghosts.length) busy = true;
     if (this.trace && this.trace.a < 1) { this.trace.a = Math.min(1, this.trace.a + dt * (fast ? 40 : 4)); busy = true; }
     // the fan leaves quickly when a drag begins and returns slowly once the history answers the drawing as it stands
-    const fanT = this.drag && this.drag.moved ? 0 : Match.fresh() ? 1 : 0;
+    const fanT = Match.fresh() && !Match.failed ? 1 : Forecast.source ? .35 : 0;
     if (Math.abs(fanT - this.fanA) > 0.004) { this.fanA += (fanT - this.fanA) * (1 - Math.exp(-(fast ? 60 : fanT > this.fanA ? 6 : 16) * dt)); busy = true; } else this.fanA = fanT;
+    const example = Forecast.example(Forecast.source), mix = 1 - Math.exp(-(fast ? 60 : 14) * dt);
+    for (const [key, target] of [['fanWeight', Forecast.view === 'fan' ? 1 : 0], ['exampleWeight', example ? 1 : 0]]) {
+      if (Math.abs(target - this[key]) > .004) { this[key] += (target - this[key]) * mix; busy = true; } else this[key] = target;
+    }
+    if (example) {
+      const target = example.bars.flat();
+      if (!this.futureBars || this.futureBars.length !== target.length) this.futureBars = Float64Array.from(target);
+      for (let j = 0; j < target.length; j++) {
+        if (Math.abs(target[j] - this.futureBars[j]) > .0001) { this.futureBars[j] += (target[j] - this.futureBars[j]) * mix; busy = true; }
+        else this.futureBars[j] = target[j];
+      }
+    }
     return busy;
   },
   hit(px, py) {
@@ -1190,7 +1232,7 @@ const Stage = {
     S.bars.forEach((b, i) => this.drawBar(ctx, G, i));
     this.drawFan(ctx, G);
     this.drawExample(ctx, G);
-    Forecast.sync(G);
+    this.drawFutureLabels(ctx, G);
     this.drawTrace(ctx, G);
     this.drawSkeleton(ctx, G);
     this.drawPins(ctx, G);
@@ -1253,9 +1295,8 @@ const Stage = {
   // 続: the bars after the windows that match, each scaled so its own low and high sit on the drawing's, as a fan of
   // their closes (10 to 90%, 25 to 75% and the median) from the last bar's close, with the shape's high and low carried on
   drawFan(ctx, G) {
-    if (Forecast.view !== 'fan') return;
-    const r = Match.result, c = r && r.panes && r.panes.cont;
-    if (!c || c.fan.length < 1 || this.fanA < 0.01) return;
+    const c = Forecast.source;
+    if (!c || c.fan.length < 1 || this.fanA < 0.01 || this.fanWeight < .01) return;
     let lo = Infinity, hi = -Infinity;
     for (const b of S.bars) { lo = Math.min(lo, b.dv[0]); hi = Math.max(hi, b.dv[3]); }
     const n = S.bars.length, last = S.bars[n - 1], lx = (last.x == null ? G.xs[n - 1] : last.x) + G.bw / 2;
@@ -1265,7 +1306,7 @@ const Stage = {
     const y0 = this.Y(dirOf(n - 1) >= 0 ? last.dv[2] : last.dv[1], G);
     ctx.save();
     ctx.beginPath(); ctx.rect(0, G.plotTop - 24, G.w, G.plotH + 48); ctx.clip();
-    ctx.globalAlpha = this.fanA * (this.trace ? 0.3 : 1);
+    ctx.globalAlpha = this.fanA * this.fanWeight * (this.trace ? 0.3 : 1);
     const band = (a, b, alpha) => {
       ctx.beginPath(); ctx.moveTo(lx, y0);
       c.fan.forEach((qs, j) => ctx.lineTo(xs[j], Y(qs[b])));
@@ -1282,34 +1323,38 @@ const Stage = {
     const p = w => (w ? `${Math.round(w[0] * 100)}%` : '–');
     ctx.textBaseline = 'bottom'; ctx.fillText(`high broken ${p(c.aboveHigh)}`, end, Math.round(Y(1)) - 3);
     ctx.textBaseline = 'top'; ctx.fillText(`low broken ${p(c.belowLow)}`, end, Math.round(Y(0)) + 3);
-    ctx.font = `500 12px ${FONT_MIN}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = COL.ai;
-    ctx.fillText(`続 ${c.fan.length}`, end, G.plotBottom + 34);
     ctx.restore();
   },
   drawExample(ctx, G) {
-    if (!Match.fresh() || this.fanA < .01) return;
-    const c = Match.result?.panes?.cont, example = Forecast.example(c);
-    if (!example) return;
+    if (this.fanA < .01 || this.exampleWeight < .01 || !this.futureBars) return;
+    const bars = Array.from({ length:this.futureBars.length / 4 }, (_, j) => Array.from(this.futureBars.slice(j * 4, j * 4 + 4)));
     let lo = Infinity, hi = -Infinity;
     for (const b of S.bars) { lo = Math.min(lo, b.dv[0]); hi = Math.max(hi, b.dv[3]); }
     if (!(hi > lo)) return;
     const Y = u => this.Y(lo + u * (hi - lo), G), last = S.bars[G.N - 1];
     const lx = (last.x == null ? G.xs[G.N - 1] : last.x) + G.bw / 2;
     ctx.save(); ctx.beginPath(); ctx.rect(0, G.plotTop - 24, G.w, G.plotH + 80); ctx.clip();
-    ctx.globalAlpha = this.fanA * (this.trace ? .3 : .9);
+    ctx.globalAlpha = this.fanA * this.exampleWeight * (this.trace ? .3 : .9);
     ctx.strokeStyle = COL.ai; ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.moveTo(lx, this.Y(closeOf(last.dv, last.d), G));
-    example.bars.forEach((b, j) => ctx.lineTo(lx + (j + 1) * G.fanStep, Y(b[3]))); ctx.stroke();
-    if (Forecast.view === 'paths') example.bars.forEach(([o, h, l, c], j) => {
+    bars.forEach((b, j) => ctx.lineTo(lx + (j + 1) * G.fanStep, Y(b[3]))); ctx.stroke();
+    if (Forecast.view === 'paths') bars.forEach(([o, h, l, c], j) => {
       const x = lx + (j + 1) * G.fanStep, bw = Math.max(3, Math.min(G.bw * .6, G.fanStep * .5));
       ctx.fillStyle = c > o ? COL.up : c < o ? COL.down : COL.flat;
       ctx.fillRect(x - .8, Y(h), 1.6, Math.max(1, Y(l) - Y(h)));
       ctx.fillRect(x - bw / 2, Y(Math.max(o, c)), bw, Math.max(2, Math.abs(Y(o) - Y(c))));
-      ctx.fillStyle = COL['ink-2']; ctx.font = `400 11px ${FONT_UI}`; ctx.textAlign = 'center';
-      ctx.fillText(`+${j + 1}`, x, G.plotBottom + 34);
     });
     ctx.fillStyle = COL['ink-2']; ctx.font = `400 11px ${FONT_UI}`; ctx.textAlign = 'left';
     ctx.fillText('Historical example', lx + 4, G.plotTop - 10);
+    ctx.restore();
+  },
+  drawFutureLabels(ctx, G) {
+    const last = S.bars[G.N - 1], lx = (last.x == null ? G.xs[G.N - 1] : last.x) + G.bw / 2;
+    ctx.save(); ctx.fillStyle = COL['ink-2']; ctx.font = `400 11px ${FONT_UI}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (let j = 1; j <= FAN_STEPS; j++) {
+      if (G.fanStep < 12 && j !== FAN_STEPS || G.fanStep < 22 && j !== 1 && j !== FAN_STEPS) continue;
+      ctx.fillText(`+${j}`, lx + j * G.fanStep, G.plotBottom + 34);
+    }
     ctx.restore();
   },
   // 写し: an instance from the history traced over the drawing, scaled to the drawing's height, one BTCUSDT bar per drawn bar
@@ -1410,23 +1455,34 @@ const Match = {
       const el = document.getElementById('matcher-src'), src = el ? el.textContent.trim() : '';
       this.worker = src && src !== '__MATCHER__' ? new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' }))) : new Worker('matcher.js');
     } catch (err) { this.fail('This browser cannot run the matcher in the background, so the BTCUSDT history is unavailable.'); return; }
-    this.worker.onmessage = e => this.onmsg(e.data);
-    this.worker.onerror = e => this.fail(`The matcher stopped: ${e.message || 'unknown error'}.`);
+    const worker = this.worker;
+    worker.onmessage = e => { if (this.worker === worker) this.onmsg(e.data); };
+    worker.onerror = e => { if (this.worker === worker) this.fail(`The matcher stopped: ${e.message || 'unknown error'}.`); };
     loadBars()
-      .then(buffer => this.worker.postMessage({ type: 'bars', buffer }, [buffer]))
-      .catch(err => this.fail(`The BTCUSDT klines could not be loaded (${err.message}). Composer still works; reload to try again.`));
+      .then(buffer => { if (this.worker === worker) worker.postMessage({ type: 'bars', buffer }, [buffer]); })
+      .catch(err => { if (this.worker === worker) this.fail(`The BTCUSDT klines could not be loaded (${err.message}).`); });
     // what traded in each bar, for the left pane; matching never waits for it
     fetch('activity').then(r => { if (!r.ok) throw new Error(`the server answered ${r.status}`); return r.arrayBuffer(); })
-      .then(buffer => this.worker.postMessage({ type: 'activity', buffer }, [buffer]))
-      .catch(err => { Panes.readings = 'failed'; Panes.note = err.message; if (this.result) Panes.render(this.result); });
+      .then(buffer => { if (this.worker === worker) worker.postMessage({ type: 'activity', buffer }, [buffer]); })
+      .catch(err => { if (this.worker !== worker) return; Panes.readings = 'failed'; Panes.note = err.message; if (this.result) Panes.render(this.result); });
     this.schedule(true);
   },
   // the result on screen answers the drawing as it stands
   current() { return !!this.result && this.result.id === this.id; },
   // the result on screen answers the drawing as it is drawn now, not only the last search sent
   fresh() { return !!this.result && this.resultKey === this.drawnKey; },
+  retry() {
+    if (this.worker) this.worker.terminate();
+    clearTimeout(this.timer);
+    this.worker = null; this.failed = false; this.ready = false; this.sentKey = ''; this.resultKey = ''; this.sent = null; this.id++;
+    this.drawnKey = this.key(); Panes.readings = 'loading'; this.start(); App.redraw();
+  },
   key() { return JSON.stringify(this.query().q); },
-  fail(msg) { this.failed = true; $('#prog').hidden = true; $('#mmsg').textContent = msg; $('#emaki').innerHTML = ''; Panes.clear(); },
+  fail(msg) {
+    this.failed = true; $('#prog').hidden = true; $('#mmsg').textContent = msg; $('#emaki').classList.add('stale');
+    if (!this.result) { $('#emaki').innerHTML = ''; Panes.clear(); }
+    App.redraw();
+  },
   onmsg(m) {
     if (m.type === 'ready') { this.ready = true; this.until = m.to; if (!this.result) $('#mmsg').textContent = `Searching the BTCUSDT history, ${day(m.from)} to ${day(m.to)}…`; return; }
     if (m.type === 'error') { this.fail(`The BTCUSDT klines could not be read: ${m.message}`); return; }
