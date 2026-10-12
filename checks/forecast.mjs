@@ -99,6 +99,6 @@ F.grid=true; F.choose('paths'); assert.equal(F.view,'paths'); assert.equal(F.gri
 F.choose('branches'); assert.equal(F.grid,true); F.choose('bad'); assert.equal(F.view,'branches');
 F.source=C; F.select('U'); assert.equal(F.prefix,'U'); assert.equal(F.selected,'UDIIII');
 F.select('XYZ'); assert.equal(F.prefix,'U'); F.select(''); assert.equal(F.prefix,'');
-assert.deepEqual(saved.at(-1),{view:'branches',grid:true}); assert.equal(fits,2); assert.equal(draws,2);
+assert.deepEqual(saved.at(-1),{view:'branches',grid:true}); assert.equal(fits,0,'mode selection keeps the camera frame'); assert.equal(draws,2);
 console.log('Aggregate, whole-sequence and conditional rates, sparse support, immutable data and independent saved canvas controls pass.');
 process.exit(0);
