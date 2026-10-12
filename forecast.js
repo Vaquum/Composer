@@ -94,7 +94,9 @@ const ForecastViews = (() => {
   }
   // Geometry depends only on the viewport and input modality, never on loading, mode, Grid or result content.
   function layout(w, lx, top, coarse = false) {
-    const height = coarse ? 488 : 400, width = Math.min(580, Math.max(0, w - 24));
+    const width = Math.min(580, Math.max(0, w - 24));
+    // Grid evidence can wrap to several lines on a phone; reserve it before any results arrive.
+    const height = (coarse ? 488 : 400) + (width <= 420 ? 42 : 0);
     return { height, width, left: Math.max(12, Math.min(lx + 12, w - width - 12)), reserve: height + 16, minHeight: Math.ceil(top + height + 260) };
   }
   return { states, names, words, percent, rate, interval, subset, outcomes, crumbs, paths, branches, grid, fan, detail, empty, emptyGrid, reconcile, layout };

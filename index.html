@@ -99,7 +99,7 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
 
 .forecast-controls { position: absolute; top: 14px; left: 24px; display: flex; align-items: center; gap: 8px; }
 .forecast-controls .chip { height: 30px; }
-.forecast-panel { position: absolute; bottom: 12px; padding: 12px; display: grid; grid-template-rows: 64px 180px 120px; gap: 6px; background: var(--paper); border-radius: 9px; box-shadow: 0 0 0 1px var(--hair); font-size: 12px; container-type: inline-size; }
+.forecast-panel { position: absolute; bottom: 12px; padding: 12px; display: grid; grid-template-rows: 64px 180px minmax(120px, 1fr); gap: 6px; background: var(--paper); border-radius: 9px; box-shadow: 0 0 0 1px var(--hair); font-size: 12px; container-type: inline-size; }
 .forecast-head { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
 .forecast-headline { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 18px; }
 .forecast-message { font-size: 12px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -162,7 +162,7 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
 .forecast-status { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .pane[data-updating="true"] .pane-body { opacity: .55; transition: opacity .16s ease; }
 @media (pointer: coarse) {
-  .forecast-panel { grid-template-rows: 80px 210px 162px; }
+  .forecast-panel { grid-template-rows: 80px 210px minmax(162px, 1fr); }
   .forecast-crumbs button { min-height: 28px; }
   .forecast-path { height: 39px; }
   .forecast-mini svg { height: 24px; }

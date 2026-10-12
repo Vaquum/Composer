@@ -30,6 +30,7 @@ for (const width of [320,375,700,1200,1800]) for (const coarse of [false,true]) 
     assert.deepEqual(actual,baseline,'mode, Grid and result state cannot move the plot');
     assert.ok(actual.left>=12&&actual.left+actual.width<=width-12);
     assert.ok(actual.minHeight-84-actual.reserve>=260,'enough room remains for the composition');
+    assert.equal(actual.height,(coarse?488:400)+(actual.width<=420?42:0),'narrow canvases reserve wrapping Grid evidence in every state');
   }
 }
 
@@ -64,7 +65,7 @@ assert.match(V.empty('paths'),/aria-hidden="true"/); assert.doesNotMatch(V.empty
 assert.equal((V.emptyGrid().match(/<td>/g)||[]).length,18,'loading preserves all future-bar grid slots');
 assert.doesNotMatch(V.emptyGrid(),/\d%/,'loading grid never fabricates probabilities');
 assert.match(V.paths(data),/Whole-sequence probability/);
-assert.match(html,/\.forecast-panel \{[^}]*grid-template-rows: 64px 180px 120px/);
+assert.match(html,/\.forecast-panel \{[^}]*grid-template-rows: 64px 180px minmax\(120px, 1fr\)/);
 assert.match(html,/prefers-reduced-motion/);
 assert.doesNotMatch(html.slice(a,b),/offsetHeight|Stage\.fit\(/,'forecast placement never measures response content or forces a camera change');
 assert.match(fs.readFileSync('forecast.js','utf8'),/preserveAspectRatio="none"/,'miniature candles span their six bar columns');
