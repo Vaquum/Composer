@@ -57,25 +57,23 @@
 .pane-details[open] > summary { margin-bottom: var(--pane-row); }
 .pane-bar-summary { display: block; padding: 4px 0 0 14px; font-size: var(--pane-small); font-weight: 400; }
 .pane-bar-summary b { font-weight: 600; }
-.pane-ledger { width: 100%; border-collapse: collapse; }
-.pane-ledger th { text-align: right; font-size: var(--pane-small); font-weight: 500; color: var(--ink-2); padding: 0 0 var(--pane-row); border-bottom: 1px solid var(--hair); }
-.pane-ledger th:first-child { text-align: left; }
-.pane-ledger td { text-align: right; vertical-align: top; font-size: var(--pane-label); padding: var(--pane-row) 0; }
-.pane-ledger tbody tr + tr td { border-top: 1px solid var(--hair); }
+.pane-ledger, .pane-timeframes { width: 100%; border-collapse: collapse; }
+.pane-ledger th, .pane-timeframes th { text-align: right; font-size: var(--pane-small); font-weight: 500; color: var(--ink-2); padding: 0 0 var(--pane-row); border-bottom: 1px solid var(--hair); }
+.pane-ledger th:first-child, .pane-timeframes th:first-child, .pane-timeframes td:first-child { text-align: left; }
+.pane-ledger td, .pane-timeframes td { text-align: right; vertical-align: top; font-size: var(--pane-label); padding: var(--pane-row) 0; }
+.pane-ledger tbody tr + tr td, .pane-timeframes tbody tr + tr td { border-top: 1px solid var(--hair); }
 .pane-ledger td:first-child { text-align: left; width: 46%; padding-right: var(--pane-row); }
 .pane-ledger td:nth-child(2) { width: 29%; font-weight: 600; }
 .pane-ledger td:last-child { width: 25%; color: var(--ink-2); }
 .pane-ledger small { display: block; color: var(--ink-2); font-size: var(--pane-small); margin-top: 2px; }
-.pane-ledger tbody tr:last-child td { padding-bottom: 0; }
+.pane-ledger tbody tr:last-child td, .pane-timeframes tbody tr:last-child td { padding-bottom: 0; }
 .pane .pane-order { font-size: var(--pane-label); color: var(--ink-2); }
 .pane-flow > .pane-note { margin-top: 0; }
 .pane-next { display: flex; flex-direction: column; gap: var(--pane-row); }
 .pane-next > h3 { margin: 0; }
 .pane .pane-next-value { font-size: var(--pane-headline); font-weight: 600; letter-spacing: -.04em; line-height: 1.1; }
-.pane-timeframes { width: 100%; border-collapse: collapse; font-size: var(--pane-label); }
-.pane-timeframes th { font-size: var(--pane-small); color: var(--ink-2); font-weight: 500; }
-.pane-timeframes th, .pane-timeframes td { padding: 4px 0; text-align: right; }
-.pane-timeframes th:first-child, .pane-timeframes td:first-child { text-align: left; }
+.pane-timeframes td:nth-child(2) { font-weight: 600; }
+.pane-timeframes td:last-child { color: var(--ink-2); }
 .prate { padding: var(--pane-row) 0; }
 .prate + .prate { border-top: 1px solid var(--hair); }
 .pane-group > .prow:first-of-type, .pane-group > .prate:first-of-type { padding-top: 0; }
