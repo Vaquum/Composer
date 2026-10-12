@@ -90,12 +90,13 @@ function expected(q) {
     if (!(hi > lo)) continue;
     const closes = [], his = [], los = [];
     for (let j = 1; j <= 6; j++) { closes.push((T.C[w.e + j] - lo) / (hi - lo)); his.push(T.H[w.e + j]); los.push(T.L[w.e + j]); }
-    cont.push({ closes, up: Math.max(...his) > hi, down: Math.min(...los) < lo, above: T.C[w.e + 6] > T.C[w.e] });
+    const key = Array.from({ length: 6 }, (_, j) => T.C[w.e + j + 1] > hi ? 'U' : T.C[w.e + j + 1] < lo ? 'D' : 'I').join('');
+    cont.push({ closes, key, up: Math.max(...his) > hi, down: Math.min(...los) < lo, above: T.C[w.e + 6] > T.C[w.e] });
   }
   const quant = (xs, p) => { const s = xs.slice().sort((a, b) => a - b); return s[Math.round(p * (s.length - 1))]; };
   const fan = [0, 1, 2, 3, 4, 5].map(j => [0.1, 0.25, 0.5, 0.75, 0.9].map(p => quant(cont.map(c => c.closes[j]), p)));
   const near = [...groups].sort((a, b) => b[1].n - a[1].n).slice(0, 6).map(([at, v]) => ({ at, n: v.n, up: v.out >= 30 ? wilson(v.up, v.out) : null }));
-  return { n: set.length, rows, next: wilson(outs.filter(w => w.nx > 0).length, outs.length), cont: { n: cont.length, fan, up: cont.filter(c => c.up).length, down: cont.filter(c => c.down).length, above: cont.filter(c => c.above).length }, near, pairs };
+  return { n: set.length, rows, next: wilson(outs.filter(w => w.nx > 0).length, outs.length), cont: { n: cont.length, keys: cont.map(c => c.key), fan, up: cont.filter(c => c.up).length, down: cont.filter(c => c.down).length, above: cont.filter(c => c.above).length }, near, pairs };
 }
 
 const close = (a, b, tol) => Math.abs(a - b) <= tol * Math.max(1, Math.abs(b));
@@ -123,6 +124,14 @@ for (const [label, bars, tfs = [1, 1, 1, 1, 1], holds = [], stretch = 0] of case
   if (!c || c.n !== X.cont.n || Math.round(c.aboveHigh[0] * c.n) !== X.cont.up || Math.round(c.belowLow[0] * c.n) !== X.cont.down || Math.round(c.aboveClose[0] * c.n) !== X.cont.above) why.push('what it became');
   // a fan drawn from a sample sits within a few hundredths of the shape's height of the whole set's
   else if (c.fan.some((qs, j) => qs.some((v, i) => !close(v, X.cont.fan[j][i], c.sampled === c.n ? 1e-6 : 0.03)))) why.push('fan');
+  if (c) {
+    const counts = new Map();
+    // Independently enumerate the complete historical windows, including held relations and stretch.
+    for (const key of X.cont.keys) counts.set(key, (counts.get(key) || 0) + 1);
+    const want = [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    if (JSON.stringify(c.sequences) !== JSON.stringify(want)) why.push('sequence counts');
+    if (c.paths.some((p, i) => p.key !== want[i][0] || p.n !== want[i][1] || !close(p.rate[0], p.n / c.n, 1e-12))) why.push('ranked paths');
+  }
   const gotNear = P.near.map(x => `${x.a}.${x.b}.${x.rel}:${x.n}:${x.up ? x.up[0].toFixed(6) : '-'}`).sort();
   const wantNear = X.near.map(x => { const [a, b] = X.pairs[Math.floor(x.at / 3)]; return `${a}.${b}.${x.at % 3 - 1}:${x.n}:${x.up ? x.up[0].toFixed(6) : '-'}`; }).sort();
   if (JSON.stringify(gotNear) !== JSON.stringify(wantNear)) why.push(`one comparison away: ${gotNear.join(' ')} vs ${wantNear.join(' ')}`);
