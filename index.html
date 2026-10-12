@@ -101,6 +101,8 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
 .forecast-controls .chip { height: 30px; }
 .forecast-panel, .forecast-grid { position: absolute; padding: 10px 12px; background: var(--paper); border-radius: 8px; box-shadow: 0 0 0 1px var(--hair); font-size: 12px; }
 .forecast-panel { max-width: 540px; }
+.forecast-panel[data-updating="true"], .forecast-grid[data-updating="true"] { opacity: .55; pointer-events: none; }
+.forecast-update { position: absolute; right: 24px; top: 56px; min-height: 20px; color: var(--ink-2); font-size: 12px; }
 .forecast-caption, .forecast-method { color: var(--ink-2); font-size: 11px; line-height: 1.45; }
 .forecast-method { margin-top: 7px; }
 .forecast-crumbs { display: flex; flex-wrap: wrap; gap: 3px 6px; align-items: center; margin-bottom: 5px; font-size: 11px; }
@@ -347,6 +349,7 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
       <section class="forecast-panel" id="forecast-panel" aria-label="Continuation scenarios" hidden></section>
       <section class="forecast-grid" id="forecast-grid" aria-label="Bar-by-bar probability grid" hidden></section>
       <p class="forecast-status" id="forecast-status" role="status" aria-live="polite"></p>
+      <span class="forecast-update" id="forecast-update" aria-hidden="true"></span>
       <p class="hint" id="hint">Each bar opens where the one before it closed · drag a close, a shadow or a body · tap the first bar to change its colour · hold ⌥ to pass levels freely</p>
       <div class="dock">
         <label class="space" title="Space between the bars · [ and ] · pinch on the paper">
@@ -754,7 +757,7 @@ function namesOf(id) {
 const HINT_DRAW = 'Each bar opens where the one before it closed · drag a close, a shadow or a body · tap the first bar to change its colour · hold ⌥ to pass levels freely';
 const HINT_PIN = 'Tap two points to hold how they relate · tap a body to hold its colour · tap a knot to let it go · Esc when done';
 const Forecast = {
-  view: 'fan', grid: false, prefix: '', selected: '', source: null, rendered: '', focusRequested: '',
+  view: 'fan', grid: false, prefix: '', selected: '', source: null, sourceKey: '', rendered: '', focusRequested: '', current: false,
   panel: $('#forecast-panel'), table: $('#forecast-grid'),
   init() {
     try {
@@ -767,11 +770,11 @@ const Forecast = {
     });
     $('#forecast-toggle').addEventListener('click', () => { this.grid = !this.grid; this.remember(); App.redraw(); });
     for (const el of [this.panel, this.table]) el.addEventListener('click', e => {
-      const b = e.target.closest('button'); if (!b || b.disabled || !this.source) return;
+      const b = e.target.closest('button'); if (!b || b.disabled || !this.source || !this.current) return;
       if (b.dataset.path) this.selected = b.dataset.path;
       else if (b.dataset.prefix != null) this.select(b.dataset.prefix);
       if (e.detail === 0) this.focusRequested = el.id;
-      Stage.fit(true); App.redraw();
+      App.redraw();
     });
     this.controls();
     new ResizeObserver(() => App.redraw()).observe(this.panel);
@@ -787,7 +790,7 @@ const Forecast = {
   },
   choose(view) {
     if (!['fan', 'paths', 'branches'].includes(view)) return;
-    this.view = view; this.remember(); Stage.fit(true); App.redraw();
+    this.view = view; this.remember(); App.redraw();
   },
   select(prefix) {
     if (!this.source || !/^[UID]{0,6}$/.test(prefix)) return;
@@ -800,19 +803,26 @@ const Forecast = {
   },
   compact(w, lx) { return this.view === 'paths' || w - lx - 24 < 290; },
   reserve(w, lx, top) {
-    const grid = this.grid ? (this.table.hidden ? 160 : this.table.offsetHeight) + 16 : 0;
-    const panel = this.view !== 'fan' && this.compact(w, lx) ? (this.panel.hidden ? 320 : this.panel.offsetHeight) + 16 : 0;
+    const grid = this.grid ? 216 : 0;
+    const panel = this.view !== 'fan' && this.compact(w, lx) ? 400 : 0;
     const extra = grid + panel;
     // An expanded branch list needs its own vertical space even on wide paper, or it would cover the grid/toolbar.
-    const main = this.view === 'branches' && !this.compact(w, lx) ? Math.max(160, (this.panel.hidden ? 320 : this.panel.offsetHeight) + 24) : 160;
+    const main = this.view === 'branches' && !this.compact(w, lx) ? 400 : 160;
     const height = extra || this.view === 'branches' ? Math.ceil(top + extra + main + 84) : 0;
     if (Stage.wrap.style.getPropertyValue('--forecast-min-height') !== `${height}px`) Stage.wrap.style.setProperty('--forecast-min-height', `${height}px`);
     return extra;
   },
   sync(G) {
-    const c = Match.fresh() ? Match.result?.panes?.cont : null;
-    if (c && c !== this.source) { this.prefix = ''; this.selected = c.sequences[0][0]; }
-    const changed = c !== this.source; this.source = c;
+    this.current = Match.fresh() && !Match.failed;
+    const next = this.current ? Match.result?.panes?.cont : undefined;
+    const changed = this.current && next !== this.source;
+    if (changed) {
+      if (Match.resultKey !== this.sourceKey) { this.prefix = ''; this.selected = next?.sequences[0][0] || ''; }
+      this.source = next; this.sourceKey = Match.resultKey;
+    }
+    const c = this.source;
+    this.panel.dataset.updating = String(!this.current); this.table.dataset.updating = String(!this.current);
+    $('#forecast-update').textContent = !this.current && c ? Match.failed ? 'Update failed · previous result' : 'Updating · previous result' : '';
     this.panel.hidden = this.view === 'fan'; this.table.hidden = !this.grid;
     const message = Match.failed ? 'Continuation unavailable.' : Match.result && !Match.fresh() ? 'Updating the continuation…' : Match.result ? 'Fewer than 30 complete continuations; no probability estimate.' : 'Loading the continuation…';
     const key = `${this.view}|${this.grid}|${this.prefix}|${this.selected}|${c ? '' : message}`;
@@ -827,7 +837,6 @@ const Forecast = {
         if (target) target.focus({ preventScroll: true });
         this.focusRequested = '';
       }
-      if (c && changed) Stage.fit(true);
       App.redraw();
     }
     const lx = G.xs[G.N - 1] + G.bw / 2, aligned = G.fanStep >= 38;
@@ -840,7 +849,7 @@ const Forecast = {
     this.panel.style.left = `${compact ? Math.max(12, Math.min(lx, G.w - 540 - 12)) : lx + 12}px`;
     this.panel.style.width = `${compact ? Math.min(540, G.w - 24) : G.w - lx - 36}px`;
     this.panel.style.top = compact ? '' : `${G.plotTop}px`;
-    this.panel.style.bottom = compact ? `${this.grid ? this.table.offsetHeight + 28 : 12}px` : '';
+    this.panel.style.bottom = compact ? `${this.grid ? 228 : 12}px` : '';
   },
 };
 const Stage = {
@@ -881,8 +890,6 @@ const Stage = {
       // the fan's closes are in the shape's own scale: 0 is the drawing's low, 1 its high
       let a = Infinity, z = -Infinity;
       for (const q of c.fan) { a = Math.min(a, q[0]); z = Math.max(z, q[4]); }
-      const example = Forecast.example(c);
-      if (example) for (const [, h, l] of example.bars) { a = Math.min(a, l); z = Math.max(z, h); }
       const fLo = mn + a * (mx - mn), fHi = mn + z * (mx - mn), pad = (fHi - fLo) * 0.06;
       lo = Math.min(lo, fLo - pad); hi = Math.max(hi, fHi + pad); mn = Math.min(mn, fLo); mx = Math.max(mx, fHi);
     }
