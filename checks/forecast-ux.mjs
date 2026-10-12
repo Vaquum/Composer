@@ -66,4 +66,17 @@ assert.match(html,/\.forecast-panel \{[^}]*grid-template-rows: 64px 180px 120px/
 assert.match(html,/prefers-reduced-motion/);
 assert.doesNotMatch(html.slice(a,b),/offsetHeight|Stage\.fit\(/,'forecast placement never measures response content or forces a camera change');
 assert.match(fs.readFileSync('forecast.js','utf8'),/preserveAspectRatio="none"/,'miniature candles span their six bar columns');
+// A narrow-canvas rule must never swallow the global workspace or dock styles.
+const css=html.slice(html.indexOf('<style>')+7,html.indexOf('</style>'));
+let depth=0, quote='';
+for (let j=0;j<css.length;j++) {
+  const ch=css[j];
+  if (quote) { if(ch==='\\')j++; else if(ch===quote)quote=''; continue; }
+  if (ch==='"'||ch==="'") {quote=ch;continue;}
+  if (ch==='/'&&css[j+1]==='*') { const end=css.indexOf('*/',j+2);assert.ok(end>=0);j=end+1;continue; }
+  for (const selector of ['\n.work {','\n.dock {','\n.forecast-controls {']) if(css.startsWith(selector,j)) assert.equal(depth,0,`${selector.trim()} is a global rule`);
+  if(ch==='{')depth++; if(ch==='}')depth--; assert.ok(depth>=0,'CSS braces stay balanced');
+}
+assert.equal(depth,0,'no unclosed media/container rule');
+assert.match(css,/\.dock \{ position: absolute/,'existing canvas dock styling is retained');
 console.log('All modes and states retain geometry; refresh retains DOM and choices; stale interactions, sparse results, retries, responsive fit and candle alignment pass.');
