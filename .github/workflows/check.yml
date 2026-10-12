@@ -39,6 +39,8 @@ jobs:
         run: node checks/page.mjs
       - name: Independent pane designs and statistical presentation
         run: node checks/pane-designs.mjs
+      - name: Canvas sequence probabilities and conditional presentation
+        run: node checks/forecast.mjs
       - name: The feel of a drag, continuous with no jump
         run: node checks/drag.mjs
       - name: The chain, each bar opening at the previous close

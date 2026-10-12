@@ -23,6 +23,16 @@ broke the shape's high and low, and the drawings one comparison away, each of wh
 the canvas. Every number follows Grid: 95% intervals, Wilson for rates, t for means, nothing for
 fewer than 30 windows.
 
+On the canvas, **Fan / Paths / Branches** keeps the fan and adds ranked complete sequences and
+stepwise conditional branches. **Grid** independently toggles a table below the future bars.
+Each future close is above the matching window's high, inside its inclusive range, or below its
+low; sequence counts use every complete six-bar continuation, not the fan's sample. Selecting a
+branch or the next grid column conditions the following probabilities without changing the
+composition or matching cohort. Counts and Wilson 95% intervals accompany the probabilities;
+fewer than 30 supporting windows yields no estimate. Candles in Paths are a historical example
+of each category sequence, not a probability assigned to exact prices. View and grid preferences
+are remembered independently of the drawing.
+
 Each pane has its own design pill and previous/next arrows: **Signal first** highlights the
 largest finding, **Comparison ledger** aligns selected and all-window values, and **Bar by bar**
 organizes readings by drawn bar and continuation by time. The pill also offers direct selection.
@@ -59,6 +69,7 @@ it answers.
 - `index.html`: the page.
 - `matcher.js`: the matcher, run by the page as a Web Worker.
 - `pane-designs.js` and `panes.css`: the three pane layouts, using the matcher's live results.
+- `forecast.js`: canvas sequence, conditional-branch and probability-grid presentations.
 - `bars.py`: reads the kline files and encodes them for the page.
 - `server.py`: serves the page, `matcher.js`, `/bars`, `/activity` (each bar's volume, quote
   volume, trades and maker volume, for the panes) and `/healthz` on `127.0.0.1` only.
@@ -73,6 +84,7 @@ it answers.
 python3 -m unittest discover -s tests -v
 node checks/page.mjs
 node checks/pane-designs.mjs
+node checks/forecast.mjs
 python3 checks/with_bars.py checks/similarity-windows.mjs
 python3 checks/with_bars.py checks/similarity-look.mjs
 python3 checks/with_bars.py checks/similarity-equivalence.mjs

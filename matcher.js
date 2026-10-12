@@ -327,6 +327,7 @@ async function search(q, id, report) {
   const NR = READINGS.length, AFTER = 6, SAMPLE = 20000;
   let acc = new Float64Array(n * NR * 3), setN = 0, setTf = TF_NAMES.map(() => [0, 0]);
   let fan = new Float32Array(SAMPLE * AFTER), cont = [0, 0, 0, 0], seed = 0x9e3779b9;
+  let sequences = new Map();
   const rand = () => { seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
   const addSet = (k, T, s, ps, e, o) => {
     setN++;
@@ -350,8 +351,21 @@ async function search(q, id, report) {
     for (let g = 0; g < n; g++) { const j = s + (ps ? ps[g] : g); if (T.L[j] < lo) lo = T.L[j]; if (T.H[j] > hi) hi = T.H[j]; }
     if (!(hi > lo)) return;
     const m = ++cont[0];
-    let up = false, down = false;
-    for (let j = 1; j <= AFTER; j++) { if (T.H[e + j] > hi) up = true; if (T.L[e + j] < lo) down = true; }
+    let up = false, down = false, key = '';
+    for (let j = 1; j <= AFTER; j++) {
+      if (T.H[e + j] > hi) up = true;
+      if (T.L[e + j] < lo) down = true;
+      // Classify exact integer prices before scaling: a close on either boundary is inside.
+      key += T.C[e + j] > hi ? 'U' : T.C[e + j] < lo ? 'D' : 'I';
+    }
+    let sequence = sequences.get(key);
+    if (!sequence) {
+      const scale = v => (v - lo) / (hi - lo);
+      const bars = Array.from({ length: AFTER }, (_, j) => [T.O[e + j + 1], T.H[e + j + 1], T.L[e + j + 1], T.C[e + j + 1]].map(scale));
+      sequence = { key, n: 0, bars, start: scale(T.C[e]) };
+      sequences.set(key, sequence);
+    }
+    sequence.n++;
     if (up) cont[1]++;
     if (down) cont[2]++;
     if (T.C[e + AFTER] > T.C[e]) cont[3]++;
@@ -486,7 +500,7 @@ async function search(q, id, report) {
   // with nothing held, or nothing holding, and fewer than 30 exact twins, the set is the closest windows instead
   let setKind = held && mode === 'held' ? 'hold' : 'twins';
   if (setN < 30 && setKind === 'twins' || mode === 'fallback') {
-    acc = new Float64Array(n * NR * 3); setN = 0; setTf = TF_NAMES.map(() => [0, 0]); fan = new Float32Array(SAMPLE * AFTER); cont = [0, 0, 0, 0]; seed = 0x9e3779b9;
+    acc = new Float64Array(n * NR * 3); setN = 0; setTf = TF_NAMES.map(() => [0, 0]); fan = new Float32Array(SAMPLE * AFTER); cont = [0, 0, 0, 0]; seed = 0x9e3779b9; sequences = new Map();
     for (const r of ranked) { const R = BARS[r.k], e = r.s + r.span - 1; addSet(r.k, R, r.s, r.picks, e, outcomeInto(R, e, oo)); }
     setKind = 'closest';
   }
@@ -510,7 +524,15 @@ async function search(q, id, report) {
       col.sort();
       qs.push([0.1, 0.25, 0.5, 0.75, 0.9].map(p => col[Math.round(p * (m - 1))]));
     }
-    panes.cont = { n: cont[0], sampled: m, fan: qs, aboveHigh: wilson(cont[1], cont[0]), belowLow: wilson(cont[2], cont[0]), aboveClose: wilson(cont[3], cont[0]) };
+    const ordered = [...sequences.values()].sort((a, b) => b.n - a.n || a.key.localeCompare(b.key));
+    panes.cont = {
+      n: cont[0], sampled: m, fan: qs,
+      aboveHigh: wilson(cont[1], cont[0]), belowLow: wilson(cont[2], cont[0]), aboveClose: wilson(cont[3], cont[0]),
+      // At most 3^6 mutually exclusive sequences. Counts cover every complete window, not the fan sample.
+      sequences: ordered.map(({ key, n }) => [key, n]),
+      paths: ordered.slice(0, 4).map(s => ({ ...s, rate: wilson(s.n, cont[0]) })),
+      examples: Object.fromEntries(ordered.map(({ key, bars, start }) => [key, { bars, start }])),
+    };
   }
   panes.near = [...near].sort((a, b) => b[1].n - a[1].n).slice(0, 6).map(([at, v]) => {
     const p = Math.floor(at / 3), R = BARS[v.k], bars = [];
