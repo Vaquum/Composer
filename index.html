@@ -165,35 +165,9 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
 
 /* the panes: what sets the matching windows apart (left), and what the shape became (right) */
 .work { flex: 1; display: grid; grid-template-columns: minmax(248px, 290px) minmax(0, 1fr) minmax(256px, 300px); align-items: stretch; }
-.pane { padding: 16px 16px 20px; display: flex; flex-direction: column; gap: 12px; font-size: 13px; min-width: 0; }
+.pane { padding: 16px 16px 20px; display: flex; flex-direction: column; min-width: 0; }
 .lpane { border-right: 1px solid var(--hair); }
 .rpane { border-left: 1px solid var(--hair); }
-.ph { display: flex; align-items: baseline; gap: 8px; }
-.ph .k { font: 600 18px/1 var(--font-mincho); }
-.ph h2, .ph h3 { margin: 0; font: 600 15px/1.3 var(--font-mincho); }
-.pcap { margin: 0; color: var(--ink-2); font-size: 12.5px; }
-.pfoot { margin: 0; color: var(--ink-2); font-size: 11.5px; }
-.psec { border-top: 1px solid var(--hair); padding-top: 12px; display: flex; flex-direction: column; gap: 8px; }
-.prows { display: flex; flex-direction: column; gap: 9px; }
-.prow .pl { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-.prow .pg { color: var(--ink-2); font-size: 11.5px; }
-.prow .pv, .prate .pv, .pnear small { font-family: var(--font-code); white-space: nowrap; }
-.prow .pv span, .prate .pv span { color: var(--ink-2); }
-.trk { position: relative; height: 12px; margin-top: 3px; border-radius: 6px; background: var(--paper-2); }
-.trk i { position: absolute; display: block; }
-.trk .bd { top: 3px; bottom: 3px; border-radius: 3px; background: var(--ink-3); opacity: .5; }
-.trk .dt { top: 50%; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; border-radius: 50%; background: var(--ink); }
-.trk .tk { top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--ink-2); }
-.pchips { display: flex; flex-wrap: wrap; gap: 6px; }
-.pchips span { font: 500 12px/1.3 var(--font-code); padding: 4px 7px; border-radius: 6px; border: 1px solid var(--hair); }
-.pchips span em { font-style: normal; color: var(--ink-2); }
-.prate { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--hair); padding-bottom: 6px; }
-.pnear { display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid var(--hair); border-radius: 8px; padding: 8px 10px; }
-.pnear > span { flex: 1; min-width: 0; }
-.pnear small { display: block; color: var(--ink-2); font-size: 11.5px; white-space: normal; }
-.pnear button { flex: none; font-size: 12px; padding: 6px 10px; min-height: 32px; border-radius: 6px; border: 1px solid var(--ai); color: var(--ai); }
-.pnear button:hover { background: var(--ai-soft); }
-.plink { align-self: flex-start; font-size: 12px; color: var(--ai); }
 @media (max-width: 1180px) {
   .work { grid-template-columns: minmax(0, 1fr); }
   .stage { order: -1; }
@@ -273,6 +247,7 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
 }
 @media (prefers-reduced-motion: reduce) { .card, .prog i { transition: none; } }
 </style>
+<link rel="stylesheet" href="panes.css">
 
 <div class="app">
   <header class="top">
@@ -301,17 +276,25 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
     <div class="ref-targets" id="ref-targets"></div>
     <p class="ref-status" id="ref-status" role="status" aria-live="polite"></p>
   </aside>
-  <aside class="pane lpane" aria-label="What sets the matching windows apart">
-    <div class="ph"><span class="k" lang="ja" aria-hidden="true">組</span><h2>What sets them apart</h2></div>
-    <p class="pcap" id="lcap">The windows that match your drawing, read the way the cube explorer reads a cell, against every window.</p>
-    <div class="prows" id="lrows"></div>
-    <button type="button" class="plink" id="lmore" hidden></button>
-    <div class="psec" id="lnextsec">
-      <div class="ph"><span class="k" lang="ja" aria-hidden="true">次</span><h3>What came next</h3></div>
-      <p class="pcap" id="lnext" style="color: var(--ink)"></p>
-      <div class="pchips" id="ltf"></div>
+  <aside class="pane lpane" data-side="left" aria-label="What sets the matching windows apart">
+    <div class="pane-switch" role="group" aria-label="Left pane layout">
+      <button type="button" class="pane-step" data-step="-1" aria-label="Previous left pane design">‹</button>
+      <button type="button" class="pane-current" aria-haspopup="menu" aria-expanded="false" aria-controls="left-design-menu"><span aria-live="polite">Signal first</span><i aria-hidden="true">⌄</i></button>
+      <button type="button" class="pane-step" data-step="1" aria-label="Next left pane design">›</button>
+      <div class="pane-menu" id="left-design-menu" role="menu" aria-label="Left pane designs" hidden></div>
     </div>
-    <p class="pfoot">Volume, trades and USDT per trade against the median of the eleven bars before each bar; maker share of its volume; range and body (open to close) in the ATR at the bar before; the last bar's close in the prior UTC day's range. 95% intervals, t for means and Wilson for rates; nothing for fewer than 30 windows.</p>
+    <header class="pane-header">
+      <h2>What differs</h2>
+      <div class="pane-context" id="lcap">Loading the matching windows…</div>
+    </header>
+    <div class="pane-body">
+      <div class="pane-section pane-flow prows" id="lrows"></div>
+      <section class="pane-section pane-next" id="lnextsec">
+        <h3>Next bar rose</h3>
+        <div id="lnext"></div>
+      </section>
+      <details class="pane-section pane-details" data-detail="left-method"><summary>How these readings are measured</summary><div id="lmethod"></div></details>
+    </div>
   </aside>
   <main class="stage" aria-label="Composition">
     <div class="cvwrap" id="cvwrap">
@@ -371,20 +354,33 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
       <div class="codebox"><code id="code"></code><button type="button" class="link" id="copy">Copy</button><span class="dom" id="dom"></span></div>
     </footer>
   </main>
-  <aside class="pane rpane" aria-label="What the shape became">
-    <div class="ph"><span class="k" lang="ja" aria-hidden="true">続</span><h2>What it became</h2></div>
-    <p class="pcap" id="rcap">The bars after the windows that match, in your drawing's own scale.</p>
-    <div id="rbecame" style="display: flex; flex-direction: column; gap: 6px"></div>
-    <p class="pfoot" id="rfan"></p>
-    <div class="psec" id="rnearsec">
-      <div class="ph"><span class="k" lang="ja" aria-hidden="true">隣</span><h3>One comparison away</h3></div>
-      <p class="pcap" id="ncap"></p>
-      <div id="rnear" style="display: flex; flex-direction: column; gap: 8px"></div>
+  <aside class="pane rpane" data-side="right" aria-label="What the shape became">
+    <div class="pane-switch" role="group" aria-label="Right pane layout">
+      <button type="button" class="pane-step" data-step="-1" aria-label="Previous right pane design">‹</button>
+      <button type="button" class="pane-current" aria-haspopup="menu" aria-expanded="false" aria-controls="right-design-menu"><span aria-live="polite">Signal first</span><i aria-hidden="true">⌄</i></button>
+      <button type="button" class="pane-step" data-step="1" aria-label="Next right pane design">›</button>
+      <div class="pane-menu" id="right-design-menu" role="menu" aria-label="Right pane designs" hidden></div>
+    </div>
+    <header class="pane-header">
+      <h2>What followed</h2>
+      <div class="pane-context" id="rcap">Loading the continuation…</div>
+    </header>
+    <div class="pane-body">
+      <section class="pane-section pane-next" id="rnextsec" hidden><h3>Next bar rose</h3><div id="rnext"></div></section>
+      <div class="pane-section pane-flow" id="rbecame"></div>
+      <div class="pane-section pane-flow" id="rfan"></div>
+      <section class="pane-section pane-next" id="rnearsec">
+        <h3>One comparison away</h3>
+        <p class="pcap" id="ncap"></p>
+        <div class="pane-neighbors" id="rnear"></div>
+      </section>
+      <details class="pane-section pane-details" data-detail="right-method"><summary>How to read the continuation</summary><div id="rmethod"></div></details>
     </div>
   </aside>
   </div>
 </div>
 
+<script src="pane-designs.js"></script>
 <script>
 (() => {
 'use strict';
@@ -1376,67 +1372,94 @@ async function loadBars() {
   return bytes.buffer;
 }
 /* ================= the panes: what sets the matching windows apart, and what the shape became ================= */
-const READ_NAME = {
-  vol: ['Activity', 'volume vs the 11 before'], trades: ['Activity', 'trades vs the 11 before'], size: ['Trade size', 'USDT per trade vs before'],
-  maker: ['Aggression', 'maker share of volume'], range: ['Movement', 'range in ATR'], body: ['Movement', 'body in ATR'], day: ['Location', "close in the prior day's range"],
-};
 const pct = (x, d = 1) => `${(x * 100).toFixed(d)}%`;
 const Panes = {
-  all: false, readings: 'loading', note: '',
-  value(row, x) {
-    if (row.log) return `${Math.exp(x).toFixed(2)}×`;
-    if (row.key === 'maker') return pct(x);
-    if (row.key === 'day') return pct(x, 0);
-    return x.toFixed(2).replace('-', '−');
+  readings: 'loading', note: '', views: { left: 'signal', right: 'signal' }, details: new Map(),
+  init() {
+    try {
+      const saved = JSON.parse(localStorage.getItem('ashi.pane-designs'));
+      for (const side of ['left', 'right']) if (PaneDesigns.variants.some(v => v.id === saved?.[side])) this.views[side] = saved[side];
+    } catch (err) { /* each pane starts with Signal first */ }
+    for (const side of ['left', 'right']) {
+      const pane = $(`.pane[data-side="${side}"]`), control = $('.pane-switch', pane), menu = $('.pane-menu', control), pill = $('.pane-current', control);
+      menu.innerHTML = PaneDesigns.variants.map(v => `<button type="button" role="menuitemradio" data-design="${v.id}" aria-checked="false">${v.name}</button>`).join('');
+      control.addEventListener('click', e => {
+        const button = e.target.closest('button'); if (!button) return;
+        if (button.dataset.step) {
+          const at = PaneDesigns.variants.findIndex(v => v.id === this.views[side]);
+          this.choose(side, PaneDesigns.variants[(at + Number(button.dataset.step) + 3) % 3].id);
+        } else if (button.dataset.design) {
+          this.choose(side, button.dataset.design); pill.focus();
+        } else if (button === pill) {
+          const open = menu.hidden; this.closeMenus(); menu.hidden = !open; pill.setAttribute('aria-expanded', String(open));
+          if (open) menu.querySelector('[aria-checked="true"]').focus();
+        }
+      });
+      menu.addEventListener('keydown', e => {
+        const buttons = [...menu.querySelectorAll('button')], at = buttons.indexOf(document.activeElement);
+        if (['ArrowDown','ArrowUp','Home','End'].includes(e.key)) {
+          e.preventDefault();
+          buttons[e.key === 'Home' ? 0 : e.key === 'End' ? buttons.length - 1 : (at + (e.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length].focus();
+        }
+      });
+      this.controls(side);
+    }
+    document.addEventListener('click', e => {
+      if (!e.target.closest('.pane-switch')) this.closeMenus();
+    });
+    document.addEventListener('keydown', e => {
+      if (e.key !== 'Escape') return;
+      for (const menu of document.querySelectorAll('.pane-menu:not([hidden])')) { $('.pane-current', menu.parentElement).focus(); e.preventDefault(); }
+      this.closeMenus();
+    });
   },
-  // a band (the set's 95% interval), a dot (its mean) and a tick (all windows), on a scale with room around all three
-  track(lo, hi, v, ref) {
-    const a = Math.min(lo, ref), b = Math.max(hi, ref), pad = (b - a) * 0.6 || 0.05, mn = a - pad, mx = b + pad, at = x => (x - mn) / (mx - mn) * 100;
-    return `<div class="trk" aria-hidden="true"><i class="bd" style="left:${at(lo).toFixed(2)}%;width:${(at(hi) - at(lo)).toFixed(2)}%"></i><i class="dt" style="left:${at(v).toFixed(2)}%"></i><i class="tk" style="left:${at(ref).toFixed(2)}%"></i></div>`;
+  controls(side) {
+    const pane = $(`.pane[data-side="${side}"]`), v = PaneDesigns.variants.find(v => v.id === this.views[side]), pill = $('.pane-current', pane);
+    pill.querySelector('span').textContent = v.name; pill.setAttribute('aria-label', `${side === 'left' ? 'Left' : 'Right'} pane design: ${v.name}`);
+    for (const b of pane.querySelectorAll('[data-design]')) b.setAttribute('aria-checked', String(b.dataset.design === v.id));
   },
-  clear() { for (const id of ['lrows', 'lnext', 'ltf', 'rbecame', 'rfan', 'ncap', 'rnear']) $('#' + id).innerHTML = ''; $('#lmore').hidden = true; },
-  render(r) {
+  closeMenus() {
+    for (const menu of document.querySelectorAll('.pane-menu')) { menu.hidden = true; $('.pane-current', menu.parentElement).setAttribute('aria-expanded','false'); }
+  },
+  remember(side) {
+    const pane = $(`.pane[data-side="${side}"]`);
+    if (pane.dataset.view) this.details.set(side + '-' + pane.dataset.view, new Map([...pane.querySelectorAll('details[data-detail]')].map(d => [d.dataset.detail, d.open])));
+  },
+  choose(side, variant) {
+    this.remember(side); this.views[side] = variant; this.closeMenus(); this.controls(side);
+    try { localStorage.setItem('ashi.pane-designs', JSON.stringify(this.views)); } catch (err) { /* controls still work without storage */ }
+    if (Match.result) this.render(Match.result, side);
+  },
+  clear() {
+    for (const id of ['lrows','lnext','rnext','rbecame','rfan','ncap','rnear']) $('#' + id).replaceChildren();
+    $('#lcap').textContent = 'Matching data unavailable.'; $('#rcap').textContent = 'Continuation unavailable.';
+  },
+  render(r, onlySide = null) {
     const P = r.panes; if (!P) return;
-    const n = P.n, F = r.filter, plural = n === 1 ? '' : 's';
-    const who = P.kind === 'hold' ? `${fmt(n)} window${plural} hold what you hold${r.stretch ? `, with up to ${r.stretch} bar${r.stretch > 1 ? 's' : ''} skipped` : ''}`
-      : P.kind === 'twins' ? `${fmt(n)} window${plural} match the drawing exactly` : `Fewer than 30 exact twins, so the ${fmt(n)} closest windows stand in`;
-    $('#lcap').textContent = `${who}${F ? `, each followed by a next bar that ${nextWords(F)}` : ''}, on the timeframes shown. Each reading against every window there, the largest difference first: the dot and band are these windows with their 95% interval, the tick is all windows.`;
-    // what sets them apart
-    let rows = '';
-    if (P.readings && n >= 30) {
-      const all = P.rows.slice().sort((a, b) => Math.abs(b.d) - Math.abs(a.d)), shown = this.all ? all : all.slice(0, 10);
-      rows = shown.map(w => {
-        const [group, name] = READ_NAME[w.key];
-        return `<div class="prow"><div class="pl"><span><span class="pg">${group}</span> bar ${w.bar + 1} ${name}</span><span class="pv"><b>${this.value(w, w.set[0])}</b> <span>vs ${this.value(w, w.all[0])}</span></span></div>${this.track(w.set[1], w.set[2], w.set[0], w.all[0])}</div>`;
-      }).join('');
-      const more = $('#lmore'); more.hidden = all.length <= 10; more.textContent = this.all ? 'Show the ten largest' : `Show all ${all.length}`;
-    } else {
-      $('#lmore').hidden = true;
-      rows = `<p class="pcap">${n < 30 ? 'Fewer than 30 windows: no readings yet.' : this.readings === 'failed' ? `What traded in each bar could not be read (${esc(this.note)}); the shape's own panes still work.` : 'Reading what traded in each bar…'}</p>`;
+    const ctx = { barCount: S.bars.length, timeframes: TF_LABELS.map((label,k) => ({label,k})).filter(t => this.on(t.k)), readings: this.readings, note: this.note, nextWords };
+    for (const side of onlySide ? [onlySide] : ['left','right']) {
+      this.remember(side);
+      const pane = $(`.pane[data-side="${side}"]`), variant = this.views[side];
+      if (side === 'left') {
+        $('#lcap').innerHTML = PaneDesigns.caption(r,ctx);
+        $('#lrows').innerHTML = PaneDesigns.left(variant,r,ctx);
+        $('#lnext').innerHTML = PaneDesigns.next(r,ctx);
+        $('#lmethod').innerHTML = PaneDesigns.leftMethod(S.bars.length);
+      } else {
+        $('#rcap').innerHTML = `<strong>Next ${P.after} bars</strong><span class="pane-meta">${P.cont ? fmt(P.cont.n) + ' windows with all ' + P.after + ' bars available' : 'Complete continuations below 30'}</span>`;
+        $('#rnextsec').hidden = variant !== 'bars';
+        $('#rnext').innerHTML = PaneDesigns.next(r,ctx);
+        $('#rbecame').innerHTML = PaneDesigns.right(variant,r);
+        $('#rfan').innerHTML = PaneDesigns.terminal(P);
+        $('#rmethod').innerHTML = PaneDesigns.rightMethod(P.after);
+        $('#ncap').textContent = 'One changed bar-end comparison · selected timeframes';
+        $('#rnear').innerHTML = P.near.length ? P.near.map((nb,i) => `<div class="pnear"><span>${esc(this.nearWord(nb))}<small>${fmt(nb.n)} windows${nb.up ? ` · next rose ${pct(nb.up[0])} · 95% interval ${pct(nb.up[1])}–${pct(nb.up[2])}` : ' · next-bar estimate unavailable'}</small></span><button type="button" data-i="${i}" title="Put its closest instance on the canvas">Try it</button></div>`).join('') : '<p class="pcap">No neighboring patterns found on these timeframes.</p>';
+      }
+      pane.dataset.view = variant;
+      const remembered = this.details.get(side + '-' + variant);
+      for (const d of pane.querySelectorAll('details[data-detail]')) if (remembered?.has(d.dataset.detail)) d.open = remembered.get(d.dataset.detail);
     }
-    $('#lrows').innerHTML = rows;
-    // what came next
-    const base = r.base.n ? r.base.up / r.base.n : NaN, nx = P.next;
-    $('#lnext').textContent = F ? `Only windows whose next bar ${nextWords(F)} are in this set.`
-      : !nx ? 'Fewer than 30 of them have a next bar.'
-      : `The next bar rose ${pct(nx[0])} (${pct(nx[1])}–${pct(nx[2])}) of the time, against ${pct(base)} for all windows: ${nx[1] > base || nx[2] < base ? 'a clear difference' : 'no clear difference'}.`;
-    $('#ltf').innerHTML = F ? '' : TF_LABELS.map((tf, k) => (this.on(k) ? `<span>${tf} ${P.byTf[k] ? pct(P.byTf[k][0]) : '–'} <em>n ${fmt(P.tfN[k])}</em></span>` : '')).join('');
-    // what it became
-    const c = P.cont;
-    if (!c) {
-      $('#rcap').textContent = `Fewer than 30 of the windows have ${P.after} bars after them.`;
-      $('#rbecame').innerHTML = ''; $('#rfan').textContent = '';
-    } else {
-      $('#rcap').textContent = `The ${P.after} bars after ${fmt(c.n)} of them, each scaled so its own low and high sit on your drawing's: the fan on the canvas${c.sampled < c.n ? `, its bands from a sample of ${fmt(c.sampled)}` : ''}.`;
-      const rate = (label, w) => `<div class="prate"><span>${label}</span><span class="pv"><b>${w ? pct(w[0]) : '–'}</b> <span>${w ? `${pct(w[1])}–${pct(w[2])}` : ''}</span></span></div>`;
-      $('#rbecame').innerHTML = rate("Broke above the shape's high", c.aboveHigh) + rate("Broke below the shape's low", c.belowLow) + rate(`Closed above bar ${S.bars.length}'s close after ${P.after}`, c.aboveClose);
-      const q = c.fan[c.fan.length - 1], f2 = x => x.toFixed(2).replace('-', '−');
-      $('#rfan').textContent = `By the ${P.after === 6 ? 'sixth' : P.after + 'th'} bar their median close sits at ${f2(q[2])} of the shape's height (0 its low, 1 its high); half end between ${f2(q[1])} and ${f2(q[3])}.`;
-    }
-    // one comparison away
-    $('#ncap').textContent = `Drawings that differ from yours in a single comparison, how often the history holds each on the timeframes shown, and how the next bar went${P.kind === 'twins' && nx && !F ? `. Yours: ${fmt(n)} windows, ${pct(nx[0])}` : ''}.`;
-    $('#rnear').innerHTML = P.near.length ? P.near.map((nb, i) => `<div class="pnear"><span>${esc(this.nearWord(nb))}<small>${fmt(nb.n)} window${nb.n === 1 ? '' : 's'}${nb.up ? ` · next rose ${pct(nb.up[0])} (${pct(nb.up[1])}–${pct(nb.up[2])})` : ''}</small></span><button type="button" data-i="${i}" title="Put its closest instance on the canvas">Try it</button></div>`).join('')
-      : '<p class="pcap">No window on the timeframes shown differs from it in a single comparison.</p>';
+    if (typeof Ref !== 'undefined') Ref.schedule();
   },
   on(k) { return Match.sent && Match.sent.q.tfs[k]; },
   // a comparison in words, the later bar end first: "Bar 2's close below bar 1's low"
@@ -1457,7 +1480,6 @@ const Panes = {
     Stage.fit(); refresh();
   },
 };
-$('#lmore').addEventListener('click', () => { Panes.all = !Panes.all; if (Match.result) Panes.render(Match.result); });
 $('#rnear').addEventListener('click', e => { const b = e.target.closest('button[data-i]'); if (b) Panes.tryNear(+b.dataset.i); });
 
 /* ================= 参照: the reference, how to read the panels, as the cube explorer's System reference ================= */
@@ -1472,7 +1494,7 @@ const REF_TOPICS = [
   { id: 'readings', group: 'What sets them apart', title: 'The readings',
     purpose: 'Compare what traded in the matching windows with what trades in any window, bar by bar.',
     read: "Volume, trades and USDT per trade: a bar against the median of the eleven bars before it, so 1.00× is a typical bar. Maker share: the share of the bar's volume that the kline files record as maker volume. Range (high to low) and body (open to close, either way): in the 14-bar Wilder ATR at the bar before. Close in the prior day's range: where the last drawn bar closed between the previous UTC day's low (0%) and high (100%); below 0% or above 100% is outside that range. All are read from the Vaquum HuggingFace kline files.",
-    use: 'Each row names the drawn bar it reads. The ten largest differences show first; Show all lists every reading.',
+    use: 'Signal first highlights the largest difference, then groups the ten largest readings. Comparison ledger ranks those readings; Bar by bar groups every reading by drawn bar. Expand the remaining readings or intervals for detail.',
     targets: [{ label: 'Show the readings', selector: '#lrows' }] },
   { id: 'row', group: 'What sets them apart', title: 'Reading a row',
     purpose: 'Tell a real difference from noise before acting on it.',
@@ -1741,6 +1763,7 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', onTheme);
 
 // inside Portal (served under /composer/), offer the way back to the Portal landing
 if (/^\/composer(\/|$)/.test(location.pathname)) $('#home').hidden = false;
+Panes.init();
 Stage.fit(true);
 refresh();
 Match.start();
