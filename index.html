@@ -132,6 +132,7 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
 .forecast-cell[data-state="U"] { background: color-mix(in srgb, var(--up) calc(var(--odds) * 100%), var(--paper)); }
 .forecast-cell[data-state="D"] { background: color-mix(in srgb, var(--down) calc(var(--odds) * 100%), var(--paper)); }
 .forecast-cell[aria-pressed="true"] { box-shadow: inset 0 0 0 1px var(--ink-2); }
+.forecast-status { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 @media (pointer: coarse) { .forecast-crumbs button { min-height: 36px; } .forecast-cell { min-height: 36px; } }
 
 /* the history answers: three ways of matching, mixed freely, and a scroll of instances */
@@ -345,6 +346,7 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
       </div>
       <section class="forecast-panel" id="forecast-panel" aria-label="Continuation scenarios" hidden></section>
       <section class="forecast-grid" id="forecast-grid" aria-label="Bar-by-bar probability grid" hidden></section>
+      <p class="forecast-status" id="forecast-status" role="status" aria-live="polite"></p>
       <p class="hint" id="hint">Each bar opens where the one before it closed · drag a close, a shadow or a body · tap the first bar to change its colour · hold ⌥ to pass levels freely</p>
       <div class="dock">
         <label class="space" title="Space between the bars · [ and ] · pinch on the paper">
@@ -752,7 +754,7 @@ function namesOf(id) {
 const HINT_DRAW = 'Each bar opens where the one before it closed · drag a close, a shadow or a body · tap the first bar to change its colour · hold ⌥ to pass levels freely';
 const HINT_PIN = 'Tap two points to hold how they relate · tap a body to hold its colour · tap a knot to let it go · Esc when done';
 const Forecast = {
-  view: 'fan', grid: false, prefix: '', selected: '', source: null, rendered: '',
+  view: 'fan', grid: false, prefix: '', selected: '', source: null, rendered: '', focusRequested: '',
   panel: $('#forecast-panel'), table: $('#forecast-grid'),
   init() {
     try {
@@ -768,6 +770,7 @@ const Forecast = {
       const b = e.target.closest('button'); if (!b || b.disabled || !this.source) return;
       if (b.dataset.path) this.selected = b.dataset.path;
       else if (b.dataset.prefix != null) this.select(b.dataset.prefix);
+      if (e.detail === 0) this.focusRequested = el.id;
       Stage.fit(true); App.redraw();
     });
     this.controls();
@@ -800,7 +803,9 @@ const Forecast = {
     const grid = this.grid ? (this.table.hidden ? 160 : this.table.offsetHeight) + 16 : 0;
     const panel = this.view !== 'fan' && this.compact(w, lx) ? (this.panel.hidden ? 320 : this.panel.offsetHeight) + 16 : 0;
     const extra = grid + panel;
-    const height = extra ? Math.ceil(top + extra + 244) : 0;
+    // An expanded branch list needs its own vertical space even on wide paper, or it would cover the grid/toolbar.
+    const main = this.view === 'branches' && !this.compact(w, lx) ? Math.max(160, (this.panel.hidden ? 320 : this.panel.offsetHeight) + 24) : 160;
+    const height = extra || this.view === 'branches' ? Math.ceil(top + extra + main + 84) : 0;
     if (Stage.wrap.style.getPropertyValue('--forecast-min-height') !== `${height}px`) Stage.wrap.style.setProperty('--forecast-min-height', `${height}px`);
     return extra;
   },
@@ -815,6 +820,13 @@ const Forecast = {
       this.rendered = key;
       this.panel.innerHTML = c ? this.view === 'paths' ? ForecastViews.paths(c, this.prefix, this.selected) : ForecastViews.branches(c, this.prefix) : `<p class="forecast-caption">${message}</p>`;
       this.table.innerHTML = c ? ForecastViews.grid(c, this.prefix) : `<p class="forecast-caption">${message}</p>`;
+      $('#forecast-status').textContent = c ? `${this.view}, grid ${this.grid ? 'on' : 'off'}. ${this.prefix ? ForecastViews.words(this.prefix) + '. ' : ''}${ForecastViews.subset(c, this.prefix).n} supporting windows.` : message;
+      if (this.focusRequested) {
+        const el = $('#' + this.focusRequested);
+        const target = el.querySelector('.forecast-branch:not([disabled]), .forecast-cell:not([disabled]), .forecast-path[aria-pressed="true"]') || el.querySelector('.forecast-crumbs button:last-child');
+        if (target) target.focus({ preventScroll: true });
+        this.focusRequested = '';
+      }
       if (c && changed) Stage.fit(true);
       App.redraw();
     }

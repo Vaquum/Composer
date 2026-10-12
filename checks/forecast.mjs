@@ -34,10 +34,20 @@ function expected(T, q, fallback = false) {
 }
 let id = 0;
 const base = { bars: [[100,110,95,105],[105,112,98,103]], holds: [{ color:true,bar:0,dir:1 }], stretch:0, x:12, tfs:[1,0,0,0,0], oriented:true, next:null };
+const boundaryTape = (() => {
+  const T=tape(300), closes=[105,104,110,100,111,99,105,110,102,100];
+  for (let j=0;j<T.n;j++) {
+    const o=j?T.C[j-1]:100, c=closes[j%10];
+    T.O[j]=o; T.C[j]=c; T.H[j]=Math.max(o,c,j%10===0?110:-Infinity); T.L[j]=Math.min(o,c,100);
+    T.ts[j]=1700000000+j*900; T.run[j]=j+1;
+  }
+  return T;
+})();
 for (const [title, T, q, fallback] of [
   ['held windows and gaps', tape(1000), base, false],
   ['stretched windows', tape(1000), {...base,stretch:2}, false],
   ['next-bar filtered windows', tape(1000), {...base,next:{dir:1,measure:'any'}}, false],
+  ['closes on high and low boundaries stay inside', boundaryTape, base, false],
   // Impossible first-bar colour, fewer than 400 candidate windows: fallback contains every candidate.
   ['closest-window fallback resets counts', (() => { const T=tape(150); T.C=T.O.map(o=>o+1); T.H=T.C.map(c=>c+1); T.L=T.O.map(o=>o-1); return T; })(), {...base,holds:[{color:true,bar:0,dir:-1}]}, true],
   ['counts beyond the fan reservoir', tape(50000), base, false],
@@ -65,6 +75,7 @@ for (const [title, T, q, fallback] of [
     }
     assert.equal(JSON.stringify(c),before,'presentation must not mutate the matching cohort');
     if (title.includes('reservoir')) { assert.ok(c.n>20000); assert.equal(c.sampled,20000); }
+    if (title.includes('boundaries')) assert.ok(c.sequences.some(([key])=>key==='IIUDII'),'both exact boundaries are inside');
   }
   console.log(`${title}: ${X.n} complete windows, independently matched`);
 }
