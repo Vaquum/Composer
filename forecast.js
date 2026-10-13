@@ -86,7 +86,7 @@ const ForecastViews = (() => {
       sourceKey = key;
       if (source) {
         while (prefix && !subset(source, prefix).n) prefix = prefix.slice(0, -1);
-        const set = subset(source, prefix);
+        const set = previous.view === 'paths' || previous.view === 'states' ? source : subset(source, prefix);
         if (!set.sequences.some(([p]) => p === selected)) selected = set.sequences[0]?.[0] || '';
       } else { prefix = ''; selected = ''; }
     }
@@ -101,5 +101,45 @@ const ForecastViews = (() => {
     const height = (coarse ? 488 : 400) + (width <= 420 ? 42 : 0);
     return { height, width, left: Math.max(12, Math.min(lx + 12, w - width - 12)), reserve: height + 16, minHeight: Math.ceil(top + height + 260) };
   }
-  return { states, names, words, percent, rate, interval, subset, outcomes, crumbs, paths, branches, grid, fan, detail, empty, emptyGrid, reconcile, layout };
+  // The forecast owns a probability gutter at every width. Mode and candle width never affect it.
+  function geometry(w,n) {
+    const base=Math.max(6,Math.min(52,w*.052));
+    const x0=n<=2?Math.max(16,w*.12):Math.max(12,w*.06);
+    const spacing=n<=2?Math.max(28,Math.max(44,w*.11)*.99):Math.max(3,(w*.35-x0)/(n-1));
+    const baseBw=Math.min(base,spacing*.75),xs=Array.from({length:n},(_,i)=>x0+i*spacing);
+    const forecastLeft=xs[n-1]+baseBw/2,end=w-40;
+    const nominal=(end-forecastLeft)/6,gap=w<700?18:24,rateWidth=w<700?30:42;
+    const maxRootRight=xs[n-1]+baseBw*.6;
+    const tentativeWidth=Math.max(12,Math.min(baseBw*1.1,nominal*.62));
+    const first=Math.max(forecastLeft+nominal,maxRootRight+18+rateWidth+gap+tentativeWidth/2);
+    const fanStep=(end-first)/5,futureXs=Array.from({length:6},(_,i)=>first+i*fanStep);
+    const forecastWidth=Math.max(4,Math.min(tentativeWidth,fanStep*.62));
+    return {xs,spacing,baseBw,forecastLeft,fanStep,futureXs,forecastWidth,gap,rateWidth};
+  }
+  function field(G) {
+    const height=Math.min(230,G.plotH*.75),top=G.plotTop+G.plotH*.52-height/2;
+    const xs=G.futureXs,width=G.forecastWidth,left=xs[0]-width/2,right=xs[5]+width/2;
+    const rateRight=left-G.gap,rateLeft=rateRight-G.rateWidth;
+    return {xs,width,left,right,top,height,rateRight,rateLeft,rowTop:top+24,rowHeight:(height-48)/4,
+      branchTop:top+25,branchHeight:(height-29)/3,rateFont:G.w<700?11:14};
+  }
+  const definition = 'Above means the future close is strictly above the matched combo’s highest wick; Below means strictly below its lowest wick; Inside includes both boundaries. These are closing states, not candle colour or wick crossings.';
+  const cohortDefinition = 'Historical BTCUSDT windows admitted by the current matching settings, including held constraints, selected timeframes, stretch and next-bar filters. Only windows with all six continuous following bars contribute.';
+  function pathTip(c,key) {
+    const n=c.sequences.find(([p])=>p===key)?.[1]||0;
+    const p=rate(n,c.n);
+    return `${words(key)}. Probability of this entire six-bar closing-state sequence: ${p?percent(p[0]):'no estimate'}; ${interval(n,c.n)}. All ${count(c.n)} complete matched windows contribute; the six percentages are not multiplied independently. ${definition} ${cohortDefinition}`;
+  }
+  function stateTip(c,prefix,j,s) {
+    const set=outcomes(c,prefix),k=set.grid[j][states.indexOf(s)],prior=prefix? `Given ${words(prefix)} at the earlier bars; `:'Given the current combo; ';
+    const p=rate(k,set.n);
+    return `Bar +${j+1}, ${names[s]}: ${p?percent(p[0]):'no estimate'}. ${prior}${interval(k,set.n)}. This is the close at this bar, not a whole-path probability. ${definition} ${cohortDefinition}`;
+  }
+  function fanTip(c,j=null,q=null) {
+    let text='Closing-price distribution of matching historical continuations, normalized to each combo’s range: low = 0, high = 1. The five lines are the 10th, 25th, 50th (median), 75th and 90th percentiles. Outer lines contain the middle 80% and inner lines the middle 50% at each individual bar, not a whole-path confidence region.';
+    if(j!==null&&q!==null)text=`Bar +${j+1}: ${[10,25,50,75,90][q]}th percentile = ${c.fan[j][q].toFixed(2)} combo heights. `+text;
+    return text+` Fan quantiles use ${count(c.sampled??c.n)} sampled complete continuations; probability views use all ${count(c.n)} complete windows. +1…+6 are bars in each selected timeframe, not a fixed elapsed duration. Branch choices do not condition the fan.`;
+  }
+
+  return { states, names, words, percent, rate, interval, subset, outcomes, crumbs, paths, branches, grid, fan, detail, empty, emptyGrid, reconcile, layout, geometry, field, definition, pathTip, stateTip, fanTip };
 })();

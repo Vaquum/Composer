@@ -70,7 +70,7 @@ button:disabled { cursor: default; }
 .stage { flex: 1; display: flex; flex-direction: column; }
 .cvwrap { position: relative; flex: 1; min-height: max(360px, var(--forecast-min-height, 0px)); }
 .cvwrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; outline: none; }
-.hint { position: absolute; left: 28px; top: 56px; right: 24px; margin: 0; font-size: 12px; color: var(--ink-3); pointer-events: none; transition: color .4s; }
+.hint { position: absolute; left: 28px; top: 56px; right: 24px; margin: 0; font-size: 12px; color: var(--ink-3); pointer-events: auto; transition: color .4s; }
 /* the paper narrows beside the panes and the reference: the hint then goes under the dock instead of into a thin column */
 .cvwrap { container-type: inline-size; }
 @container (max-width: 800px) { .hint { top: 96px; } .forecast-controls { top: 54px !important; } }
@@ -99,77 +99,32 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
 
 .forecast-controls { position: absolute; top: 14px; left: 24px; display: flex; align-items: center; gap: 8px; }
 .forecast-controls .chip { height: 30px; }
-.forecast-panel { position: absolute; bottom: 12px; padding: 12px; display: grid; grid-template-rows: 64px 180px minmax(120px, 1fr); gap: 6px; background: var(--paper); border-radius: 9px; box-shadow: 0 0 0 1px var(--hair); font-size: 12px; container-type: inline-size; }
-.forecast-head { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
-.forecast-headline { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 18px; }
-.forecast-message { font-size: 12px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.forecast-panel[data-phase="refreshing"] .forecast-message, .forecast-panel[data-phase="error"] .forecast-message { color: var(--ink); }
-.forecast-retry { font-size: 12px; color: var(--ai); text-decoration: underline; text-underline-offset: 3px; }
-.forecast-body, .forecast-secondary { min-width: 0; min-height: 0; }
-.forecast-body { transition: opacity .16s ease; }
-.forecast-panel[data-phase="refreshing"] .forecast-body, .forecast-panel[data-phase="refreshing"] .forecast-secondary,
-.forecast-panel[data-phase="error"] .forecast-body[data-previous="true"], .forecast-panel[data-phase="error"] .forecast-secondary[data-previous="true"] { opacity: .48; }
-.forecast-caption, .forecast-method { color: var(--ink-2); font-size: 11px; line-height: 1.4; }
-.forecast-crumbs { display: flex; flex-wrap: wrap; gap: 2px 5px; align-items: center; font-size: 11px; min-height: 22px; }
-.forecast-crumbs button { min-height: 22px; padding: 1px 3px; border-radius: 4px; }
-.forecast-crumbs button:hover { background: var(--paper-2); }
-.forecast-crumbs span { color: var(--ink-3); }
-.forecast-path-head, .forecast-path { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 6px; align-items: center; width: 100%; }
-.forecast-path-head { color: var(--ink-2); font-size: 11px; margin-top: 3px; line-height: 14px; }
-.forecast-steps { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); text-align: center; }
-.forecast-path { padding: 2px 0; text-align: left; border-radius: 5px; height: 33px; transition: background .16s ease; }
-.forecast-path:hover, .forecast-path[aria-pressed="true"] { background: var(--paper-2); }
-.forecast-path strong { font: 500 18px/1 var(--font-code); text-align: center; }
-.forecast-mini { display: block; min-width: 0; }
-.forecast-mini svg { display: block; width: 100%; height: 18px; }
-.forecast-mini .forecast-steps { font-size: 11px; color: var(--ink-2); line-height: 11px; }
-.forecast-mini .cu { fill: var(--up); } .forecast-mini .cd { fill: var(--down); } .forecast-mini .cz { fill: var(--flat); }
-.forecast-other { margin-top: 2px; }
-.forecast-branch-list { position: relative; padding-left: 42px; margin-top: 4px; }
-.forecast-branch-list > svg { position: absolute; left: 0; top: 0; width: 40px; height: 100%; fill: none; stroke: var(--ai); opacity: .65; }
-.forecast-branch { width: 100%; height: 49px; margin: 2px 0; padding: 5px 8px; border-radius: 5px; background: var(--paper-2); text-align: left; transition: background .16s ease; }
-.forecast-branch > span { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
-.forecast-branch strong { font: 500 18px/1.2 var(--font-code); }
-.forecast-branch small { display: block; font-size: 11px; color: var(--ink-2); line-height: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.forecast-branch:disabled { opacity: .55; }
-.forecast-complete { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; }
-.forecast-complete > strong { font: 500 28px/1.2 var(--font-code); }
-.forecast-complete > button { color: var(--ai); padding: 5px; }
-.forecast-secondary { border-top: 1px solid var(--hair); padding-top: 4px; }
-.forecast-grid { width: 100%; }
-.forecast-grid > div > .forecast-caption { display: none; }
-.forecast-grid table { border-collapse: collapse; table-layout: fixed; width: 100%; font-size: 11px; }
-.forecast-grid th { font-weight: 400; color: var(--ink-2); text-align: center; padding: 0; height: 16px; }
-.forecast-grid th:first-child { width: 46px; text-align: left; }
-.forecast-grid td { padding: 1px 2px; }
-.forecast-cell { width: 100%; min-height: 25px; border-radius: 3px; font: 400 11px/1 var(--font-code); font-variant-numeric: tabular-nums; background: color-mix(in srgb, var(--ai) calc(var(--odds) * 100%), var(--paper)); }
-.forecast-cell[data-state="U"] { background: color-mix(in srgb, var(--up) calc(var(--odds) * 100%), var(--paper)); }
-.forecast-cell[data-state="D"] { background: color-mix(in srgb, var(--down) calc(var(--odds) * 100%), var(--paper)); }
-.forecast-cell[aria-pressed="true"], .forecast-cell:hover { box-shadow: inset 0 0 0 1px var(--ink-2); }
-.forecast-cell-empty { display: flex; align-items: center; justify-content: center; color: var(--ink-3); }
-.forecast-evidence { margin: 2px 0 0; font-size: 11px; color: var(--ink-2); line-height: 14px; min-height: 14px; }
-.forecast-detail { font-size: 11px; line-height: 1.4; color: var(--ink-2); }
-.forecast-detail strong { font-weight: 500; color: var(--ink); }
-.forecast-detail p { margin: 4px 0; }
-.forecast-fan-rates { margin: 4px 0; }
-.forecast-fan-rate { display: grid; grid-template-columns: 1fr auto; align-items: baseline; min-height: 45px; padding: 3px 0; }
-.forecast-fan-rate strong { font: 500 18px/1 var(--font-code); }
-.forecast-fan-rate small { grid-column: 1 / -1; color: var(--ink-2); font-size: 11px; }
-.forecast-skeleton { padding-top: 8px; }
-.forecast-skeleton > div { height: 36px; margin: 4px 0; display: flex; align-items: center; justify-content: space-between; gap: 18px; background: var(--paper-2); border-radius: 5px; padding: 7px 12px; }
-.forecast-skeleton i { width: 55%; height: 5px; background: var(--hair); border-radius: 3px; }
-.forecast-skeleton span { color: var(--ink-3); }
-.forecast-status { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.pane[data-updating="true"] .pane-body { opacity: .55; transition: opacity .16s ease; }
-@media (pointer: coarse) {
-  .forecast-panel { grid-template-rows: 80px 210px minmax(162px, 1fr); }
-  .forecast-crumbs button { min-height: 28px; }
-  .forecast-path { height: 39px; }
-  .forecast-mini svg { height: 24px; }
-  .forecast-branch { height: 58px; }
-  .forecast-cell { min-height: 36px; }
-}
-@media (prefers-reduced-motion: reduce) { .forecast-body, .forecast-path, .forecast-branch, .pane[data-updating="true"] .pane-body { transition: none; } }
+.forecast-mode-picker { display:flex; gap:2px; padding:2px; border-radius:7px; background:var(--paper-2); }
+.forecast-mode-picker button { width:32px; height:30px; padding:6px; border-radius:5px; color:var(--ink-3); }
+.forecast-mode-picker button[aria-checked="true"] { color:var(--ink); background:var(--paper); box-shadow:0 0 0 1px var(--hair); }
+.forecast-controls svg { width:18px; height:18px; fill:none; stroke:currentColor; stroke-width:1.4; stroke-linecap:round; stroke-linejoin:round; }
+.fan-switch { display:flex; align-items:center; gap:7px; color:var(--ink-2); }
+.fan-switch input { appearance:none; width:30px; height:17px; border-radius:10px; margin:0; background:var(--ink-3); position:relative; cursor:pointer; }
+.fan-switch input::after { content:''; position:absolute; width:13px; height:13px; left:2px; top:2px; border-radius:50%; background:var(--paper); transition:transform .16s ease; }
+.fan-switch input:checked { background:var(--ai); }
+.fan-switch input:checked::after { transform:translateX(13px); }
+.forecast-panel,.forecast-body,.forecast-fan-hits { position:absolute; inset:0; pointer-events:none; }
+.forecast-panel { padding:0; background:none; border-radius:0; box-shadow:none; display:block; container-type:normal; }
+.forecast-body { z-index:2; }
+.forecast-fan-hits { z-index:1; }
+.forecast-body button,.forecast-body .forecast-note,.forecast-fan-hits button,.forecast-fan-point { position:absolute; pointer-events:auto; background:transparent; padding:0; border:0; color:transparent; }
+.forecast-path-row { pointer-events:none !important; }
+.forecast-path-row span { position:absolute; pointer-events:auto; }
+.forecast-path-rate { display:flex; align-items:center; justify-content:flex-end; color:var(--ink-2); font-variant-numeric:tabular-nums; }
+.forecast-path-row[aria-pressed="true"] .forecast-path-rate { color:var(--ink); font-weight:500; }
+.forecast-panel[data-phase="refreshing"] .forecast-path-rate,.forecast-panel[data-phase="error"] .forecast-path-rate { opacity:.4; }
+.forecast-body button:focus-visible,.forecast-fan-hits button:focus-visible { outline:1.5px solid var(--ai); outline-offset:2px; }
+.forecast-message,.forecast-retry { position:absolute; font-size:11px; pointer-events:auto; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; z-index:3; }
+.forecast-tooltip { position:fixed; z-index:90; max-width:min(370px,calc(100vw - 16px)); max-height:calc(100vh - 16px); overflow:auto; padding:12px 14px; background:var(--paper); color:var(--ink); border-radius:7px; box-shadow:0 0 0 1px var(--hair),0 7px 24px rgba(0,0,0,.12); font-size:12px; line-height:1.5; pointer-events:none; }
+@media (prefers-reduced-motion:reduce) { .fan-switch input::after { transition:none; } }
+
+.forecast-status { position:absolute; width:1px; height:1px; padding:0; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+.pane[data-updating="true"] .pane-body { opacity:.55; }
 
 /* the history answers: three ways of matching, mixed freely, and a scroll of instances */
 .match { border-top: 1px solid var(--hair); padding-block: 12px 4px; padding-inline: 12px 4px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
@@ -371,34 +326,29 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
   </aside>
   <main class="stage" aria-label="Composition">
     <div class="cvwrap" id="cvwrap">
-      <canvas id="cv" tabindex="0" aria-label="Bar composition. Drag shadows and body edges; left and right arrows choose a bar; up and down arrows move it; space changes the first bar's colour, and every later bar's colour follows from where it sits against the previous close; plus and minus add or remove a bar; the bracket keys bring the bars closer together or further apart; P starts pinning relations."></canvas>
+      <canvas id="cv" tabindex="0" aria-label="Bar composition. Drag shadows and body edges; left and right arrows choose a bar; up and down arrows move it; space changes the first bar's colour, and every later bar's colour follows from where it sits against the previous close; plus and minus add or remove a bar; the bracket keys make the drawn bars narrower or wider; P starts pinning relations."></canvas>
       <div class="forecast-controls" id="forecast-controls">
-        <div class="seg" id="forecast-modes" role="group" aria-label="Continuation view">
-          <button type="button" data-view="fan" aria-pressed="true" aria-controls="forecast-panel">Fan</button>
-          <button type="button" data-view="paths" aria-pressed="false" aria-controls="forecast-panel">Paths</button>
-          <button type="button" data-view="branches" aria-pressed="false" aria-controls="forecast-panel">Branches</button>
+        <div class="forecast-mode-picker" id="forecast-modes" role="radiogroup" aria-label="Continuation mode">
+          <button type="button" role="radio" data-view="paths" aria-label="Paths" aria-checked="false" data-tip="Paths: compare the most frequent complete six-bar closing-state sequences. Each row has its own whole-sequence probability. All ranked rows stay visible."><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="17" r="3"/><path d="M9 17h4a5 5 0 0 0 0-10h2"/><circle cx="18" cy="7" r="3"/></svg></button>
+          <button type="button" role="radio" data-view="branches" aria-label="Branches" aria-checked="false" data-tip="Branches: choose the next closing state, then see later probabilities conditional on the states you chose. The denominator is the complete windows remaining after those choices."><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5v14M5 12c8 0 5-7 13-7M5 12h13M5 12c8 0 5 7 13 7"/><circle cx="5" cy="5" r="2"/><circle cx="18" cy="5" r="2"/><circle cx="18" cy="12" r="2"/><circle cx="18" cy="19" r="2"/></svg></button>
+          <button type="button" role="radio" data-view="states" aria-label="States" aria-checked="true" data-tip="States: each future column totals 100%. Its faint green, grey and red areas show how often that bar closed above, inside or below the original combo range. These are per-bar marginal probabilities, not probabilities of a complete sequence."><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3v18h16M7 7h4v10H7zM15 4h4v13h-4zM7 11h4M15 9h4"/></svg></button>
         </div>
-        <button type="button" class="chip" id="forecast-toggle" aria-pressed="false" aria-controls="forecast-grid">Grid</button>
+        <label class="fan-switch" data-tip="Fan underlay: show or hide the historical closing-price distribution beneath any mode. The five lines show 10th, 25th, median, 75th and 90th percentiles at each future bar; this distribution always uses the original matching cohort."><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18M4 18 10 5l5 8 6-10M4 18l6-6 5 4 6-4"/></svg><input type="checkbox" id="fan-underlay" role="switch" aria-label="Fan underlay" checked></label>
       </div>
       <section class="forecast-panel" id="forecast-panel" aria-label="Continuation scenarios">
-        <header class="forecast-head">
-          <div class="forecast-headline"><span class="forecast-message" id="forecast-message"></span><button type="button" class="forecast-retry" id="forecast-retry" hidden>Retry</button></div>
-          <div id="forecast-trail"></div>
-        </header>
+        <div class="forecast-fan-hits" id="forecast-fan-hits"></div>
         <div class="forecast-body" id="forecast-body"></div>
-        <div class="forecast-secondary" id="forecast-secondary">
-          <section class="forecast-grid" id="forecast-grid" aria-label="Bar-by-bar probability grid" hidden><div id="forecast-grid-content"></div><p class="forecast-evidence" id="forecast-evidence"></p></section>
-          <div class="forecast-detail" id="forecast-detail"></div>
-        </div>
+        <span class="forecast-message" id="forecast-message" data-tip="Matching complete historical continuations."></span>
+        <button type="button" class="forecast-retry" id="forecast-retry" data-tip="Retry the dataset or matcher request without resetting the drawing, modes or previous result." hidden>Retry</button>
       </section>
       <p class="forecast-status" id="forecast-status" role="status" aria-live="polite"></p>
-      <p class="hint" id="hint">Each bar opens where the one before it closed · drag a close, a shadow or a body · tap the first bar to change its colour · hold ⌥ to pass levels freely</p>
+      <div class="forecast-tooltip" id="forecast-tooltip" role="tooltip" hidden></div>
+      <p class="hint" id="hint" data-tip="Green, grey and red forecasts describe the future close relative to the original matching combo’s highest and lowest wicks. Exact boundary closes are Inside. Root candle colours describe close versus open. These are different measurements.">Closing state · green above / grey inside / red below the combo range</p>
       <div class="dock">
-        <label class="space" title="Space between the bars · [ and ] · pinch on the paper">
-          <span class="ma" lang="ja" aria-hidden="true">間</span>
-          <svg class="ico" viewBox="0 0 14 14" aria-hidden="true"><rect x="3" y="2" width="3.6" height="10" rx=".7"/><rect x="7.4" y="2" width="3.6" height="10" rx=".7"/></svg>
-          <input type="range" id="space" min="0" max="1" step="0.001" aria-label="Space between the bars">
-          <svg class="ico" viewBox="0 0 14 14" aria-hidden="true"><rect x=".4" y="2" width="3.6" height="10" rx=".7"/><rect x="10" y="2" width="3.6" height="10" rx=".7"/></svg>
+        <label class="space" title="Width of the drawn bars · [ and ] · pinch on the paper">
+          <svg class="ico" viewBox="0 0 14 14" aria-hidden="true"><rect x="3" y="2" width="1.5" height="10" rx=".7"/><rect x="9.5" y="2" width="1.5" height="10" rx=".7"/></svg>
+          <input type="range" id="space" min="0" max="1" step="0.001" aria-label="Width of the drawn bars">
+          <svg class="ico" viewBox="0 0 14 14" aria-hidden="true"><rect x="1.5" y="2" width="4.5" height="10" rx=".7"/><rect x="8" y="2" width="4.5" height="10" rx=".7"/></svg>
         </label>
         <div class="bars" role="group" aria-label="Bars">
           <button type="button" id="rm" aria-label="Remove the last bar" title="Remove the last bar">−</button>
@@ -475,6 +425,7 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
 
 <script src="pane-designs.js"></script>
 <script src="forecast.js"></script>
+<script src="context.js"></script>
 <script>
 (() => {
 'use strict';
@@ -613,7 +564,7 @@ const S = {
   x: 12, tfOn: [true, true, true, true, true], pinMode: false,
   next: { dir: 0, measure: 'any', bps: 10, atr: 1 },   // 次: which next bars to keep; thresholds keep their own defaults
 };
-try { const v = parseFloat(localStorage.getItem('ashi.space')); if (v >= 0 && v <= 1) S.space = v; } catch (err) { /* spacing simply starts at its default */ }
+try { const v = parseFloat(localStorage.getItem('ashi.width')); if (v >= 0 && v <= 1) S.space = v; } catch (err) { /* spacing simply starts at its default */ }
 const hist = { past: [], future: [] };
 const snap = () => ({ bars: S.bars.map(b => ({ v: Array.from(b.v), d: b.d })), pins: JSON.parse(JSON.stringify(S.pins)) });
 function pushHist(s) { hist.past.push(s || snap()); if (hist.past.length > 400) hist.past.shift(); hist.future = []; }
@@ -796,115 +747,151 @@ function namesOf(id) {
 }
 
 /* ================= the paper ================= */
-const HINT_DRAW = 'Each bar opens where the one before it closed · drag a close, a shadow or a body · tap the first bar to change its colour · hold ⌥ to pass levels freely';
+const HINT_DRAW = 'Closing state · green above / grey inside / red below the combo range';
 const HINT_PIN = 'Tap two points to hold how they relate · tap a body to hold its colour · tap a knot to let it go · Esc when done';
+const FAN_OPTIONS={strength:1,softness:1,lines:1,median:true};
 const Forecast = {
-  view: 'fan', grid: false, prefix: '', selected: '', source: null, sourceKey: '', rendered: '', focusRequested: '', current: false, phase: 'loading',
-  panel: $('#forecast-panel'), table: $('#forecast-grid'), body: $('#forecast-body'), secondary: $('#forecast-secondary'),
-  init() {
-    try {
-      const saved = JSON.parse(localStorage.getItem('ashi.forecast'));
-      if (['fan', 'paths', 'branches'].includes(saved?.view)) this.view = saved.view;
-      if (typeof saved?.grid === 'boolean') this.grid = saved.grid;
-    } catch (err) { /* start with the fan and the grid off */ }
-    $('#forecast-modes').addEventListener('click', e => {
-      const b = e.target.closest('button[data-view]'); if (b) this.choose(b.dataset.view);
+  view:'states',fan:true,prefix:'',selected:'',source:null,sourceKey:'',rendered:'',current:false,phase:'loading',
+  panel:$('#forecast-panel'),body:$('#forecast-body'),fanHits:$('#forecast-fan-hits'),context:null,
+  field(G){return ForecastViews.field(G);},
+  init(){
+    try{
+      const saved=JSON.parse(localStorage.getItem('ashi.forecast'));
+      if(['paths','branches','states'].includes(saved?.view))this.view=saved.view;
+      else if(saved?.grid)this.view='states';
+      else if(saved?.view==='fan')this.view='states';
+      if(typeof saved?.fan==='boolean')this.fan=saved.fan;
+    }catch(err){/* preferences remain usable without storage */}
+    document.body.appendChild($('#forecast-tooltip'));
+    this.context=ForecastContext.install(Stage.wrap,$('#forecast-tooltip'));
+    $('#forecast-modes').addEventListener('click',e=>{const b=e.target.closest('[data-view]');if(b)this.choose(b.dataset.view);});
+    $('#forecast-modes').addEventListener('keydown',e=>{
+      if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;
+      const modes=['paths','branches','states'],i=modes.indexOf(this.view);
+      this.choose(modes[e.key==='Home'?0:e.key==='End'?2:(i+(e.key==='ArrowRight'?1:2))%3]);
+      $('#forecast-modes').querySelector('[aria-checked="true"]').focus();e.preventDefault();e.stopPropagation();
     });
-    $('#forecast-toggle').addEventListener('click', () => { this.grid = !this.grid; this.remember(); App.redraw(); });
-    $('#forecast-retry').addEventListener('click', e => { e.stopPropagation(); if (e.detail === 0) this.focusRequested = 'mode'; Match.retry(); });
-    this.panel.addEventListener('click', e => {
-      const b = e.target.closest('button'); if (!b || b.disabled || !this.source || !this.current) return;
-      const previous = `${this.prefix}|${this.selected}`;
-      if (b.dataset.path) this.selected = b.dataset.path;
-      else if (b.dataset.prefix != null) this.select(b.dataset.prefix);
-      else if (b.dataset.evidence) { this.inspect(b); return; }
-      if (e.detail === 0) this.focusRequested = previous === `${this.prefix}|${this.selected}` ? '' : b.closest('#forecast-grid') ? 'grid' : b.dataset.path ? 'paths' : 'branches';
+    $('#fan-underlay').addEventListener('change',e=>{this.fan=e.target.checked;this.remember();App.redraw();});
+    $('#forecast-retry').addEventListener('click',()=>Match.retry());
+    this.body.addEventListener('click',e=>{
+      const b=e.target.closest('button');if(!b||!this.current||b.getAttribute('aria-disabled')==='true')return;
+      if(b.dataset.path)this.selected=b.dataset.path;
+      else if(b.dataset.prefix!==undefined)this.select(b.dataset.prefix);
       App.redraw();
     });
-    for (const type of ['pointerover', 'focusin']) this.table.addEventListener(type, e => {
-      const b = e.target.closest('.forecast-cell'); if (b && this.current) this.inspect(b);
-    });
-    this.controls();
-  },
-  inspect(b) { $('#forecast-evidence').textContent = `+${Number(b.dataset.step) + 1} ${ForecastViews.names[b.dataset.state]} · ${b.dataset.evidence}`; },
-  controls() {
-    $('#forecast-modes').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.view === this.view)));
-    $('#forecast-toggle').setAttribute('aria-pressed', String(this.grid));
-  },
-  remember() {
-    this.controls();
-    try { localStorage.setItem('ashi.forecast', JSON.stringify({ view: this.view, grid: this.grid })); } catch (err) { /* preferences remain usable without storage */ }
-  },
-  choose(view) {
-    if (!['fan', 'paths', 'branches'].includes(view)) return;
-    this.view = view; this.remember(); App.redraw();
-  },
-  select(prefix) {
-    if (!this.source || !/^[UID]{0,6}$/.test(prefix)) return;
-    const set = ForecastViews.subset(this.source, prefix); if (!set.n) return;
-    this.prefix = prefix; this.selected = set.sequences[0][0];
-  },
-  example(c) {
-    if (!c || c !== this.source || !(this.view === 'paths' || this.prefix.length)) return null;
-    return c.examples?.[this.selected] || null;
-  },
-  reserve(w, lx, top) {
-    const L = ForecastViews.layout(w, lx, top, matchMedia('(pointer: coarse)').matches);
-    const height = `${L.minHeight}px`;
-    if (Stage.wrap.style.getPropertyValue('--forecast-min-height') !== height) Stage.wrap.style.setProperty('--forecast-min-height', height);
-    return L.reserve;
-  },
-  sync(G) {
-    const next = ForecastViews.reconcile(this, { fresh: Match.fresh(), failed: Match.failed, data: Match.result?.panes?.cont, key: Match.resultKey });
-    const changed = next.source !== this.source;
-    Object.assign(this, next);
-    const c = this.source, updating = this.phase === 'loading' || this.phase === 'refreshing';
-    this.panel.dataset.phase = this.phase;
-    this.panel.setAttribute('aria-busy', String(updating));
-    this.body.inert = this.secondary.inert = $('#forecast-trail').inert = !this.current;
-    this.body.dataset.previous = this.secondary.dataset.previous = String(!!c && !this.current);
-    this.table.hidden = !this.grid; $('#forecast-detail').hidden = this.grid;
-    $('#forecast-retry').hidden = this.phase !== 'error';
-    const messages = {
-      ready: `${c?.n.toLocaleString('en-GB') || ''} complete matches · next 6 bars`,
-      refreshing: 'Updating · showing the previous result',
-      loading: 'Finding matching continuations…',
-      sparse: 'Not enough complete continuations',
-      error: c ? 'Update failed · showing the previous result' : 'Continuation unavailable',
-    };
-    $('#forecast-message').textContent = messages[this.phase];
-    for (const pane of document.querySelectorAll('.pane')) {
-      pane.dataset.updating = String(!!Match.result && !this.current); pane.setAttribute('aria-busy', String(updating));
+    for(const el of Stage.wrap.querySelectorAll('[title]')){
+      el.dataset.tip=el.getAttribute('title');el.removeAttribute('title');
     }
-    const key = `${this.view}|${this.grid}|${this.prefix}|${this.selected}|${!!c}`;
-    if (changed || this.rendered !== key) {
-      this.rendered = key;
-      const active = document.activeElement, restore = this.panel.contains(active) && !!active?.dataset;
-      const token = restore ? { path: active.dataset.path, prefix: active.dataset.prefix, step: active.dataset.step, state: active.dataset.state } : null;
-      $('#forecast-trail').innerHTML = ForecastViews.crumbs(this.prefix);
-      this.body.innerHTML = c ? ForecastViews[this.view](c, this.prefix, this.selected) : ForecastViews.empty(this.view);
-      $('#forecast-grid-content').innerHTML = c ? ForecastViews.grid(c, this.prefix) : ForecastViews.emptyGrid();
-      $('#forecast-detail').innerHTML = c ? ForecastViews.detail(c, this.prefix, this.selected, this.view) : '<strong>No probability estimate yet</strong><p>Estimates need 30 matched windows with all six following bars. Your composition stays editable.</p>';
-      $('#forecast-evidence').textContent = c ? 'Above / Inside / Below the combo range · focus or tap a cell for its 95% interval' : 'Estimates need 30 complete continuations.';
-      if (this.focusRequested || token) {
-        let target = null;
-        if (this.focusRequested === 'mode' && (!active || active === document.body || this.panel.contains(active))) target = $('#forecast-modes').querySelector('[aria-pressed="true"]');
-        else if (this.focusRequested === 'grid') target = this.table.querySelector('[data-prefix]');
-        else if (this.focusRequested === 'paths') target = this.body.querySelector('[aria-pressed="true"]');
-        else if (this.focusRequested === 'branches') target = this.body.querySelector('button:not([disabled])');
-        else if (token) target = [...this.panel.querySelectorAll('button')].find(b => token.path ? b.dataset.path === token.path : token.step != null ? b.dataset.step === token.step && b.dataset.state === token.state : token.prefix != null && b.dataset.prefix === token.prefix);
-        if (!target && this.focusRequested !== 'mode') target = $('#forecast-trail').querySelector('button:last-child');
-        if (target && this.current) target.focus({ preventScroll: true });
-        this.focusRequested = '';
-      }
-      if (!calm() && this.current && this.body.animate) this.body.animate([{ opacity:.65 },{ opacity:1 }],{ duration:160,easing:'ease-out' });
+    this.controls();
+  },
+  controls(){
+    $('#forecast-modes').querySelectorAll('[data-view]').forEach(b=>{
+      const on=b.dataset.view===this.view;b.setAttribute('aria-checked',String(on));b.tabIndex=on?0:-1;
+    });
+    $('#fan-underlay').checked=this.fan;
+  },
+  remember(){this.controls();try{localStorage.setItem('ashi.forecast',JSON.stringify({view:this.view,fan:this.fan}));}catch(err){/* optional storage */}},
+  choose(view){
+    if(!['paths','branches','states'].includes(view))return;
+    this.view=view;
+    if(view==='paths'&&this.source&&!this.source.sequences.slice(0,4).some(([key])=>key===this.selected))this.selected=this.source.sequences[0]?.[0]||'';
+    this.remember();App.redraw();
+  },
+  select(prefix){
+    if(!this.source||!/^[UID]{0,6}$/.test(prefix))return;
+    const set=ForecastViews.subset(this.source,prefix);if(!set.n)return;
+    this.prefix=prefix;this.selected=set.sequences[0][0];
+  },
+  example(){return null;},
+  reserve(w,lx,top){
+    const height=`${Math.ceil(top+300)}px`;
+    if(Stage.wrap.style.getPropertyValue('--forecast-min-height')!==height)Stage.wrap.style.setProperty('--forecast-min-height',height);
+    return 0;
+  },
+  sync(G){
+    const next=ForecastViews.reconcile(this,{fresh:Match.fresh(),failed:Match.failed,data:Match.result?.panes?.cont,key:Match.resultKey});
+    const changed=next.source!==this.source;Object.assign(this,next);
+    const c=this.source,F=this.field(G),busy=['loading','refreshing'].includes(this.phase);
+    this.panel.setAttribute('aria-busy',String(busy));this.panel.dataset.phase=this.phase;
+    $('#forecast-retry').hidden=this.phase!=='error';
+    const messages={ready:'',loading:'Finding matching continuations…',refreshing:'Updating · previous result',sparse:'Fewer than 30 complete continuations',error:c?'Update failed · previous result':'Continuation unavailable'};
+    $('#forecast-message').textContent=messages[this.phase];
+    Object.assign($('#forecast-message').style,{left:`${F.left}px`,top:`${F.top-22}px`,width:`${Math.max(0,F.right-F.left-50)}px`});
+    Object.assign($('#forecast-retry').style,{left:`${F.right-48}px`,top:`${F.top-22}px`});
+    $('#forecast-message').dataset.tip=(messages[this.phase]||'Historical continuation probabilities')+'. '+(c?`${c.n.toLocaleString('en-GB')} matched windows with all six following bars. `:'No probability estimate is available. ')+(this.current?'':c?'These are the previous composition’s readings; outcome selection waits for the update. ':'')+ForecastViews.definition;
+    const status=`${messages[this.phase]||`${c?.n.toLocaleString('en-GB')} complete matched windows`}. ${this.view}. Fan ${this.fan?'on':'off'}.`;
+    if($('#forecast-status').textContent!==status)$('#forecast-status').textContent=status;
+    for(const pane of document.querySelectorAll('.pane')){pane.dataset.updating=String(!!Match.result&&!this.current);pane.setAttribute('aria-busy',String(busy));}
+    const key=`${this.view}|${this.prefix}|${this.selected}|${this.phase}`;
+    if(changed||key!==this.rendered){
+      const active=document.activeElement,focused=this.body.contains(active)?active?.dataset.key:null;
+      this.rendered=key;this.context?.cancelFor?.(this.body);this.context?.cancelFor?.(this.fanHits);
+      this.body.innerHTML=this.markup();
+      this.fanHits.innerHTML=c?'<button type="button" class="forecast-fan-hit" data-kind="fan" aria-label="Historical closing-price fan"></button>'+c.fan.flatMap((q,j)=>q.map((_,k)=>`<span class="forecast-fan-point" data-step="${j}" data-quantile="${k}"></span>`)).join(''):'';
+      if(focused){const target=[...this.body.querySelectorAll('[data-key]')].find(b=>b.dataset.key===focused);target?.focus({preventScroll:true});}
       App.redraw();
     }
-    if (!c) $('#forecast-detail').innerHTML = this.phase === 'error' ? '<strong>Could not load the continuation</strong><p>Retry keeps your drawing, view and grid preferences.</p>' : '<strong>No probability estimate yet</strong><p>Estimates need 30 matched windows with all six following bars. Your composition stays editable.</p>';
-    const status = `${messages[this.phase]}. ${this.prefix ? ForecastViews.words(this.prefix) + '. ' : ''}${this.view}, grid ${this.grid ? 'on' : 'off'}.`;
-    if ($('#forecast-status').textContent !== status) $('#forecast-status').textContent = status;
-    const L = ForecastViews.layout(G.w, G.xs[G.N - 1] + G.bw / 2, G.plotTop, matchMedia('(pointer: coarse)').matches);
-    this.panel.style.left = `${L.left}px`; this.panel.style.width = `${L.width}px`; this.panel.style.height = `${L.height}px`;
+    this.place(G,F);
+  },
+  markup(){
+    const c=this.source,V=ForecastViews,escape=s=>String(s).replaceAll('&','&amp;').replaceAll('"','&quot;').replaceAll('<','&lt;');
+    const stale=!this.current?' Previous composition’s result; wait for the current update.':'';
+    const tip=text=>`data-tip="${escape(text+stale)}"`;
+    const note=c?(this.view==='paths'?'Each row is an entire six-bar closing-state sequence, ranked by frequency. '+V.definition:this.view==='branches'?'Choose the next closing state to condition later columns on those earlier choices. '+V.definition:V.definition)+` All ${c.n.toLocaleString('en-GB')} complete matched windows contribute.`:'Waiting for complete matched windows; dashes are unavailable estimates, not zero.';
+    const heading=c&&this.view==='branches'&&this.prefix.length===6?V.pathTip(c,this.prefix):note;
+    let html=`<span class="forecast-note" data-kind="heading" ${tip(heading)}></span>`;
+    if(this.view==='paths'){
+      const leaders=c?.sequences.slice(0,4)||Array.from({length:4},()=>['',0]);
+      html+=leaders.map(([key,n],i)=>{
+        const text=c?V.pathTip(c,key):note;
+        return `<button type="button" class="forecast-path-row" data-kind="path" data-row="${i}" data-path="${key}" data-key="path-${i}" aria-pressed="${key===this.selected}" aria-disabled="${!this.current||!key}" aria-label="${escape(text)}" ${tip(text)}><span class="forecast-path-rate" ${tip(text)}>${c&&V.rate(n,c.n)?V.percent(V.rate(n,c.n)[0]):'–'}</span>${Array.from({length:6},(_,j)=>`<span class="forecast-path-mark" data-step="${j}" ${tip(key?`Bar +${j+1} closes ${V.names[key[j]].toLowerCase()}. This is one state of the complete sequence shown on this row; the row’s probability applies to all six states together. `+text:note)}></span>`).join('')}</button>`;
+      }).join('');
+      const other=c?c.n-leaders.reduce((n,[,k])=>n+k,0):0;
+      html+=`<span class="forecast-note" data-kind="other" ${tip(c?`${c.sequences.length-leaders.length} other complete sequences: ${V.interval(other,c.n)}. Together with the displayed rows these mutually exclusive sequences account for every complete window.`:note)}></span>`;
+    }else{
+      const prefix=this.view==='branches'?this.prefix:'',set=c?V.outcomes(c,prefix):null;
+      html+=Array.from({length:6},(_,j)=>V.states.map((s,k)=>{
+        const prior=this.view==='branches'&&j<prefix.length,n=set?.grid[j][k]||0;
+        const actionable=this.view==='branches'&&j===prefix.length&&n&&set.n>=30;
+        const selected=prior&&prefix[j]===s;
+        const text=c?(prior?(selected?`Bar +${j+1}, ${V.names[s]} is an earlier chosen closing state. Click to return before this bar and choose again.`:`Bar +${j+1}, ${V.names[s]} is excluded by your earlier choices.`):V.stateTip(c,prefix,j,s)+(this.view==='states'?' This coloured portion occupies that share of a column totaling 100%.':actionable?' Choose this outcome to update the following bars.':' Later columns describe the current cohort; they are not independent path odds.')):note;
+        const explanation=text+(c&&prefix.length===6?' '+V.pathTip(c,prefix):'');
+        return `<button type="button" class="forecast-cell-hit" data-kind="${this.view}" data-step="${j}" data-state="${s}" data-state-index="${k}" data-key="cell-${j}-${s}" ${actionable?`data-prefix="${prefix+s}"`:selected?`data-prefix="${prefix.slice(0,j)}"`:''} aria-label="${escape(explanation)}" aria-disabled="${!this.current}" ${this.view==='branches'?`aria-pressed="${!!selected}"`:''} ${tip(explanation)}></button>`;
+      }).join('')).join('');
+      if(this.view==='branches')html+=`<button type="button" class="forecast-reset" data-kind="reset" data-prefix="" data-key="reset" aria-label="Return to the original combo" ${tip('Remove every chosen future state. Return all branch estimates to the original complete matching cohort.')}></button>`;
+    }
+    html+=Array.from({length:6},(_,j)=>`<span class="forecast-note" data-kind="step" data-step="${j}" ${tip(`Bar +${j+1}: ${j+1} bars after each matched combo, in that match’s timeframe. Selected timeframes are pooled; this column is not one fixed elapsed duration.`)}></span>`).join('');
+    return html;
+  },
+  place(G,F){
+    const set=this.source?ForecastViews.outcomes(this.source,this.view==='branches'?this.prefix:''):null;
+    const put=(el,x,y,w,h)=>Object.assign(el.style,{left:`${x}px`,top:`${y}px`,width:`${Math.max(0,w)}px`,height:`${Math.max(0,h)}px`});
+    this.body.querySelectorAll('[data-kind]').forEach(el=>{
+      const j=+el.dataset.step,k=+el.dataset.stateIndex,kind=el.dataset.kind;
+      if(kind==='path'){
+        const row=+el.dataset.row;put(el,F.rateLeft,F.rowTop+row*F.rowHeight,F.right-F.rateLeft,F.rowHeight);
+        const rate=el.querySelector('.forecast-path-rate');put(rate,0,0,F.rateRight-F.rateLeft,F.rowHeight);rate.style.fontSize=`${F.rateFont}px`;
+        el.querySelectorAll('.forecast-path-mark').forEach((mark,i)=>put(mark,F.xs[i]-F.width/2-F.rateLeft,(F.rowHeight-18)/2,F.width,18));
+      }else if(kind==='states'){
+        const probs=set?.grid[j].map(n=>n/set.n)||[1/3,1/3,1/3];
+        put(el,F.xs[j]-F.width/2,F.top+F.height*probs.slice(0,k).reduce((a,b)=>a+b,0),F.width,F.height*probs[k]);
+      }else if(kind==='branches')put(el,F.xs[j]-F.width/2,F.branchTop+k*F.branchHeight,F.width,F.branchHeight-4);
+      else if(kind==='heading')put(el,F.left,F.top-2,Math.min(280,F.right-F.left),22);
+      else if(kind==='other')put(el,F.left,F.top+F.height-18,Math.min(220,F.right-F.left),20);
+      else if(kind==='reset')put(el,F.right-58,F.top,58,22);
+      else if(kind==='step')put(el,F.xs[j]-14,G.plotBottom+22,28,24);
+    });
+    this.fanHits.hidden=!this.fan||!this.source;
+    if(this.source){
+      const c=this.source,fan=this.fanHits.querySelector('[data-kind="fan"]');
+      fan.dataset.tip=ForecastViews.fanTip(c)+(this.current?'':' Previous composition’s fan.');
+      put(fan,G.forecastLeft+8,G.plotTop,F.xs[5]-G.forecastLeft-8,G.plotH);
+      let lo=Infinity,hi=-Infinity;for(const b of S.bars){lo=Math.min(lo,b.dv[0]);hi=Math.max(hi,b.dv[3]);}
+      this.fanHits.querySelectorAll('[data-quantile]').forEach(el=>{
+        const j=+el.dataset.step,k=+el.dataset.quantile,y=Stage.Y(lo+c.fan[j][k]*(hi-lo),G);
+        put(el,F.xs[j]-9,y-5,18,10);el.dataset.tip=ForecastViews.fanTip(c,j,k)+(this.current?'':' Previous composition’s fan.');
+      });
+    }
   },
 };
 const Stage = {
@@ -919,20 +906,12 @@ const Stage = {
     // the plot starts below the hint, which wraps onto several lines on a phone. Where it starts and ends follows the
     // canvas, but eases there and holds still while you drag, so a change of layout around the paper never jumps the drawing
     const top = Math.max(70, this.hint.offsetTop + this.hint.offsetHeight + 24), P = this.plot;
-    // bar width follows the count and the screen; 間 sets the pitch, from nearly touching to as far apart as fits
-    // 続: the fan's six steps always keep their places beside the bars, each FAN_PITCH of a bar's, so the bars never
-    // shift sideways when an answer arrives; the bars and the fan are centred together and always fit across the paper
-    const fanSlots = FAN_STEPS * FAN_PITCH + 1;
-    const room = Math.max(24, (w - 150) / (N + fanSlots)), bw = clamp(Math.min(210, room) * 0.4, 6, 68);
-    const tight = bw * 1.22, airy = Math.max(tight, Math.min(room, 340));
-    const spacing = tight * Math.pow(airy / tight, S.space);
-    const x0 = (w - ((N - 1) + fanSlots) * spacing) / 2;
-    const xs = S.bars.map((_, i) => x0 + i * spacing);
-    const extra = Forecast.reserve(w, xs[N - 1] + bw / 2, top);
+    const fixed=ForecastViews.geometry(w,N),bw=fixed.baseBw*(.55+S.space*.65);
+    const {spacing,xs}=fixed,extra=Forecast.reserve(w,fixed.forecastLeft,top);
     P.tgt[0] = top; P.tgt[1] = Math.max(top + 160, h - 84 - extra);
     if (!P.ready || calm()) { P.cur.set(P.tgt); P.vel.fill(0); P.ready = h > 0; }
     const plotTop = P.cur[0], plotBottom = P.cur[1];
-    return { w, h, N, plotTop, plotBottom, plotH: plotBottom - plotTop, spacing, bw, fanStep: FAN_PITCH * spacing, xs };
+    return { w, h, N, plotTop, plotBottom, plotH: plotBottom - plotTop, ...fixed,spacing,bw,xs };
   },
   Y(v, G) { const { lo, hi } = this.view; return G.plotBottom - (v - lo) / (hi - lo) * G.plotH; },
   // frame the composition with room to pull past its extremes, and the whole fan when there is one; stay still unless
@@ -963,9 +942,13 @@ const Stage = {
     this.geom();
     if (!this.drag && springArr(this.plot.cur, this.plot.vel, this.plot.tgt, 2, fast ? 40 : 9, dt, 0.05)) busy = true;
     const G = this.geom(), id = identity(), kc = 1 - Math.exp(-(fast ? 40 : 6) * dt);
+    const targetMix=Forecast.view==='paths'?1:0;
+    this.modeMix??=targetMix;
+    if(fast)this.modeMix=targetMix;
+    else if(Math.abs(this.modeMix-targetMix)>.001){this.modeMix+=(targetMix-this.modeMix)*(1-Math.exp(-14*dt));busy=true;}else this.modeMix=targetMix;
     S.bars.forEach((b, i) => {
       const tx = G.xs[i];
-      if (b.x == null) { b.x = fast ? tx : tx + G.spacing * 0.7; b.vx = 0; }
+      if (b.x == null) { b.x = tx; b.vx = 0; }
       const xs = [b.x], vx = [b.vx];
       if (springArr(xs, vx, [tx], 1, fast ? 40 : 8, dt, 0.05)) busy = true;
       b.x = xs[0]; b.vx = vx[0];
@@ -983,7 +966,7 @@ const Stage = {
     const fanT = Match.fresh() && !Match.failed ? 1 : Forecast.source ? .35 : 0;
     if (Math.abs(fanT - this.fanA) > 0.004) { this.fanA += (fanT - this.fanA) * (1 - Math.exp(-(fast ? 60 : fanT > this.fanA ? 6 : 16) * dt)); busy = true; } else this.fanA = fanT;
     const example = Forecast.example(Forecast.source), mix = 1 - Math.exp(-(fast ? 60 : 14) * dt);
-    for (const [key, target] of [['fanWeight', Forecast.view === 'fan' ? 1 : 0], ['exampleWeight', example ? 1 : 0]]) {
+    for (const [key, target] of [['fanWeight', Forecast.fan ? 1 : 0], ['exampleWeight', example ? 1 : 0]]) {
       if (Math.abs(target - this[key]) > .004) { this[key] += (target - this[key]) * mix; busy = true; } else this[key] = target;
     }
     if (example) {
@@ -1221,18 +1204,15 @@ const Stage = {
     const ctx = fitCanvas(this.cv, G.w, G.h), id = identity();
     ctx.clearRect(0, 0, G.w, G.h);
     const Y = v => this.Y(v, G), x0 = 24, x1 = G.w - 52;
-    // the selected bar's levels as faint rules, with their place in the global order
+    // Keep the root levels as faint rules; rank labels would overlap the future columns.
     const sb = S.bars[S.sel];
     ctx.font = `500 11px ${FONT_MIN}`; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
-    ctx.fillStyle = COL['ink-3']; ctx.fillText('段', G.w - 22, G.plotTop - 12);
-    const seen = new Set(); let lastY = -Infinity;
+    const seen = new Set();
     for (let k = 3; k >= 0; k--) {
       const rank = id.r[S.sel * 4 + k]; if (seen.has(rank)) continue; seen.add(rank);
       const y = Math.round(Y(sb.dv[k])) + 0.5;
       ctx.strokeStyle = COL.mist; ctx.lineWidth = 1; ctx.setLineDash([1, 4]);
       ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke(); ctx.setLineDash([]);
-      const ly = Math.max(y, lastY + 13); lastY = ly;
-      ctx.fillStyle = COL['ink-3']; ctx.fillText(String(rank), G.w - 24, ly);
     }
     // 鎖: each bar opens where the one before it closed, a hairline from that close to this open
     ctx.strokeStyle = COL['ink-3']; ctx.lineWidth = 1; ctx.globalAlpha = this.trace ? 0.25 : 0.6;
@@ -1255,10 +1235,10 @@ const Stage = {
       const y = Math.round(Y(this.snapV)) + 0.5;
       ctx.strokeStyle = COL.ai; ctx.lineWidth = 1.2; ctx.globalAlpha = this.snapA * this.snapA; ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke(); ctx.globalAlpha = 1;
     }
+    this.drawFan(ctx,G);
     for (const g of this.ghosts) this.drawCandle(ctx, G, g.x, g.dv, g.col, g.a);
     S.bars.forEach((b, i) => this.drawBar(ctx, G, i));
-    this.drawFan(ctx, G);
-    this.drawExample(ctx, G);
+    if(Forecast.source){this.drawStates(ctx,G);this.drawPaths(ctx,G);this.drawBranches(ctx,G);}else this.drawForecastEmpty(ctx,G);
     this.drawFutureLabels(ctx, G);
     this.drawTrace(ctx, G);
     this.drawSkeleton(ctx, G);
@@ -1322,34 +1302,135 @@ const Stage = {
   // 続: the bars after the windows that match, each scaled so its own low and high sit on the drawing's, as a fan of
   // their closes (10 to 90%, 25 to 75% and the median) from the last bar's close, with the shape's high and low carried on
   drawFan(ctx, G) {
-    const c = Forecast.source;
-    if (!c || c.fan.length < 1 || this.fanA < 0.01 || this.fanWeight < .01) return;
-    let lo = Infinity, hi = -Infinity;
-    for (const b of S.bars) { lo = Math.min(lo, b.dv[0]); hi = Math.max(hi, b.dv[3]); }
-    const n = S.bars.length, last = S.bars[n - 1], lx = (last.x == null ? G.xs[n - 1] : last.x) + G.bw / 2;
-    const step = G.fanStep;
-    if (!(step >= 4) || !(hi > lo)) return;
-    const Y = u => this.Y(lo + u * (hi - lo), G), xs = c.fan.map((_, j) => lx + (j + 1) * step);
-    const y0 = this.Y(dirOf(n - 1) >= 0 ? last.dv[2] : last.dv[1], G);
-    ctx.save();
-    ctx.beginPath(); ctx.rect(0, G.plotTop - 24, G.w, G.plotH + 48); ctx.clip();
-    ctx.globalAlpha = this.fanA * this.fanWeight * (this.trace ? 0.3 : 1);
-    const band = (a, b, alpha) => {
-      ctx.beginPath(); ctx.moveTo(lx, y0);
-      c.fan.forEach((qs, j) => ctx.lineTo(xs[j], Y(qs[b])));
-      for (let j = c.fan.length - 1; j >= 0; j--) ctx.lineTo(xs[j], Y(c.fan[j][a]));
-      ctx.closePath(); ctx.fillStyle = COL.ai; const g = ctx.globalAlpha; ctx.globalAlpha = g * alpha; ctx.fill(); ctx.globalAlpha = g;
+    const c=Forecast.source;
+    if(!c||this.fanA<.01||this.fanWeight<.01||G.w<1||G.h<1||G.fanStep<4)return;
+    let lo=Infinity,hi=-Infinity;
+    for(const b of S.bars){lo=Math.min(lo,b.dv[0]);hi=Math.max(hi,b.dv[3]);}
+    if(!(hi>lo))return;
+    const last=S.bars[G.N-1],lx=G.forecastLeft;
+    const xs=G.futureXs,end=xs.at(-1);
+    const Y=u=>this.Y(lo+u*(hi-lo),G),y0=this.Y(closeOf(last.dv,last.d),G);
+    const neutral=rgbOf(COL['ink-2']),indigo=rgbOf(COL.ai);
+    const pigment=neutral.map((v,j)=>Math.round(v*.78+indigo[j]*.22));
+    const paint=rgbStr(pigment),weight=this.fanA*this.fanWeight*FAN_OPTIONS.strength*(this.trace?.3:1);
+    if(!this.fanSurface)this.fanSurface=document.createElement('canvas');
+    const wash=fitCanvas(this.fanSurface,G.w,G.h);
+    wash.clearRect(0,0,G.w,G.h);wash.fillStyle=paint;
+    const hull=(lower,upper)=>{
+      wash.beginPath();wash.moveTo(lx,y0);
+      c.fan.forEach((q,j)=>wash.lineTo(xs[j],Y(upper(q))));
+      for(let j=c.fan.length-1;j>=0;j--)wash.lineTo(xs[j],Y(lower(c.fan[j])));
+      wash.closePath();
     };
-    band(0, 4, 0.1); band(1, 3, 0.18);
-    ctx.strokeStyle = COL.ai; ctx.lineWidth = 1.8; ctx.beginPath(); ctx.moveTo(lx, y0); c.fan.forEach((qs, j) => ctx.lineTo(xs[j], Y(qs[2]))); ctx.stroke();
-    ctx.setLineDash([2, 4]); ctx.lineWidth = 1; ctx.strokeStyle = COL['ink-2'];
-    const end = xs[xs.length - 1];
-    for (const u of [0, 1]) { const y = Math.round(Y(u)) + 0.5; ctx.beginPath(); ctx.moveTo(lx + 4, y); ctx.lineTo(end, y); ctx.stroke(); }
-    ctx.setLineDash([]);
-    ctx.font = `400 11.5px ${FONT_UI}`; ctx.textAlign = 'right'; ctx.fillStyle = COL['ink-2'];
-    const p = w => (w ? `${Math.round(w[0] * 100)}%` : '–');
-    ctx.textBaseline = 'bottom'; ctx.fillText(`high broken ${p(c.aboveHigh)}`, end, Math.round(Y(1)) - 3);
-    ctx.textBaseline = 'top'; ctx.fillText(`low broken ${p(c.belowLow)}`, end, Math.round(Y(0)) + 3);
+    // Low-density fill recedes into the paper; the actual quantile lines retain its shape.
+    hull(q=>q[0],q=>q[4]);wash.globalAlpha=.025;wash.fill();
+    for(let j=0;j<20;j++){
+      const t=j/20,lower=q=>t<.5?q[0]+(q[1]-q[0])*t*2:q[1]+(q[2]-q[1])*(t-.5)*2;
+      const upper=q=>t<.5?q[4]+(q[3]-q[4])*t*2:q[3]+(q[2]-q[3])*(t-.5)*2;
+      hull(lower,upper);wash.globalAlpha=.004;wash.fill();
+    }
+    wash.globalAlpha=1;wash.globalCompositeOperation='destination-in';
+    const fade=wash.createLinearGradient(lx,0,end,0);
+    fade.addColorStop(0,'rgba(0,0,0,0)');fade.addColorStop(.08,'rgba(0,0,0,1)');
+    fade.addColorStop(.94,'rgba(0,0,0,1)');fade.addColorStop(1,'rgba(0,0,0,0)');
+    wash.fillStyle=fade;wash.fillRect(0,0,G.w,G.h);wash.globalCompositeOperation='source-over';
+    ctx.save();ctx.beginPath();ctx.rect(0,G.plotTop-24,G.w,G.plotH+48);ctx.clip();
+    ctx.globalAlpha=weight;ctx.filter=`blur(${6*FAN_OPTIONS.softness}px)`;
+    ctx.drawImage(this.fanSurface,0,0,G.w,G.h);ctx.filter='none';
+    const line=ctx.createLinearGradient(lx,0,end,0);
+    line.addColorStop(0,rgbStr(pigment,0));line.addColorStop(.08,paint);
+    line.addColorStop(.94,paint);line.addColorStop(1,rgbStr(pigment,0));
+    ctx.strokeStyle=line;ctx.lineJoin='round';ctx.lineCap='round';
+    const contour=(k,alpha,width)=>{
+      ctx.globalAlpha=weight*FAN_OPTIONS.lines*alpha;ctx.lineWidth=width;
+      ctx.beginPath();ctx.moveTo(lx,y0);
+      c.fan.forEach((q,j)=>ctx.lineTo(xs[j],Y(q[k])));ctx.stroke();
+    };
+    contour(0,.17,.8);contour(4,.17,.8);
+    contour(1,.23,.8);contour(3,.23,.8);
+    if(FAN_OPTIONS.median)contour(2,.34,1);
+    ctx.restore();
+  },
+  drawStateGlyph(ctx,glyph,x,center){
+    const baseline=ctx.textBaseline;ctx.textBaseline='alphabetic';
+    const box=ctx.measureText(glyph);
+    ctx.fillText(glyph,x,center+(box.actualBoundingBoxAscent-box.actualBoundingBoxDescent)/2);
+    ctx.textBaseline=baseline;
+  },
+  drawStates(ctx,G) {
+    const mix=this.modeMix??(Forecast.view==='paths'?1:0);
+    if(Forecast.view==='branches'||mix>.999)return;
+    const c=Forecast.source,set=ForecastViews.outcomes(c),F=Forecast.field(G);
+    ctx.save();
+    const opacity=(Forecast.current?1:.4)*(1-mix);
+    for(let j=0;j<6;j++){
+      const probs=set.grid[j].map(n=>n/set.n),sizes=probs.map(p=>p*F.height);
+      let y=F.top;
+      for(let k=0;k<3;k++){
+        const paper=rgbOf(COL.paper),color=rgbOf([COL.up,COL.flat,COL.down][k]);
+        ctx.globalAlpha=1-mix;ctx.fillStyle=rgbStr(paper.map((v,i)=>Math.round(v+(color[i]-v)*opacity*.29)));
+        ctx.fillRect(F.xs[j]-F.width/2,y,F.width,sizes[k]);
+        if(F.width>=30&&sizes[k]>=16){
+          ctx.globalAlpha=opacity*.82;ctx.fillStyle=COL.ink;ctx.font=`400 11px ${FONT_UI}`;ctx.textAlign='center';ctx.textBaseline='middle';
+          ctx.fillText(ForecastViews.percent(probs[k]),F.xs[j],y+sizes[k]/2);
+        }
+        y+=sizes[k];
+      }
+    }
+    ctx.restore();
+  },
+  drawPaths(ctx,G){
+    const mix=this.modeMix??(Forecast.view==='paths'?1:0);
+    if(Forecast.view==='branches'||mix<.001)return;
+    const c=Forecast.source,F=Forecast.field(G),leaders=c.sequences.slice(0,4),paper=rgbOf(COL.paper);
+    const colors={U:COL.up,I:COL.flat,D:COL.down},glyphs={U:'↑',I:'•',D:'↓'};
+    const alpha=(Forecast.current?1:.4)*mix,other=c.n-leaders.reduce((n,[,k])=>n+k,0);
+    const tint=(color,a)=>rgbStr(paper.map((v,j)=>Math.round(v+(rgbOf(color)[j]-v)*a)));
+    const fromY=(key,j)=>{const p=ForecastViews.outcomes(c).grid[j].map(n=>n/c.n),k='UID'.indexOf(key);return F.top+F.height*(p.slice(0,k).reduce((a,b)=>a+b,0)+p[k]/2);};
+    ctx.save();ctx.textBaseline='middle';ctx.textAlign='left';ctx.font=`400 11px ${FONT_UI}`;ctx.fillStyle=COL['ink-2'];ctx.globalAlpha=alpha;
+    ctx.fillText(F.right-F.left<170?'Whole-path odds':'Whole-path probability',F.left,F.top+8);
+    ctx.fillText(`Other paths ${ForecastViews.percent(other/c.n)}`,F.left,F.top+F.height-8);
+    leaders.forEach(([key],i)=>{
+      const on=key===Forecast.selected,center=F.rowTop+(i+.5)*F.rowHeight;
+      [...key].forEach((state,j)=>{
+        const y=fromY(state,j)*(1-mix)+center*mix;
+        ctx.globalAlpha=mix;ctx.fillStyle=tint(colors[state],alpha*(on?.35:.23));ctx.fillRect(F.xs[j]-F.width/2,y-9,F.width,18);
+        ctx.textAlign='center';ctx.fillStyle=COL.ink;ctx.globalAlpha=alpha*(on?.9:.68);ctx.font=`400 12px ${FONT_UI}`;
+        this.drawStateGlyph(ctx,glyphs[state],F.xs[j],y);
+      });
+    });
+    ctx.restore();
+  },
+  drawBranches(ctx,G){
+    if(Forecast.view!=='branches')return;
+    const c=Forecast.source,F=Forecast.field(G),set=ForecastViews.outcomes(c,Forecast.prefix),j=Forecast.prefix.length;
+    const glyphs={U:'↑',I:'•',D:'↓'},colors=[COL.up,COL.flat,COL.down],paper=rgbOf(COL.paper);
+    const fresh=Forecast.current?1:.4,showRates=F.width>=30,cellHeight=F.branchHeight-4;
+    ctx.save();ctx.beginPath();ctx.rect(F.left,F.top,F.right-F.left,F.height);ctx.clip();
+    ctx.textBaseline='middle';ctx.textAlign='left';ctx.font=`400 11px ${FONT_UI}`;ctx.fillStyle=COL['ink-2'];ctx.globalAlpha=fresh;
+    const title=j===6?`Complete path · ${ForecastViews.percent(set.n/c.n)}`:F.right-F.left<240?`+${j+1} · ${set.n.toLocaleString('en-GB')}`:`Choose +${j+1} · ${set.n.toLocaleString('en-GB')} matches`;
+    ctx.fillText(title,F.left,F.top+9);
+    ctx.textAlign='right';ctx.fillText('Reset',F.right-10,F.top+9);
+    for(let step=0;step<6;step++){
+      ['U','I','D'].forEach((state,k)=>{
+        const chosen=step<j,selected=chosen&&Forecast.prefix[step]===state,active=step===j;
+        const top=F.branchTop+k*F.branchHeight,center=top+cellHeight/2;
+        const color=rgbOf(colors[k]),strength=chosen?(selected?.35:.065):(active?.29:.19);
+        ctx.globalAlpha=1;ctx.fillStyle=rgbStr(paper.map((v,i)=>Math.round(v+(color[i]-v)*strength*fresh)));
+        ctx.fillRect(F.xs[step]-F.width/2,top,F.width,cellHeight);
+        ctx.fillStyle=COL.ink;ctx.globalAlpha=fresh*(chosen?(selected?.9:.2):active?.9:.65);ctx.textAlign='center';ctx.font=`400 12px ${FONT_UI}`;
+        this.drawStateGlyph(ctx,glyphs[state],F.xs[step],center+(showRates&&!chosen?-8:0));
+        if(showRates&&!chosen){
+          ctx.font=`400 11px ${FONT_UI}`;ctx.fillText(set.n>=30?ForecastViews.percent(set.grid[step][k]/set.n):'–',F.xs[step],center+8);
+        }
+      });
+    }
+    ctx.restore();
+  },
+  drawForecastEmpty(ctx,G){
+    const F=Forecast.field(G);ctx.save();ctx.globalAlpha=.16;ctx.fillStyle=COL['ink-3'];
+    if(Forecast.view==='paths')for(let i=0;i<4;i++)for(const x of F.xs)ctx.fillRect(x-F.width/2,F.rowTop+(i+.5)*F.rowHeight-9,F.width,18);
+    else for(const x of F.xs)ctx.fillRect(x-F.width/2,F.top,F.width,F.height);
     ctx.restore();
   },
   drawExample(ctx, G) {
@@ -1376,11 +1457,11 @@ const Stage = {
     ctx.restore();
   },
   drawFutureLabels(ctx, G) {
-    const last = S.bars[G.N - 1], lx = (last.x == null ? G.xs[G.N - 1] : last.x) + G.bw / 2;
+    const lx=G.forecastLeft;
     ctx.save(); ctx.fillStyle = COL['ink-2']; ctx.font = `400 11px ${FONT_UI}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     for (let j = 1; j <= FAN_STEPS; j++) {
       if (G.fanStep < 12 && j !== FAN_STEPS || G.fanStep < 22 && j !== 1 && j !== FAN_STEPS) continue;
-      ctx.fillText(`+${j}`, lx + j * G.fanStep, G.plotBottom + 34);
+      ctx.fillText(`+${j}`, G.futureXs[j-1], G.plotBottom + 34);
     }
     ctx.restore();
   },
@@ -1471,7 +1552,11 @@ Stage.cv.addEventListener('keydown', e => {
 });
 // a pinch on the paper spreads the bars apart or draws them together
 Stage.cv.addEventListener('wheel', e => { if (!e.ctrlKey) return; e.preventDefault(); setSpace(S.space - e.deltaY * 0.006); }, { passive: false });
-new ResizeObserver(() => App.redraw()).observe(Stage.wrap);
+new ResizeObserver(() => {
+  Stage.plot.ready=false;
+  if(!Stage.drag)S.bars.forEach(b=>{b.x=null;b.vx=0;});
+  App.redraw();
+}).observe(Stage.wrap);
 
 /* ================= the history: one matcher, three ways of holding, mixed as you like ================= */
 const Match = {
@@ -1780,8 +1865,8 @@ const REF_TOPICS = [
     targets: [{ label: 'Show the rates', selector: '#rbecame' }] },
   { id: 'scenarios', group: 'What it became', title: 'Bar-by-bar probabilities',
     purpose: 'Read the probabilities of progressive sequences beside the composition.',
-    read: 'Fan keeps the close distribution over all matched windows. Paths ranks complete six-bar sequences; its candles are one historical example per sequence, not the probability of those exact prices. Above means the close exceeds the matching window’s high, Below means it is below its low, and Inside includes both boundaries. Branches shows the next close conditional on earlier choices; its overall rate uses all complete matching windows. Grid shows those same conditional close rates by future bar. Counts cover every complete continuation, even when the fan uses a sample. Each probability has a Wilson 95% interval; fewer than 30 supporting windows gives counts without an estimate. During an update, the clearly labeled previous result remains visible but its outcome controls are unavailable.',
-    use: 'Choose Fan, Paths or Branches on the canvas. Grid switches the stable surface’s detail area to the table. Choose a branch or the next grid column to condition subsequent bars; the trail returns to an earlier choice. Focus or tap another grid cell to inspect its counts and interval. These selections do not change the composition or the matching cohort. Retry reloads an unavailable continuation while keeping your drawing and view choices.',
+    read: 'Paths ranks complete six-bar closing-state sequences by frequency. States splits each future column into the shares whose close is above, inside or below the original combo range. Above and Below are strict; Inside includes both boundaries. Branches conditions later columns on your earlier choices. The fan remains under all three modes and shows the full-cohort closing-price distribution, using its recorded sample. Probability counts use every complete continuation. Hover a measurement for its exact denominator and Wilson 95% interval; fewer than 30 supporting windows gives no estimate. Updates keep the clearly labeled previous result until a new one is committed.',
+    use: 'Select Paths, Branches or States with the three icons. Switch the fan independently. Width changes only the root candle bodies. Hover explains every mark after 500 ms; focus and touch explain immediately. Choose the next branch state to condition later bars, or an earlier selected state to return before it. Reset clears those choices. Outcomes cannot be selected during an update. Retry keeps your drawing and preferences.',
     targets: [{ label: 'Show continuation controls', selector: '#forecast-controls' }] },
   { id: 'near', group: 'What it became', title: 'One comparison away',
     purpose: 'Find the drawings next to yours, and whether any of them reads differently.',
@@ -1865,11 +1950,11 @@ const Ref = {
   fanRect() {
     const r = Match.result, c = r && r.panes && r.panes.cont;
     if (!c) return null;
-    const G = Stage.geom(), n = S.bars.length, last = S.bars[n - 1], lx = (last.x == null ? G.xs[n - 1] : last.x) + G.bw / 2;
+    const G = Stage.geom(), lx=G.forecastLeft;
     const step = G.fanStep;
     if (!(step >= 4)) return null;
     const box = Stage.cv.getBoundingClientRect();
-    return { left: box.left + lx - 6, top: box.top + G.plotTop - 26, right: box.left + lx + c.fan.length * step + 66, bottom: box.top + G.plotBottom + 48 };
+    return { left: box.left + lx - 6, top: box.top + G.plotTop - 26, right: box.left + G.futureXs.at(-1) + G.forecastWidth/2, bottom: box.top + G.plotBottom + 48 };
   },
   bounds(t) {
     if (t.region === 'fan') return this.fanRect();
@@ -2016,7 +2101,7 @@ addEventListener('keydown', e => {
 function setSpace(u) {
   u = clamp(u, 0, 1); if (u === S.space) return;
   S.space = u; $('#space').value = String(u);
-  try { localStorage.setItem('ashi.space', String(u)); } catch (err) { /* not remembered in this browser */ }
+  try { localStorage.setItem('ashi.width', String(u)); } catch (err) { /* not remembered in this browser */ }
   App.redraw();
 }
 $('#space').value = String(S.space);
@@ -2032,9 +2117,11 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', onTheme);
 if (/^\/composer(\/|$)/.test(location.pathname)) $('#home').hidden = false;
 Panes.init();
 Forecast.init();
+$('#space').dataset.tip='Width of the drawn root candle bodies only. Their centers, future columns and fan stay fixed. [ and ] or pinch change the same setting.';
 Stage.fit(true);
 refresh();
 Match.start();
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => App.redraw());
 })();
 </script>
+
