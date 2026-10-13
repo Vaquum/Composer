@@ -107,10 +107,10 @@ const ForecastViews = (() => {
     const x0=n<=2?Math.max(16,w*.12):Math.max(12,w*.06);
     const spacing=n<=2?Math.max(28,Math.max(44,w*.11)*.99):Math.max(3,(w*.35-x0)/(n-1));
     const baseBw=Math.min(base,spacing*.75),xs=Array.from({length:n},(_,i)=>x0+i*spacing);
-    const forecastLeft=xs[n-1]+baseBw/2,end=w-24;
+    const forecastLeft=xs[n-1]+baseBw/2,end=w-40;
     const nominal=(end-forecastLeft)/6,gap=w<700?18:24,rateWidth=w<700?30:42;
     const maxRootRight=xs[n-1]+baseBw*.6;
-    const tentativeWidth=Math.max(6,Math.min(baseBw*1.1,nominal*.62));
+    const tentativeWidth=Math.max(12,Math.min(baseBw*1.1,nominal*.62));
     const first=Math.max(forecastLeft+nominal,maxRootRight+18+rateWidth+gap+tentativeWidth/2);
     const fanStep=(end-first)/5,futureXs=Array.from({length:6},(_,i)=>first+i*fanStep);
     const forecastWidth=Math.max(4,Math.min(tentativeWidth,fanStep*.62));
