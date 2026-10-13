@@ -762,6 +762,7 @@ const Forecast = {
       else if(saved?.view==='fan')this.view='states';
       if(typeof saved?.fan==='boolean')this.fan=saved.fan;
     }catch(err){/* preferences remain usable without storage */}
+    document.body.appendChild($('#forecast-tooltip'));
     this.context=ForecastContext.install(Stage.wrap,$('#forecast-tooltip'));
     $('#forecast-modes').addEventListener('click',e=>{const b=e.target.closest('[data-view]');if(b)this.choose(b.dataset.view);});
     $('#forecast-modes').addEventListener('keydown',e=>{
@@ -824,7 +825,7 @@ const Forecast = {
     const key=`${this.view}|${this.prefix}|${this.selected}|${this.phase}`;
     if(changed||key!==this.rendered){
       const active=document.activeElement,focused=this.body.contains(active)?active?.dataset.key:null;
-      this.rendered=key;this.context?.hide();
+      this.rendered=key;this.context?.cancelFor?.(this.body);this.context?.cancelFor?.(this.fanHits);
       this.body.innerHTML=this.markup();
       this.fanHits.innerHTML=c?'<button type="button" class="forecast-fan-hit" data-kind="fan" aria-label="Historical closing-price fan"></button>'+c.fan.flatMap((q,j)=>q.map((_,k)=>`<span class="forecast-fan-point" data-step="${j}" data-quantile="${k}"></span>`)).join(''):'';
       if(focused){const target=[...this.body.querySelectorAll('[data-key]')].find(b=>b.dataset.key===focused);target?.focus({preventScroll:true});}

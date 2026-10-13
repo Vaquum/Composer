@@ -36,7 +36,7 @@ const ForecastContext = (() => {
     document.addEventListener('keydown',e=>{if(e.key==='Escape')hide();});
     document.addEventListener('scroll',hide,{capture:true,passive:true});
     window.addEventListener('resize',hide);
-    return {hide,refresh(){if(owner&&point){const target=owner,p={...point};show(target,p.x,p.y);}}};
+    return {hide,cancelFor(container){if(container.contains(owner)||container.contains(pending))hide();},refresh(){if(owner&&point){const target=owner,p={...point};show(target,p.x,p.y);}}};
   }
   return {install};
 })();
