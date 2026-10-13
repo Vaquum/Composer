@@ -63,10 +63,12 @@ const ForecastViews = (() => {
   }
   function detail(c, prefix, selected, view) {
     const set = subset(c, prefix), sequence = c.sequences.find(([key]) => key === selected);
-    if (set.n < 30) return `<strong>${count(set.n)} supporting windows</strong><p>Estimates need at least 30. Counts remain available on each outcome.</p>`;
     if (view === 'fan') return '<strong>Close distribution · all matched windows</strong><p>Outer band: middle 80% · inner band: middle 50% · line: median.</p><p>Branches and Grid follow your choices; the fan shows the full cohort.</p>';
     const n = view === 'paths' && sequence ? sequence[1] : set.n, denominator = view === 'paths' ? set.n : c.n;
-    return `<strong>${view === 'paths' ? 'Selected sequence' : prefix ? 'Selected path so far' : 'Follow a branch'} · ${label(rate(n, denominator))}${view === 'branches' ? ' overall' : ''}</strong><p>${prefix || view === 'paths' ? words(view === 'paths' ? selected : prefix) : 'Choose Above, Inside or Below to reveal the following bar.'}</p><p>${interval(n, denominator)}${view === 'paths' ? '<br>Candles are a historical example, not the odds of exact prices.' : ''}</p>`;
+    if (denominator < 30) return `<strong>${count(denominator)} supporting windows</strong><p>Estimates need at least 30. Counts remain available on each outcome.</p>`;
+    const conditional = view === 'branches' && prefix.length < c.fan.length && set.n < 30
+      ? `<p>Next-bar estimates need 30 supporting windows; ${count(set.n)} remain. Counts are available on each outcome.</p>` : '';
+    return `<strong>${view === 'paths' ? 'Selected sequence' : prefix ? 'Selected path so far' : 'Follow a branch'} · ${label(rate(n, denominator))}${view === 'branches' ? ' overall' : ''}</strong><p>${prefix || view === 'paths' ? words(view === 'paths' ? selected : prefix) : 'Choose Above, Inside or Below to reveal the following bar.'}</p><p>${interval(n, denominator)}${view === 'paths' ? '<br>Candles are a historical example, not the odds of exact prices.' : ''}</p>${conditional}`;
   }
   function empty(view) {
     const n = view === 'paths' ? 4 : 3;

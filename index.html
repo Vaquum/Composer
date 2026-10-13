@@ -892,7 +892,7 @@ const Forecast = {
         else if (this.focusRequested === 'paths') target = this.body.querySelector('[aria-pressed="true"]');
         else if (this.focusRequested === 'branches') target = this.body.querySelector('button:not([disabled])');
         else if (token) target = [...this.panel.querySelectorAll('button')].find(b => token.path ? b.dataset.path === token.path : token.step != null ? b.dataset.step === token.step && b.dataset.state === token.state : token.prefix != null && b.dataset.prefix === token.prefix);
-        if (!target) target = $('#forecast-trail').querySelector('button:last-child');
+        if (!target && this.focusRequested !== 'mode') target = $('#forecast-trail').querySelector('button:last-child');
         if (target && this.current) target.focus({ preventScroll: true });
         this.focusRequested = '';
       }

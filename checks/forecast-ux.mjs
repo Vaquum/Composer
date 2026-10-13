@@ -45,7 +45,8 @@ function element() {
 const $=key=>{if(!nodes.has(key))nodes.set(key,element());return nodes.get(key);};
 const match={result:{panes:{cont:data}},resultKey:'a',failed:false,fresh:()=>true};
 const stage={wrap:{style:{getPropertyValue:k=>styles.get(k)||'',setProperty:(k,v)=>styles.set(k,v)}},fit(){throw Error('forecast transitions may not refit the camera');}};
-const F=new Function('$','ForecastViews','Match','Stage','App','document','matchMedia','calm','localStorage',html.slice(a,b)+'\nreturn Forecast;')($,V,match,stage,{redraw(){}},{querySelectorAll:()=>[],activeElement:null},()=>({matches:false}),()=>true,{setItem(){}});
+const doc={querySelectorAll:()=>[],activeElement:null,body:{}};
+const F=new Function('$','ForecastViews','Match','Stage','App','document','matchMedia','calm','localStorage',html.slice(a,b)+'\nreturn Forecast;')($,V,match,stage,{redraw(){}},doc,()=>({matches:false}),()=>true,{setItem(){}});
 const G={w:1000,N:2,bw:40,xs:[200,300],plotTop:100};
 F.sync(G); const populated=$('#forecast-body').innerHTML; assert.match(populated,/High broken/);
 F.prefix='UU'; F.selected='UUUUUU'; F.view='paths'; F.sync(G);
@@ -61,6 +62,28 @@ match.failed=false; match.fresh=()=>true; F.sync(G); assert.equal($('#forecast-b
 for (const view of ['fan','paths','branches']) {
   F.choose(view); F.grid=!F.grid; F.sync(G); assert.equal(F.reserve(1000,320,100),initialLayout);
 }
+// A keyboard Retry may offer focus restoration, but a later result cannot reclaim focus the user moved elsewhere.
+let focused=0;
+$('#forecast-trail').querySelector=()=>({focus(){focused++;}});
+$('#forecast-modes').querySelector=()=>({focus(){focused++;}});
+F.focusRequested='mode';doc.activeElement={dataset:{}};
+match.result={panes:{cont:{...data}}};F.sync(G);
+assert.equal(focused,0,'Retry completion leaves a subsequently focused external control alone');
+assert.equal(F.focusRequested,'');
+F.focusRequested='mode';doc.activeElement=doc.body;
+match.result={panes:{cont:{...data}}};F.sync(G);
+assert.equal(focused,1,'Retry restores the mode when focus has not moved to another control');
+doc.activeElement=null;
+const rare={...data,sequences:[['UUUUUU',990],['DDDDDD',10]]};
+const completeDetail=V.detail(rare,'DDDDDD','DDDDDD','branches');
+assert.match(completeDetail,/1% overall/);
+assert.match(completeDetail,/10 \/ 1,000 complete windows · 95% interval/);
+assert.doesNotMatch(completeDetail,/need 30|need at least 30/,'a rare completed sequence retains its valid full-cohort interval');
+const partialDetail=V.detail(rare,'D','DDDDDD','branches');
+assert.match(partialDetail,/10 \/ 1,000 complete windows · 95% interval/);
+assert.match(partialDetail,/Next-bar estimates need 30 supporting windows; 10 remain/);
+assert.match(V.detail(rare,'D','DDDDDD','fan'),/full cohort/,'Fan support does not inherit a sparse branch prefix');
+assert.match(V.detail(rare,'D','DDDDDD','paths'),/10 supporting windows/,'conditional Paths still withholds estimates below 30');
 assert.match(V.empty('paths'),/aria-hidden="true"/); assert.doesNotMatch(V.empty('paths'),/\d%/,'skeletons cannot fabricate rates');
 assert.equal((V.emptyGrid().match(/<td>/g)||[]).length,18,'loading preserves all future-bar grid slots');
 assert.doesNotMatch(V.emptyGrid(),/\d%/,'loading grid never fabricates probabilities');
