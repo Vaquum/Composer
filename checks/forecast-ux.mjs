@@ -39,7 +39,7 @@ const html=fs.readFileSync('index.html','utf8'),a=html.indexOf('const Forecast =
 const nodes=new Map(), styles=new Map(); let replacements=0;
 function element() {
   let markup='';
-  return {dataset:{},style:{},hidden:false,inert:false,textContent:'',setAttribute(){},contains(){return false;},querySelector(){return null;},querySelectorAll(){return [];},
+  return {dataset:{},style:{},hidden:false,inert:false,textContent:'',listeners:{},addEventListener(type,fn){this.listeners[type]=fn;},setAttribute(){},contains(){return false;},querySelector(){return null;},querySelectorAll(){return [];},
     get innerHTML(){return markup;},set innerHTML(value){markup=value;replacements++;}};
 }
 const $=key=>{if(!nodes.has(key))nodes.set(key,element());return nodes.get(key);};
@@ -73,6 +73,16 @@ assert.equal(F.focusRequested,'');
 F.focusRequested='mode';doc.activeElement=doc.body;
 match.result={panes:{cont:{...data}}};F.sync(G);
 assert.equal(focused,1,'Retry restores the mode when focus has not moved to another control');
+// Re-activating a selected path does not replace DOM, so it must not queue future focus restoration.
+F.view='paths';F.grid=false;F.prefix='';F.selected='UUUUUU';F.sync(G);F.init();
+const selectedPath={dataset:{path:F.selected},disabled:false,closest:()=>null};
+doc.activeElement=selectedPath;
+F.panel.listeners.click({target:{closest:()=>selectedPath},detail:0});
+assert.equal(F.focusRequested,'','keyboard activation of the current path has no pending focus request');
+F.sync(G);
+const beforeLaterResult=focused;doc.activeElement={dataset:{}};
+match.result={panes:{cont:{...data}}};F.sync(G);
+assert.equal(focused,beforeLaterResult,'a later result cannot reclaim focus after a no-op path activation');
 doc.activeElement=null;
 const rare={...data,sequences:[['UUUUUU',990],['DDDDDD',10]]};
 const completeDetail=V.detail(rare,'DDDDDD','DDDDDD','branches');

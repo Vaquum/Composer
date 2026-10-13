@@ -814,10 +814,11 @@ const Forecast = {
     $('#forecast-retry').addEventListener('click', e => { e.stopPropagation(); if (e.detail === 0) this.focusRequested = 'mode'; Match.retry(); });
     this.panel.addEventListener('click', e => {
       const b = e.target.closest('button'); if (!b || b.disabled || !this.source || !this.current) return;
+      const previous = `${this.prefix}|${this.selected}`;
       if (b.dataset.path) this.selected = b.dataset.path;
       else if (b.dataset.prefix != null) this.select(b.dataset.prefix);
       else if (b.dataset.evidence) { this.inspect(b); return; }
-      if (e.detail === 0) this.focusRequested = b.closest('#forecast-grid') ? 'grid' : b.dataset.path ? 'paths' : 'branches';
+      if (e.detail === 0) this.focusRequested = previous === `${this.prefix}|${this.selected}` ? '' : b.closest('#forecast-grid') ? 'grid' : b.dataset.path ? 'paths' : 'branches';
       App.redraw();
     });
     for (const type of ['pointerover', 'focusin']) this.table.addEventListener(type, e => {
