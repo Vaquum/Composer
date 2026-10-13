@@ -838,7 +838,8 @@ const Forecast = {
     const stale=!this.current?' Previous composition’s result; wait for the current update.':'';
     const tip=text=>`data-tip="${escape(text+stale)}"`;
     const note=c?(this.view==='paths'?'Each row is an entire six-bar closing-state sequence, ranked by frequency. '+V.definition:this.view==='branches'?'Choose the next closing state to condition later columns on those earlier choices. '+V.definition:V.definition)+` All ${c.n.toLocaleString('en-GB')} complete matched windows contribute.`:'Waiting for complete matched windows; dashes are unavailable estimates, not zero.';
-    let html=`<span class="forecast-note" data-kind="heading" ${tip(note)}></span>`;
+    const heading=c&&this.view==='branches'&&this.prefix.length===6?V.pathTip(c,this.prefix):note;
+    let html=`<span class="forecast-note" data-kind="heading" ${tip(heading)}></span>`;
     if(this.view==='paths'){
       const leaders=c?.sequences.slice(0,4)||Array.from({length:4},()=>['',0]);
       html+=leaders.map(([key,n],i)=>{
@@ -854,7 +855,8 @@ const Forecast = {
         const actionable=this.view==='branches'&&j===prefix.length&&n&&set.n>=30;
         const selected=prior&&prefix[j]===s;
         const text=c?(prior?(selected?`Bar +${j+1}, ${V.names[s]} is an earlier chosen closing state. Click to return before this bar and choose again.`:`Bar +${j+1}, ${V.names[s]} is excluded by your earlier choices.`):V.stateTip(c,prefix,j,s)+(this.view==='states'?' This coloured portion occupies that share of a column totaling 100%.':actionable?' Choose this outcome to update the following bars.':' Later columns describe the current cohort; they are not independent path odds.')):note;
-        return `<button type="button" class="forecast-cell-hit" data-kind="${this.view}" data-step="${j}" data-state="${s}" data-state-index="${k}" data-key="cell-${j}-${s}" ${actionable?`data-prefix="${prefix+s}"`:selected?`data-prefix="${prefix.slice(0,j)}"`:''} aria-label="${escape(text)}" aria-disabled="${!this.current}" ${this.view==='branches'?`aria-pressed="${!!selected}"`:''} ${tip(text)}></button>`;
+        const explanation=text+(c&&prefix.length===6?' '+V.pathTip(c,prefix):'');
+        return `<button type="button" class="forecast-cell-hit" data-kind="${this.view}" data-step="${j}" data-state="${s}" data-state-index="${k}" data-key="cell-${j}-${s}" ${actionable?`data-prefix="${prefix+s}"`:selected?`data-prefix="${prefix.slice(0,j)}"`:''} aria-label="${escape(explanation)}" aria-disabled="${!this.current}" ${this.view==='branches'?`aria-pressed="${!!selected}"`:''} ${tip(explanation)}></button>`;
       }).join('')).join('');
       if(this.view==='branches')html+=`<button type="button" class="forecast-reset" data-kind="reset" data-prefix="" data-key="reset" aria-label="Return to the original combo" ${tip('Remove every chosen future state. Return all branch estimates to the original complete matching cohort.')}></button>`;
     }
@@ -1550,7 +1552,11 @@ Stage.cv.addEventListener('keydown', e => {
 });
 // a pinch on the paper spreads the bars apart or draws them together
 Stage.cv.addEventListener('wheel', e => { if (!e.ctrlKey) return; e.preventDefault(); setSpace(S.space - e.deltaY * 0.006); }, { passive: false });
-new ResizeObserver(() => App.redraw()).observe(Stage.wrap);
+new ResizeObserver(() => {
+  Stage.plot.ready=false;
+  if(!Stage.drag)S.bars.forEach(b=>{b.x=null;b.vx=0;});
+  App.redraw();
+}).observe(Stage.wrap);
 
 /* ================= the history: one matcher, three ways of holding, mixed as you like ================= */
 const Match = {

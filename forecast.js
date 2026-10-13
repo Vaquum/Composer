@@ -86,7 +86,7 @@ const ForecastViews = (() => {
       sourceKey = key;
       if (source) {
         while (prefix && !subset(source, prefix).n) prefix = prefix.slice(0, -1);
-        const set = subset(source, prefix);
+        const set = previous.view === 'paths' || previous.view === 'states' ? source : subset(source, prefix);
         if (!set.sequences.some(([p]) => p === selected)) selected = set.sequences[0]?.[0] || '';
       } else { prefix = ''; selected = ''; }
     }

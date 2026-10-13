@@ -66,6 +66,13 @@ assert.match($('#forecast-message').textContent,/previous result/);
 match.failed=true;F.sync(G);assert.equal(F.phase,'error');assert.equal($('#forecast-retry').hidden,false);
 match.failed=false;match.fresh=()=>true;match.resultKey='b';match.result={panes:{cont:{...fixture}}};F.sync(G);
 assert.equal(F.prefix,'');assert.equal(F.current,true);
+F.prefix='I';F.selected='DDDDDD';F.sync(G);
+assert.equal(F.selected,'DDDDDD','Paths can select full-cohort sequences outside the retained branch');
+assert.equal(F.prefix,'I','switching view does not discard the branch history');
+F.view='branches';F.prefix='DDDDDD';const completeMarkup=F.markup();
+assert.match(completeMarkup,/162 \/ 1,728 complete windows/);
+assert.match(completeMarkup,/95% interval/,'complete branch headings and cells retain whole-cohort uncertainty');
+F.view='paths';F.prefix='';
 match.result={panes:{cont:null}};F.sync(G);assert.equal(F.source,null);assert.equal(F.phase,'sparse');
 assert.doesNotMatch($('#forecast-body').innerHTML,/\d%/,'sparse/loading placeholders never invent probabilities');
 
@@ -101,6 +108,12 @@ root.events.pointerout(event);root.events.pointerover(event);documentStub.events
 root.events.focusin(event);assert.equal(box.hidden,false,'focus is immediate');
 documentStub.events.keydown({key:'Escape'});assert.equal(box.hidden,true);
 root.events.pointerdown({...event,pointerType:'touch'});assert.equal(box.hidden,false,'touch gets the same measurement');
+root.events.pointerout({...event,pointerType:'touch'});assert.equal(box.hidden,false,'lifting a touch leaves the explanation readable');
+documentStub.events.keydown({key:'Escape'});assert.equal(box.hidden,true);
+const label=target(),input=target();input.closest=()=>label;
+root.events.focusin({...event,target:input});
+assert.equal(input.attrs.get('aria-describedby'),'forecast-tooltip','nested control receives the accessible explanation');
+assert.equal(label.attrs.has('aria-describedby'),false,'description is not attached only to the surrounding label');
 windowStub.events.resize();assert.equal(box.hidden,true);
 console.log('Four ranked paths, shared geometry, numeric gutters, tooltip evidence/timing and stale snapshots pass.');
 
