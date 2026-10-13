@@ -96,10 +96,18 @@ function expected(q) {
   const quant = (xs, p) => { const s = xs.slice().sort((a, b) => a - b); return s[Math.round(p * (s.length - 1))]; };
   const fan = [0, 1, 2, 3, 4, 5].map(j => [0.1, 0.25, 0.5, 0.75, 0.9].map(p => quant(cont.map(c => c.closes[j]), p)));
   const near = [...groups].sort((a, b) => b[1].n - a[1].n).slice(0, 6).map(([at, v]) => ({ at, n: v.n, up: v.out >= 30 ? wilson(v.up, v.out) : null }));
-  return { n: set.length, rows, next: wilson(outs.filter(w => w.nx > 0).length, outs.length), cont: { n: cont.length, keys: cont.map(c => c.key), fan, up: cont.filter(c => c.up).length, down: cont.filter(c => c.down).length, above: cont.filter(c => c.above).length }, near, pairs };
+  return { n: set.length, rows, next: wilson(outs.filter(w => w.nx > 0).length, outs.length), cont: { n: cont.length, keys: cont.map(c => c.key), values: cont.map(c => c.closes), fan, up: cont.filter(c => c.up).length, down: cont.filter(c => c.down).length, above: cont.filter(c => c.above).length }, near, pairs };
 }
 
 const close = (a, b, tol) => Math.abs(a - b) <= tol * Math.max(1, Math.abs(b));
+// Sampled quantiles approximate percentile rank, not a fixed distance in price units.
+// Bracket ties at the fan's Float32 precision. The two tails of 30 quantiles share a conservative
+// finite-population sampling envelope; exact full-cohort quantiles still require the tight value check.
+const rankError = (value, column, p, population) => {
+  let below=0,atMost=0;
+  for(const row of population){const v=Math.fround(row[column]);if(v<value)below++;if(v<=value)atMost++;}
+  return Math.max(0,below/population.length-p,p-atMost/population.length);
+};
 const cases = [
   ['green, then a larger red', [[42, 68, 30, 56], [62, 80, 18, 36]]],
   ['small green, then a 10x larger red', [[50, 51.2, 49.7, 51], [51, 51.5, 39, 40]]],
@@ -122,8 +130,13 @@ for (const [label, bars, tfs = [1, 1, 1, 1, 1], holds = [], stretch = 0] of case
   if (!P.next || !close(P.next[0], X.next[0], 1e-9) || !close(P.next[1], X.next[1], 1e-9)) why.push('next bar');
   const c = P.cont;
   if (!c || c.n !== X.cont.n || Math.round(c.aboveHigh[0] * c.n) !== X.cont.up || Math.round(c.belowLow[0] * c.n) !== X.cont.down || Math.round(c.aboveClose[0] * c.n) !== X.cont.above) why.push('what it became');
-  // a fan drawn from a sample sits within a few hundredths of the shape's height of the whole set's
-  else if (c.fan.some((qs, j) => qs.some((v, i) => !close(v, X.cont.fan[j][i], c.sampled === c.n ? 1e-6 : 0.03)))) why.push('fan');
+  else {
+    const ps=[.1,.25,.5,.75,.9],rankTolerance=1/c.sampled+Math.sqrt(Math.log(60/1e-6)/(2*c.sampled));
+    for(const [j,qs] of c.fan.entries())for(const [i,v]of qs.entries()){
+      if(c.sampled===c.n){if(!close(v,X.cont.fan[j][i],1e-6))why.push(`fan +${j+1} p${ps[i]*100}: ${v} vs ${X.cont.fan[j][i]}`);}
+      else {const gap=rankError(v,j,ps[i],X.cont.values);if(gap>rankTolerance)why.push(`fan +${j+1} p${ps[i]*100}: percentile gap ${gap} exceeds ${rankTolerance}`);}
+    }
+  }
   if (c) {
     const counts = new Map();
     // Independently enumerate the complete historical windows, including held relations and stretch.
