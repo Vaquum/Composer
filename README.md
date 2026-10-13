@@ -33,6 +33,13 @@ fewer than 30 supporting windows yields no estimate. Candles in Paths are a hist
 of each category sequence, not a probability assigned to exact prices. View and grid preferences
 are remembered independently of the drawing.
 
+All continuation modes share one stable forecast surface. Loading keeps its place; an update
+retains the previous result, labels it and disables its outcome controls until the new result is
+committed. Grid replaces the detail area inside that surface, so it does not move the composition.
+Mode and path changes keep the same camera; examples ease between selections without zooming to
+outlier wicks. A failed update retains its previous result and offers Retry without resetting the
+drawing. Reduced motion, keyboard focus and readable probability evidence are supported.
+
 Each pane has its own design pill and previous/next arrows: **Signal first** highlights the
 largest finding, **Comparison ledger** aligns selected and all-window values, and **Bar by bar**
 organizes readings by drawn bar and continuation by time. The pill also offers direct selection.
@@ -85,6 +92,7 @@ python3 -m unittest discover -s tests -v
 node checks/page.mjs
 node checks/pane-designs.mjs
 node checks/forecast.mjs
+node checks/forecast-ux.mjs
 python3 checks/with_bars.py checks/similarity-windows.mjs
 python3 checks/with_bars.py checks/similarity-look.mjs
 python3 checks/with_bars.py checks/similarity-equivalence.mjs
@@ -92,6 +100,7 @@ python3 checks/with_bars.py checks/panes.mjs
 ```
 
 `with_bars.py` reads the current bars as the server does, once, and runs the check on them.
+`python3 checks/all.py` runs all required checks sequentially, including the container build.
 
 ## Deploy
 

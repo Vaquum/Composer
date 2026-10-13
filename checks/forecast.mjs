@@ -86,7 +86,7 @@ assert.match(V.branches(C,'U'),/39\.1%/); assert.match(V.branches(C,'U'),/25% ov
 const sparse={n:1000,fan:C.fan,sequences:[['UUUUUU',990],['DDDDDD',10]]};
 assert.equal(V.rate(10,10),null); assert.match(V.branches(sparse,'D'),/fewer than 30 supporting windows/);
 assert.match(V.grid(sparse,'D'),/no probability estimate/);
-assert.match(V.branches(C,'UUUUUU'),/Complete sequence: 25%/);
+assert.match(V.branches(C,'UUUUUU'),/Complete sequence<\/span><strong>25%/);
 
 // Drive the actual controller; presentation choices cannot trigger a new matcher search or alter the drawing.
 const html=fs.readFileSync('index.html','utf8'), start=html.indexOf('const Forecast = {'), end=html.indexOf('const Stage = {',start);
@@ -99,6 +99,6 @@ F.grid=true; F.choose('paths'); assert.equal(F.view,'paths'); assert.equal(F.gri
 F.choose('branches'); assert.equal(F.grid,true); F.choose('bad'); assert.equal(F.view,'branches');
 F.source=C; F.select('U'); assert.equal(F.prefix,'U'); assert.equal(F.selected,'UDIIII');
 F.select('XYZ'); assert.equal(F.prefix,'U'); F.select(''); assert.equal(F.prefix,'');
-assert.deepEqual(saved.at(-1),{view:'branches',grid:true}); assert.equal(fits,2); assert.equal(draws,2);
+assert.deepEqual(saved.at(-1),{view:'branches',grid:true}); assert.equal(fits,0,'mode selection keeps the camera frame'); assert.equal(draws,2);
 console.log('Aggregate, whole-sequence and conditional rates, sparse support, immutable data and independent saved canvas controls pass.');
 process.exit(0);
