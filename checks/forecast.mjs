@@ -91,14 +91,15 @@ assert.match(V.branches(C,'UUUUUU'),/Complete sequence<\/span><strong>25%/);
 // Drive the actual controller; presentation choices cannot trigger a new matcher search or alter the drawing.
 const html=fs.readFileSync('index.html','utf8'), start=html.indexOf('const Forecast = {'), end=html.indexOf('const Stage = {',start);
 const elements=new Map(), saved=[];
-const buttons=['fan','paths','branches'].map(view=>({dataset:{view},setAttribute(){}}));
+const buttons=['paths','branches','states'].map(view=>({dataset:{view},setAttribute(){}}));
 const $=id=>{if(!elements.has(id))elements.set(id,{hidden:true,offsetHeight:160,querySelectorAll:()=>buttons,setAttribute(){}});return elements.get(id);};
 let fits=0,draws=0;
 const F=new Function('$','ForecastViews','localStorage','Stage','App',html.slice(start,end)+'\nreturn Forecast;')($,V,{setItem:(key,value)=>saved.push(JSON.parse(value))},{fit:()=>fits++},{redraw:()=>draws++});
-F.grid=true; F.choose('paths'); assert.equal(F.view,'paths'); assert.equal(F.grid,true);
-F.choose('branches'); assert.equal(F.grid,true); F.choose('bad'); assert.equal(F.view,'branches');
+F.fan=false; F.choose('paths'); assert.equal(F.view,'paths'); assert.equal(F.fan,false);
+F.choose('branches'); assert.equal(F.fan,false); F.choose('bad'); assert.equal(F.view,'branches');
 F.source=C; F.select('U'); assert.equal(F.prefix,'U'); assert.equal(F.selected,'UDIIII');
 F.select('XYZ'); assert.equal(F.prefix,'U'); F.select(''); assert.equal(F.prefix,'');
-assert.deepEqual(saved.at(-1),{view:'branches',grid:true}); assert.equal(fits,0,'mode selection keeps the camera frame'); assert.equal(draws,2);
+assert.deepEqual(saved.at(-1),{view:'branches',fan:false}); assert.equal(fits,0,'mode selection keeps the camera frame'); assert.equal(draws,2);
 console.log('Aggregate, whole-sequence and conditional rates, sparse support, immutable data and independent saved canvas controls pass.');
 process.exit(0);
+

@@ -23,22 +23,24 @@ broke the shape's high and low, and the drawings one comparison away, each of wh
 the canvas. Every number follows Grid: 95% intervals, Wilson for rates, t for means, nothing for
 fewer than 30 windows.
 
-On the canvas, **Fan / Paths / Branches** keeps the fan and adds ranked complete sequences and
-stepwise conditional branches. **Grid** independently toggles a table below the future bars.
-Each future close is above the matching window's high, inside its inclusive range, or below its
-low; sequence counts use every complete six-bar continuation, not the fan's sample. Selecting a
-branch or the next grid column conditions the following probabilities without changing the
-composition or matching cohort. Counts and Wilson 95% intervals accompany the probabilities;
-fewer than 30 supporting windows yields no estimate. Candles in Paths are a historical example
-of each category sequence, not a probability assigned to exact prices. View and grid preferences
-are remembered independently of the drawing.
+On the canvas, the **Paths / Branches / States** icon control replaces only the shared six-column
+forecast field. Paths always keeps up to four complete six-bar closing-state sequences visible,
+with their probabilities in a separate gutter. Branches conditions later columns on the earlier
+closing states you choose. States shows each future close above the original matching combo's
+highest wick, inside its inclusive range, or below its lowest wick; column areas total 100%.
+The independent **Fan** switch places softly tinted closing-price quantiles underneath any mode.
+Width changes only the root candle bodies; their centers and all forecast geometry stay fixed.
 
-All continuation modes share one stable forecast surface. Loading keeps its place; an update
-retains the previous result, labels it and disables its outcome controls until the new result is
-committed. Grid replaces the detail area inside that surface, so it does not move the composition.
-Mode and path changes keep the same camera; examples ease between selections without zooming to
-outlier wicks. A failed update retains its previous result and offers Retry without resetting the
-drawing. Reduced motion, keyboard focus and readable probability evidence are supported.
+Probability counts use every complete six-bar continuation, including windows outside the fan's
+sample. Hover a mark, label or control for 500 ms for its definition, denominator, conditioning and
+Wilson 95% interval. Keyboard focus and touch explain immediately; leaving, scrolling or Escape
+dismisses the tooltip. Fan explanations identify its sample size and normalized per-bar quantiles.
+No estimate is shown for fewer than 30 supporting windows.
+
+Loading keeps the same field and never fabricates probabilities. Updates retain and label the
+previous snapshot; outcome selection waits for the new result. Sparse results clear stale odds,
+and Retry preserves the drawing and mode preferences. Mode changes retain the camera and shared
+column positions, including at narrow widths. Reduced motion is respected.
 
 Each pane has its own design pill and previous/next arrows: **Signal first** highlights the
 largest finding, **Comparison ledger** aligns selected and all-window values, and **Bar by bar**
@@ -119,3 +121,4 @@ secrets once they are shared with this repository, as Explorer, Mill, Furnace an
 else with this repository's `DEPLOY_SSH_KEY` secret and `DEPLOY_HOST` and `DEPLOY_USER` variables,
 as the Market State Cube Explorer does. `DEPLOY_DIR` names the directory on the host, and
 `DEPLOY_KNOWN_HOSTS` the host key the host must present.
+
