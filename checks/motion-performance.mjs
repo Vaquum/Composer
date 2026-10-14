@@ -190,9 +190,9 @@ for(const [name,type] of [['Chromium',chromium],['WebKit',webkit]]){
       F.spring(node,'priority',{from:{x:0},to:{x:1},write:()=>{for(const [key,value]of Object.entries(properties))node.style.setProperty(key,value);}});
       const before=Object.fromEntries(Object.keys(properties).map(key=>[key,node.style.getPropertyValue(key)]));
       F.patch(root,`<div data-motion-key="priority" style="${Object.entries(properties).map(([key,value])=>`${key}:${value}!important`).join(';')};color:red!important">Style priority</div>`,false);
-      const preserved=Object.entries(before).every(([key,value])=>node.style.getPropertyValue(key)===value&&!node.style.getPropertyPriority(key)),ordinary=node.style.getPropertyPriority('color')==='important';F.finish();root.remove();return{preserved,ordinary};
+      const differences=Object.entries(before).filter(([key,value])=>node.style.getPropertyValue(key)!==value||node.style.getPropertyPriority(key)).map(([key])=>({key,value:node.style.getPropertyValue(key),priority:node.style.getPropertyPriority(key)})),ordinary=node.style.getPropertyPriority('color')==='important';F.finish();root.remove();return{differences,ordinary};
     });
-    assert.deepEqual(priority,{preserved:true,ordinary:true},'priority-only updates must preserve active temporary styles and update ordinary styles');
+    assert.deepEqual(priority,{differences:[],ordinary:true},'priority-only updates must preserve active temporary styles and update ordinary styles');
     await seed(page,data);await settle(page);
     // Warm allocation pools before the retained-node and heap bounds.
     for(let i=0;i<2;i++){await call('reference',true);await call('reference',false);await settle(page);}
