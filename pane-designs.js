@@ -21,23 +21,29 @@ const PaneDesigns = (() => {
   const ledgerNote=rows=>`${rows.filter(clear).length} of ${rows.length} intervals exclude the all-window mean.`;
   const detail = (key, title, content, open = false) => `<details class="pane-details" data-detail="${key}"${open ? ' open' : ''}><summary>${title}</summary>${content}</details>`;
   const legend = () => '<div class="pane-legend"><span><i class="legend-dot" aria-hidden="true"></i>Selected</span><span><i class="legend-band" aria-hidden="true"></i>95% interval</span><span><i class="legend-tick" aria-hidden="true"></i>All</span></div>';
+  const formattedReadings=new WeakMap();
   function trackFields(w) {
+    const cached=formattedReadings.get(w),mean=w.set[0];
     const lo = w.set[1], hi = w.set[2], ref = w.all[0], a = Math.min(lo, ref), b = Math.max(hi, ref);
+    if(cached&&cached.key===w.key&&cached.log===w.log&&cached.mean===mean&&cached.lo===lo&&cached.hi===hi&&cached.ref===ref)return cached.fields;
     const pad = (b - a) * .6 || .05, mn = a - pad, mx = b + pad, at = x => (x - mn) / (mx - mn) * 100;
-    return {aria:`Selected mean ${displayed(w,w.set[0])}; 95% interval ${displayed(w,lo)} to ${displayed(w,hi)}; all-window mean ${displayed(w,ref)}`,band:`left:${at(lo)}%;width:${at(hi)-at(lo)}%`,dot:`left:${at(w.set[0])}%`,reference:`left:${at(ref)}%`};
+    const selected=value(w,mean),baseline=value(w,ref),selectedDisplay=selected+unit(w),baselineDisplay=baseline+unit(w);
+    const fields={selected,baseline,selectedDisplay,baselineDisplay,
+      aria:`Selected mean ${selectedDisplay}; 95% interval ${displayed(w,lo)} to ${displayed(w,hi)}; all-window mean ${baselineDisplay}`,band:`left:${at(lo)}%;width:${at(hi)-at(lo)}%`,dot:`left:${at(mean)}%`,reference:`left:${at(ref)}%`};
+    formattedReadings.set(w,{key:w.key,log:w.log,mean,lo,hi,ref,fields});return fields;
   }
   function track(w) {
     const f=trackFields(w);
     return `<div class="trk" role="img" aria-label="${f.aria}"><i class="bd" style="${f.band}"></i><i class="dt" style="${f.dot}"></i><i class="tk" style="${f.reference}"></i></div>`;
   }
-  const reading = (w, showBar = true) => `<div class="prow" data-reading="${w.bar}-${w.key}"><div class="pl"><span>${showBar ? 'Bar '+(w.bar+1)+' · ' : ''}${label(w)}</span><b>${displayed(w,w.set[0])}</b></div><div class="pane-reading-bottom">${track(w)}<span class="pane-baseline">All ${displayed(w,w.all[0])}</span></div></div>`;
+  const reading = (w, showBar = true) => `<div class="prow" data-reading="${w.bar}-${w.key}"><div class="pl"><span>${showBar ? 'Bar '+(w.bar+1)+' · ' : ''}${label(w)}</span><b>${trackFields(w).selectedDisplay}</b></div><div class="pane-reading-bottom">${track(w)}<span class="pane-baseline">All ${trackFields(w).baselineDisplay}</span></div></div>`;
   const difference = w => {
     if (w.key === 'maker' || w.key === 'day') { const d = (w.set[0]-w.all[0])*100; return `${d > 0 ? '+' : ''}${d.toFixed(1).replace('-','−')} pp`; }
     const ratio = w.log ? Math.exp(w.set[0]-w.all[0]) : w.all[0] > 0 ? w.set[0]/w.all[0] : null;
     return ratio === null ? '' : `${ratio.toFixed(1)}× as large`;
   };
   function table(rows) {
-    return `<table class="pane-ledger"><caption class="sr-only">Selected-window means compared with all-window means</caption><thead><tr><th>Reading</th><th>Selected</th><th>All</th></tr></thead><tbody>${rows.map(w=>`<tr class="prow" data-reading="${w.bar}-${w.key}"><td>${label(w)}<small>Bar ${w.bar+1}${unit(w) ? ' · ATR' : w.log ? ' · vs prior 11' : ''}</small></td><td>${value(w,w.set[0])}</td><td>${value(w,w.all[0])}</td></tr>`).join('')}</tbody></table>`;
+    return `<table class="pane-ledger"><caption class="sr-only">Selected-window means compared with all-window means</caption><thead><tr><th>Reading</th><th>Selected</th><th>All</th></tr></thead><tbody>${rows.map(w=>`<tr class="prow" data-reading="${w.bar}-${w.key}"><td>${label(w)}<small>Bar ${w.bar+1}${unit(w) ? ' · ATR' : w.log ? ' · vs prior 11' : ''}</small></td><td>${trackFields(w).selected}</td><td>${trackFields(w).baseline}</td></tr>`).join('')}</tbody></table>`;
   }
   function left(variant, r, ctx) {
     const P = r.panes, all = sorted(P), first = all.slice(0,10);
@@ -78,8 +84,8 @@ const PaneDesigns = (() => {
     const text=(node,value)=>{if(node.nodeValue!==value)node.nodeValue=value;},attribute=(node,name,value)=>{if(node.getAttribute(name)!==value)node.setAttribute(name,value);};
     for(const b of memo){
       const w=rows.get(b.key),f=trackFields(w),delta=b.hero?difference(w):'';
-      text(b.value,b.hero?value(w,w.set[0]):displayed(w,w.set[0]));
-      text(b.baseline,`All ${displayed(w,w.all[0])}${b.hero&&delta?' · ':''}`);
+      text(b.value,b.hero?f.selected:f.selectedDisplay);
+      text(b.baseline,`All ${f.baselineDisplay}${b.hero&&delta?' · ':''}`);
       if(b.delta&&b.delta.textContent!==delta)b.delta.textContent=delta;
       attribute(b.track,'aria-label',f.aria);attribute(b.band,'style',f.band);attribute(b.dot,'style',f.dot);attribute(b.reference,'style',f.reference);
     }
@@ -99,11 +105,11 @@ const PaneDesigns = (() => {
         retainedReadings.set(node,b);
       }
       if(!Object.values(b).every(n=>n&&node.contains(n))||b.value.nodeType!==3||b.baseline.nodeType!==3)return null;
-      const f=b.track?trackFields(w):null;
+      const f=trackFields(w);
       return ()=>{
         const text=(n,v)=>{if(n.nodeValue!==v)n.nodeValue=v;},attr=(n,k,v)=>{if(n.getAttribute(k)!==v)n.setAttribute(k,v);};
-        text(b.value,f?displayed(w,w.set[0]):value(w,w.set[0]));text(b.baseline,f?`All ${displayed(w,w.all[0])}`:value(w,w.all[0]));
-        if(f){attr(b.track,'aria-label',f.aria);attr(b.band,'style',f.band);attr(b.dot,'style',f.dot);attr(b.reference,'style',f.reference);}
+        text(b.value,b.track?f.selectedDisplay:f.selected);text(b.baseline,b.track?`All ${f.baselineDisplay}`:f.baseline);
+        if(b.track){attr(b.track,'aria-label',f.aria);attr(b.band,'style',f.band);attr(b.dot,'style',f.dot);attr(b.reference,'style',f.reference);}
       };
     };
   }

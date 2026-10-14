@@ -23,6 +23,16 @@ for (const {id} of D.variants) {
   assert.doesNotMatch(left+right,/NaN|undefined|Infinity/);
 }
 assert.equal(JSON.stringify(r),before,'rendering cannot mutate matcher results');
+// Reusing a result object must never retain obsolete values, units or chart scales.
+const changing={...r.panes.rows[0],set:[...r.panes.rows[0].set],all:[...r.panes.rows[0].all]};
+const changed={...r,panes:{...r.panes,rows:[changing]}};
+for(const mutate of [()=>{},()=>changing.set[0]++,()=>changing.set[1]--,()=>changing.set[2]++,()=>changing.all[0]++,()=>changing.key='maker',()=>changing.log=true]){
+  mutate();
+  for(const {id}of D.variants){
+    const fresh={...changed,panes:{...changed.panes,rows:[{...changing,set:[...changing.set],all:[...changing.all]}]}};
+    assert.equal(D.left(id,changed,ctx),D.left(id,fresh,ctx),'in-place reading changes must match a fresh result');
+  }
+}
 assert.match(D.caption(r,ctx),/400 closest windows/);
 assert.match(D.caption(r,ctx),/0 exact matches/);
 assert.match(D.next(r,ctx),/−7\.0 pp/);

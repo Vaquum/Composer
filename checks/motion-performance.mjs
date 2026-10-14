@@ -50,7 +50,7 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
     page.on('pageerror',e=>errors.push(e.message));
     await page.addInitScript(()=>{
       window.Worker=class{postMessage(){} terminate(){}};
-      window.__samples={frames:[],work:[],tasks:[],calls:[],paints:[],mutations:0,clones:0,measures:0};
+      window.__samples={frames:[],work:[],tasks:[],calls:[],paints:[],presentation:{},mutations:0,clones:0,measures:0};
       if(PerformanceObserver.supportedEntryTypes.includes('longtask'))new PerformanceObserver(list=>__samples.tasks.push(...list.getEntries().map(e=>e.duration))).observe({type:'longtask'});
       const clone=Node.prototype.cloneNode;
       Node.prototype.cloneNode=function(...args){__samples.clones++;return clone.apply(this,args);};
@@ -74,7 +74,8 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
       A.App.tick=function(...args){const t=performance.now();inFrame=true;try{return tick.apply(this,args);}finally{if(__samples.active)__samples.work.push(performance.now()-t+geometryWork);geometryWork=0;inFrame=false;}};
       for(const [owner,names]of [[A.Stage,['move','down','up']],[A.Match,['presentResult']]])for(const name of names){
         const handler=owner[name];
-        owner[name]=function(...args){const t=performance.now();try{return handler.apply(this,args);}finally{if(__samples.active)__samples.calls.push(performance.now()-t);}};
+        owner[name]=function(...args){const t=performance.now(),part=name==='presentResult'?['cards','right','left'][this.presentation?.tasks.length-1]:null;
+          try{return handler.apply(this,args);}finally{if(__samples.active){const duration=performance.now()-t;__samples.calls.push(duration);if(part)__samples.presentation[part]=Math.max(__samples.presentation[part]||0,duration);}}};
       }
       let previous=0;
       const frame=now=>{if(__samples.active&&previous)__samples.frames.push(now-previous);previous=__samples.active?now:0;requestAnimationFrame(frame);};requestAnimationFrame(frame);
@@ -83,13 +84,13 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
     });
     const measure=async(label,action)=>{
       await settle(page);
-      await page.evaluate(()=>{for(const key of ['frames','work','tasks','calls','paints'])__samples[key]=[];for(const key of ['mutations','clones','measures'])__samples[key]=0;__samples.active=true;});
+      await page.evaluate(()=>{for(const key of ['frames','work','tasks','calls','paints'])__samples[key]=[];for(const key of ['mutations','clones','measures'])__samples[key]=0;__samples.presentation={};__samples.active=true;});
       await action();await settle(page);
       const sample=await page.evaluate(()=>{__samples.active=false;return{...__samples};});
       const p95=a=>a.length?a.slice().sort((a,b)=>a-b)[Math.floor((a.length-1)*.95)]:0;
       const report={browser:name,graphics,frameGate:controlledGraphics,bars:n,width,dpr,scenario:label,frames:sample.frames.length,
         frameP95:+p95(sample.frames).toFixed(1),workP95:+p95(sample.work).toFixed(1),callMax:+Math.max(0,...sample.calls).toFixed(1),
-        paintP95:+p95(sample.paints).toFixed(1),taskMax:Math.max(0,...sample.tasks),measurements:sample.measures,mutations:sample.mutations};
+        paintP95:+p95(sample.paints).toFixed(1),taskMax:Math.max(0,...sample.tasks),presentationMax:Object.fromEntries(Object.entries(sample.presentation).map(([k,v])=>[k,+v.toFixed(1)])),measurements:sample.measures,mutations:sample.mutations};
       reports.push(report);console.log(JSON.stringify(report));
       // CI contention can stretch rAF intervals, so timing gates use measured application
       // work and input handlers. Frame delivery is reported, never hidden by idle samples.
