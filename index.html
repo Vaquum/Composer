@@ -911,7 +911,7 @@ const Stage = {
   fanWeight: 1, exampleWeight: 0, futureBars: null,
   plot: { cur: new Float64Array(2), vel: new Float64Array(2), tgt: new Float64Array(2), ready: false },
   pinFrom: null, pinHov: null, pinPress: null, trace: null,
-  measureBox(){return{w:this.wrap.clientWidth,h:this.wrap.clientHeight,hintTop:this.hint.offsetTop,hintHeight:this.hint.offsetHeight};},
+  measureBox(){return this.box={w:this.wrap.clientWidth,h:this.wrap.clientHeight,hintTop:this.hint.offsetTop,hintHeight:this.hint.offsetHeight};},
   geom() {
     const {w,h,hintTop,hintHeight}=this.frameBox||this.measureBox(),N=S.bars.length;
     // the plot starts below the hint, which wraps onto several lines on a phone. Where it starts and ends follows the
@@ -1626,10 +1626,12 @@ Stage.cv.addEventListener('keydown', e => {
 });
 // a pinch on the paper spreads the bars apart or draws them together
 Stage.cv.addEventListener('wheel', e => { if (!e.ctrlKey) return; e.preventDefault(); setSpace(S.space - e.deltaY * 0.006); }, { passive: false });
-new ResizeObserver(() => {
-  if(!Flow.value($('#ref'),'reference')){Flow.finish();Stage.plot.ready=false;if(!Stage.drag)Stage.settle();}
+const canvasResize=new ResizeObserver(entries => {
+  Stage.measureBox();
+  if(entries.some(entry=>entry.target===Stage.wrap)&&!Flow.value($('#ref'),'reference')){Flow.finish();Stage.plot.ready=false;if(!Stage.drag)Stage.settle();}
   App.redraw();
-}).observe(Stage.wrap);
+});
+canvasResize.observe(Stage.wrap);canvasResize.observe(Stage.hint);
 
 /* ================= the history: one matcher, three ways of holding, mixed as you like ================= */
 const Match = {
@@ -1664,6 +1666,7 @@ const Match = {
   },
   key() { return JSON.stringify(this.query().q); },
   fail(msg) {
+    this.presentation=null;
     this.failed = true; $('#prog').hidden = true; $('#mmsg').textContent = msg; $('#emaki').classList.add('stale');
     if (!this.result) { $('#emaki').innerHTML = ''; Panes.clear(); }
     App.redraw();
@@ -2187,7 +2190,7 @@ const App = {
     const dt = Math.min(0.032, Math.max(0, (now - this.lastT) / 1000)); this.lastT = now; this.dirty = false;
     let busy = false;
     // one bad frame must never stop the paper for good
-    try { Stage.frameBox=Stage.measureBox();busy = Stage.step(dt); Stage.draw(); } catch (err) { console.error(err); }
+    try { Stage.frameBox=Stage.box&&!Flow.value(Ref.pane,'reference')?Stage.box:Stage.measureBox();busy = Stage.step(dt); Stage.draw(); } catch (err) { console.error(err); }
     finally{Stage.frameBox=null;}
     if (busy || this.dirty) requestAnimationFrame(t => this.tick(t)); else this.running = false;
   },

@@ -69,8 +69,9 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
     if(type===chromium){cdp=await context.newCDPSession(page);await cdp.send('Performance.enable');await cdp.send('Emulation.setCPUThrottlingRate',{rate});}
     await page.evaluate(()=>{
       const A=__perf;__samples.active=false;
-      const tick=A.App.tick;
-      A.App.tick=function(...args){const t=performance.now();try{return tick.apply(this,args);}finally{if(__samples.active)__samples.work.push(performance.now()-t);}};
+      const tick=A.App.tick,box=A.Stage.measureBox;let geometryWork=0,inFrame=false;
+      A.Stage.measureBox=function(...args){const t=performance.now();try{return box.apply(this,args);}finally{if(__samples.active&&!inFrame)geometryWork+=performance.now()-t;}};
+      A.App.tick=function(...args){const t=performance.now();inFrame=true;try{return tick.apply(this,args);}finally{if(__samples.active)__samples.work.push(performance.now()-t+geometryWork);geometryWork=0;inFrame=false;}};
       for(const [owner,names]of [[A.Stage,['move','down','up']],[A.Match,['presentResult']]])for(const name of names){
         const handler=owner[name];
         owner[name]=function(...args){const t=performance.now();try{return handler.apply(this,args);}finally{if(__samples.active)__samples.calls.push(performance.now()-t);}};
@@ -140,6 +141,10 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
       await page.evaluate(()=>{const A=__perf,r=A.Match.result;A.Match.onmsg({...r,type:'result',id:A.Match.id,results:r.results.slice(1)});A.Match.id++;});
       await settle(page);
       assert.deepEqual(await page.locator('#emaki .card').evaluateAll(nodes=>nodes.map(n=>n.dataset.motionKey)),before,'a new search must cancel obsolete queued presentation');
+      await page.evaluate(()=>{const A=__perf,r=A.Match.result;A.Match.onmsg({...r,type:'result',id:A.Match.id,results:r.results.slice(1)});A.Match.fail('Synthetic presentation failure');});
+      await settle(page);
+      assert.equal(await page.locator('#mmsg').textContent(),'Synthetic presentation failure','queued presentation must not overwrite a failure');
+      assert.deepEqual(await page.locator('#emaki .card').evaluateAll(nodes=>nodes.map(n=>n.dataset.motionKey)),before,'failure must cancel queued card replacement');
     }
     for(const variant of ['bars','ledger']){
       await seed(page,data);await settle(page);await call('pane',variant);await settle(page);
