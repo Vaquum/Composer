@@ -42,6 +42,7 @@ const TactileFlow = (() => {
     moving.delete(channel); owners.get(owner).delete(name); mark(owner);
   }
   function complete(channel) {
+    if(!channel.owner.isConnected){cancel(channel.owner,channel.name);channel.done();return;}
     const target = destination(channel);
     channel.value = { ...target }; channel.write(target);
     // Remove ownership before callbacks, which may create a new request.
@@ -251,7 +252,7 @@ const TactileFlow = (() => {
     reconcile(root, template.content, new Map(), false);
   }
   function switchControl(input) {
-    const target = input.checked ? 14 : 0;
+    const target = input.checked ? 13 : 0;
     if (!input.hasAttribute('data-flow-switch')) { input.dataset.flowSwitch = ''; input.style.setProperty('--flow-switch-x', `${target}px`); return; }
     spring(input, 'switch', { from: { x: parseFloat(input.style.getPropertyValue('--flow-switch-x')) }, to: { x: target }, write: ({ x }) => input.style.setProperty('--flow-switch-x', `${x}px`) });
   }

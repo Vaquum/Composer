@@ -817,7 +817,8 @@ const Forecast = {
     for(const pane of document.querySelectorAll('.pane')){pane.dataset.updating=String(!!Match.result&&!this.current);pane.setAttribute('aria-busy',String(busy));}
     const key=`${this.view}|${this.prefix}|${this.selected}|${this.phase}`;
     const sceneKey=`${this.view}|${this.prefix}`;
-    if(changed||sceneKey!==this.sceneKey){Stage.changeForecast();this.sceneKey=sceneKey;}
+    if(changed||sceneKey!==this.sceneKey&&(this.view==='branches'||this.sceneKey?.startsWith('branches|')))Stage.changeForecast();
+    this.sceneKey=sceneKey;
     if(changed||key!==this.rendered){
       const active=document.activeElement,focused=this.body.contains(active)?active?.dataset.key:null;
       this.rendered=key;this.context?.cancelFor?.(this.body);this.context?.cancelFor?.(this.fanHits);
@@ -2166,7 +2167,7 @@ function setSpace(u) {
 }
 $('#space').value = String(S.space);
 $('#space').addEventListener('input', e => setSpace(+e.target.value));
-function onTheme() { Flow.finish();readTheme();Stage.departingForecast=null;App.redraw(); }
+function onTheme() { const root=document.documentElement;root.dataset.flowTheme='';Flow.finish();readTheme();void document.body.offsetWidth;delete root.dataset.flowTheme;Stage.departingForecast=null;App.redraw(); }
 $('#theme').addEventListener('click', () => {
   const root = document.documentElement, cur = root.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
   root.dataset.theme = cur === 'dark' ? 'light' : 'dark'; onTheme();

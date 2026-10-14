@@ -45,13 +45,19 @@ for(const [name,type] of [['Chromium',chromium],['WebKit',webkit]]){
     const after=F.value(node,'probe').x;F.finish(node);node.style.removeProperty('--probe-x');return{before,after,old,latest};
   });
   assert.ok(channels.before>0);assert.equal(channels.after,channels.before);assert.equal(channels.old,0);assert.equal(channels.latest,1);
+  const detached=await page.evaluate(()=>{
+    const F=window.__motionProbe.Flow,node=document.createElement('div');document.body.append(node);let cleaned=0;
+    F.spring(node,'detachment',{from:{height:0},to:()=>({height:F.value(node,'detachment')?10:20}),write:()=>{},done:()=>cleaned++});
+    node.remove();F.finish();return{cleaned,active:F.active()};
+  });
+  assert.deepEqual(detached,{cleaned:1,active:false});
   const retained=await page.evaluate(()=>{
     const A=window.__motionProbe,chip=document.querySelector('.chip'),card=document.querySelector('#emaki .card');chip.focus();
     A.Match.render();return{chip:chip.isConnected,card:card.isConnected,focus:document.activeElement===chip};
   });
   assert.deepEqual(retained,{chip:true,card:true,focus:true},`${name}: refresh retains semantic actors and focus`);
   const reference=await page.evaluate(async()=>{
-    const A=window.__motionProbe,width=A.Stage.wrap.clientWidth;A.Ref.open();const initial=A.Stage.wrap.clientWidth;
+    const A=window.__motionProbe,width=A.Stage.wrap.clientWidth;document.querySelector('#reftoggle').focus();A.Ref.open();const initial=A.Stage.wrap.clientWidth;
     for(let i=0;i<6;i++)await new Promise(requestAnimationFrame);
     const before=A.Stage.wrap.clientWidth;A.Ref.close();const after=A.Stage.wrap.clientWidth,closed={hidden:A.Ref.pane.hidden,inert:A.Ref.pane.inert,focus:document.activeElement.id};
     A.Ref.open();const reopened=A.Stage.wrap.clientWidth;A.Flow.finish();return{width,initial,before,after,reopened,closed};
@@ -76,6 +82,13 @@ for(const [name,type] of [['Chromium',chromium],['WebKit',webkit]]){
     pill.click();const reopen=Number(getComputedStyle(menu).opacity);A.Flow.finish();A.Panes.closeMenus();A.Flow.finish();return{before,after,reopen,closed};
   });
   assert.equal(menu.after,menu.before);assert.equal(menu.reopen,menu.after);assert.deepEqual(menu.closed,{hidden:true,inert:true,aria:'true'});
+  const tooltip=await page.evaluate(async()=>{
+    const A=window.__motionProbe,node=document.querySelector('#forecast-modes [data-view="states"]'),box=document.querySelector('#forecast-tooltip');
+    node.focus();for(let i=0;i<4;i++)await new Promise(requestAnimationFrame);
+    const described=node.getAttribute('aria-describedby'),before=Number(getComputedStyle(box).opacity);A.Forecast.context.hide();
+    const state={described,before,after:Number(getComputedStyle(box).opacity),hidden:box.hidden,inert:box.inert,removed:!node.hasAttribute('aria-describedby')};A.Flow.finish();return state;
+  });
+  assert.equal(tooltip.described,'forecast-tooltip');assert.ok(tooltip.before>0);assert.equal(tooltip.before,tooltip.after);assert.ok(tooltip.hidden&&tooltip.inert&&tooltip.removed);
   const retirement=await page.evaluate(()=>{
     const A=window.__motionProbe,removed=document.querySelector('#emaki .card'),count=document.querySelectorAll('#emaki .card').length;
     const saved=A.Match.result.results;A.Match.result={...A.Match.result,results:saved.slice(1)};A.Match.render();
