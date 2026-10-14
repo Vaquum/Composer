@@ -87,7 +87,7 @@ for(const width of [320,600,736,1024]){
 }
 assert.match(html,/Forecast\.fan \? 1 : 0/,'fan is independently toggled');
 assert.doesNotMatch(html,/F\.small|if\(!on\)return/,'no compact single-sequence fallback');
-assert.match(html,/prefers-reduced-motion/);
+assert.match(fs.readFileSync('motion.css','utf8'),/prefers-reduced-motion/);
 assert.doesNotMatch(html.slice(a,b),/offsetHeight|Stage\.fit\(/,'mode/loading changes do not refit the camera');
 
 // Real context runtime with a deterministic clock: dwell repeats, cancellation works, focus/touch explain immediately.
