@@ -83,11 +83,13 @@ for(const [name,type] of [['Chromium',chromium],['WebKit',webkit]]){
       // work and input handlers. Frame delivery is reported, never hidden by idle samples.
       assert.ok(report.callMax<100,`${label}: an input/result task exceeded 100 ms (${report.callMax})`);
       assert.ok(report.workP95<33.4,`${label}: application work exceeded two 60-Hz frames (${report.workP95})`);
+      assert.ok(report.paintP95<100,`${label}: pointer input waited more than 100 ms for its next paint (${report.paintP95})`);
       return sample;
     };
     const call=async(kind,value)=>page.evaluate(({kind,value})=>{
       const A=__perf,t=performance.now();
-      if(kind==='pane'){A.Panes.choose('left',value);A.Panes.choose('right',value);}
+      if(kind==='pane')A.Panes.choose('left',value);
+      if(kind==='paneRight')A.Panes.choose('right',value);
       if(kind==='forecast')A.Forecast.choose(value);
       if(kind==='reference')value?A.Ref.open():A.Ref.close();
       if(kind==='topic')A.Ref.render(value);
@@ -99,7 +101,7 @@ for(const [name,type] of [['Chromium',chromium],['WebKit',webkit]]){
       }
       __samples.calls.push(performance.now()-t);
     },{kind,value});
-    await measure('pane',async()=>{for(const v of ['bars','ledger','signal']){await call('pane',v);await settle(page);}});
+    await measure('pane',async()=>{for(const v of ['bars','ledger','signal']){await call('pane',v);await settle(page);await call('paneRight',v);await settle(page);}});
     const size=await measure('disclosure',async()=>{await call('disclosure');});
     assert.ok(size.measures<=3,'opening a fixed-width disclosure must not clone/measure once per animation frame');
     await measure('reference',async()=>{await call('reference',true);await settle(page);await call('topic',2);await settle(page);await call('reference',false);});
@@ -186,8 +188,9 @@ for(const [name,type] of [['Chromium',chromium],['WebKit',webkit]]){
       const F=__perf.Flow,root=document.createElement('div');document.body.append(root);F.patch(root,'<div data-motion-key="priority">Style priority</div>',false);
       const node=root.firstElementChild,properties={height:'40px',width:'70px',opacity:'0.5',overflow:'hidden',translate:'0 4px','--flow-test':'3px'};
       F.spring(node,'priority',{from:{x:0},to:{x:1},write:()=>{for(const [key,value]of Object.entries(properties))node.style.setProperty(key,value);}});
+      const before=Object.fromEntries(Object.keys(properties).map(key=>[key,node.style.getPropertyValue(key)]));
       F.patch(root,`<div data-motion-key="priority" style="${Object.entries(properties).map(([key,value])=>`${key}:${value}!important`).join(';')};color:red!important">Style priority</div>`,false);
-      const preserved=Object.entries(properties).every(([key,value])=>node.style.getPropertyValue(key)===value&&!node.style.getPropertyPriority(key)),ordinary=node.style.getPropertyPriority('color')==='important';F.finish();root.remove();return{preserved,ordinary};
+      const preserved=Object.entries(before).every(([key,value])=>node.style.getPropertyValue(key)===value&&!node.style.getPropertyPriority(key)),ordinary=node.style.getPropertyPriority('color')==='important';F.finish();root.remove();return{preserved,ordinary};
     });
     assert.deepEqual(priority,{preserved:true,ordinary:true},'priority-only updates must preserve active temporary styles and update ordinary styles');
     await seed(page,data);await settle(page);
