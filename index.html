@@ -1876,7 +1876,7 @@ const Panes = {
       // substitutions keep text width; all other markup/layout changes still FLIP.
       const layoutKey=variant+'|'+Object.values(markup).join('|').replace(/\s(?:style|aria-label|title)="[^"]*"/g,'').replace(/>([^<]*)</g,(_,text)=>'>'+text.replace(/[0-9]/g,'#')+'<');
       const measure=this.layoutKeys.get(side)!==layoutKey;this.layoutKeys.set(side,layoutKey);
-      const retainReading=side==='left'&&variant==='signal'&&pane.dataset.view==='signal'?PaneDesigns.readingUpdater(r):null;
+      const retainReading=side==='left'&&pane.dataset.view===variant?PaneDesigns.readingUpdater(r):null;
       const update=()=>Flow.batch(pane,()=>{
       if(side==='right'){
         Flow.disclosure($('#rnextsec'),variant==='bars');

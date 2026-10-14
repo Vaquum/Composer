@@ -89,7 +89,7 @@ and disconnected targets are released. Active scenes retain live measurements.
 Reconciliation prepares all nested retirements before retained DOM writes, so
 later sibling snapshots do not repeatedly force layout. Desktop grid columns
 contain their layout and paint during the reference track's resize.
-Retained Signal rows reuse their verified bindings inside structural
+Retained reading rows in all three designs reuse their verified bindings inside structural
 reconciliation; headers and changed row shapes still use the general path.
 Previously unseen actors receive a fresh observer sample after layout changes,
 so arrivals retain their entry spring without synchronous offscreen reads.

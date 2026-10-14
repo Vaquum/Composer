@@ -129,6 +129,19 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
       return JSON.stringify(fields(document.querySelector('#lrows')))===JSON.stringify(fields(expected));
     });
     assert.ok(reorderedParity,'retained reordered reading updates must match the full renderer in text, order, semantics and chart geometry');
+    for(const variant of ['bars','ledger']){
+      await seed(page,data);await settle(page);await call('pane',variant);await settle(page);
+      await page.evaluate(()=>{for(const detail of document.querySelectorAll('#lrows details'))detail.open=true;__perf.Flow.details(document.querySelector('#lrows'));});
+      await settle(page);
+      await measure(`refresh-${variant}`,async()=>{await call('refresh');await settle(page);await call('refresh','layout');});
+      const parity=await page.evaluate(variant=>{
+        const A=__perf,expected=document.createElement('div');expected.innerHTML=A.PaneDesigns.left(variant,A.Match.result,{barCount:A.S.bars.length});
+        const fields=root=>[...root.querySelectorAll('[data-reading]')].map(node=>({key:node.dataset.reading,text:node.textContent,aria:node.querySelector('.trk')?.getAttribute('aria-label'),styles:[...node.querySelectorAll('.trk i')].map(i=>i.getAttribute('style'))}));
+        return JSON.stringify(fields(document.querySelector('#lrows')))===JSON.stringify(fields(expected));
+      },variant);
+      assert.ok(parity,`${variant} refresh must match the full renderer`);
+    }
+    await call('pane','signal');await settle(page);
     await seed(page,data);await settle(page);
     const refreshedDisclosure=await page.evaluate(async()=>{
       const A=__perf;A.S.tfOn.fill(false);A.S.tfOn[0]=true;A.Match.sent=A.Match.query();A.Panes.render(A.Match.result);A.Flow.finish();

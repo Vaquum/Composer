@@ -89,20 +89,21 @@ const PaneDesigns = (() => {
   function readingUpdater(r){
     const rows=new Map((r.panes.rows||[]).map(w=>[`${w.bar}-${w.key}`,w]));
     return (node,next)=>{
-      if(node.nodeName!=='DIV'||node.className!=='prow'||next.className!=='prow'||node.dataset.reading!==next.dataset.reading)return null;
+      if(!['DIV','TR'].includes(node.nodeName)||node.nodeName!==next.nodeName||node.className!=='prow'||next.className!=='prow'||node.dataset.reading!==next.dataset.reading)return null;
       const w=rows.get(node.dataset.reading);if(!w)return null;
       let b=retainedReadings.get(node);
       if(!b){
-        const track=node.querySelector('.trk');b={value:node.querySelector('.pl b')?.firstChild,baseline:node.querySelector('.pane-baseline')?.firstChild,
-          track,band:track?.querySelector('.bd'),dot:track?.querySelector('.dt'),reference:track?.querySelector('.tk')};
+        if(node.nodeName==='TR')b={value:node.children[1]?.firstChild,baseline:node.children[2]?.firstChild};
+        else {const track=node.querySelector('.trk');b={value:node.querySelector('.pl b')?.firstChild,baseline:node.querySelector('.pane-baseline')?.firstChild,
+          track,band:track?.querySelector('.bd'),dot:track?.querySelector('.dt'),reference:track?.querySelector('.tk')};}
         retainedReadings.set(node,b);
       }
       if(!Object.values(b).every(n=>n&&node.contains(n))||b.value.nodeType!==3||b.baseline.nodeType!==3)return null;
-      const f=trackFields(w);
+      const f=b.track?trackFields(w):null;
       return ()=>{
         const text=(n,v)=>{if(n.nodeValue!==v)n.nodeValue=v;},attr=(n,k,v)=>{if(n.getAttribute(k)!==v)n.setAttribute(k,v);};
-        text(b.value,displayed(w,w.set[0]));text(b.baseline,`All ${displayed(w,w.all[0])}`);
-        attr(b.track,'aria-label',f.aria);attr(b.band,'style',f.band);attr(b.dot,'style',f.dot);attr(b.reference,'style',f.reference);
+        text(b.value,f?displayed(w,w.set[0]):value(w,w.set[0]));text(b.baseline,f?`All ${displayed(w,w.all[0])}`:value(w,w.all[0]));
+        if(f){attr(b.track,'aria-label',f.aria);attr(b.band,'style',f.band);attr(b.dot,'style',f.dot);attr(b.reference,'style',f.reference);}
       };
     };
   }
