@@ -105,6 +105,17 @@ for(const [name,type] of [['Chromium',chromium],['WebKit',webkit]]){
     await measure('reference',async()=>{await call('reference',true);await settle(page);await call('topic',2);await settle(page);await call('reference',false);});
     await measure('forecast',async()=>{for(const v of ['paths','branches','states']){await call('forecast',v);await settle(page);}await call('fan',false);await settle(page);await call('fan',true);});
     await measure('refresh',async()=>{for(let i=0;i<3;i++){await call('refresh');await settle(page);}});
+    const refreshedDisclosure=await page.evaluate(async()=>{
+      const A=__perf,summary=document.querySelector('#lnext details summary'),detail=summary.parentElement;
+      if(detail.open){summary.click();A.Flow.finish();}summary.click();
+      for(let i=0;i<5;i++)await new Promise(requestAnimationFrame);
+      A.S.tfs.fill(true);A.Match.sent=A.Match.query();A.Panes.render(A.Match.result);
+      const body=detail.querySelector('.flow-detail-body');A.Flow.finish(body);
+      // Finish writes the latest target before releasing inline size; both must agree.
+      const natural=body.getBoundingClientRect().height,table=body.querySelector('table');
+      const rows=table.querySelectorAll('tbody tr').length;detail.open=false;A.Flow.finish();return{natural,rows};
+    });
+    assert.equal(refreshedDisclosure.rows,5);assert.ok(refreshedDisclosure.natural>100,'refreshed disclosure must include every timeframe');
     const point=await page.evaluate(()=>{
       const A=__perf,G=A.Stage.geom(),b=A.S.bars[0],box=A.Stage.cv.getBoundingClientRect();
       return{x:box.left+b.x,y:box.top+A.Stage.Y((b.dv[1]+b.dv[2])/2,G)};
@@ -139,6 +150,23 @@ for(const [name,type] of [['Chromium',chromium],['WebKit',webkit]]){
       const copy=document.querySelector('[data-flow-retiring] .card'),after=copy&&read(copy);A.Flow.finish();return{before,after};
     });
     assert.deepEqual(retiring.after,retiring.before,'retirement must retain context-dependent visual styles');
+    const interrupted=await page.evaluate(async()=>{
+      const A=__perf,root=document.createElement('div');document.querySelector('.lpane .pane-body').append(root);
+      A.Flow.patch(root,'<div data-motion-key="entering" class="prow"><span>Retiring reading</span></div>');
+      for(let i=0;i<5;i++)await new Promise(requestAnimationFrame);
+      const actor=root.firstElementChild,opacity=+getComputedStyle(actor).opacity;
+      A.Flow.patch(root,'');const wrapper=[...document.querySelectorAll('[data-flow-retiring]')].at(-1),copy=wrapper.querySelector('.prow');
+      const presented=+getComputedStyle(wrapper).opacity*+getComputedStyle(copy).opacity;A.Flow.finish();root.remove();return{opacity,presented};
+    });
+    assert.ok(interrupted.opacity>0&&interrupted.opacity<1);assert.ok(Math.abs(interrupted.presented-interrupted.opacity)<.001,'interrupted entry must transfer opacity once');
+    await call('pane','ledger');await settle(page);
+    const rowRetirement=await page.evaluate(()=>{
+      const A=__perf,root=document.querySelector('#lrows tbody'),row=root.children[1],cell=row.firstElementChild;
+      const border=getComputedStyle(cell).borderTop,markup=[...root.children].filter(r=>r!==row).map(r=>r.outerHTML).join('');
+      A.Flow.patch(root,markup);const copy=[...document.querySelectorAll('[data-flow-retiring]')].at(-1)?.querySelector('td');
+      const after=copy&&getComputedStyle(copy).borderTop;A.Flow.finish();return{border,after};
+    });
+    assert.equal(rowRetirement.after,rowRetirement.border,'a retiring ledger row must retain its sibling separator');
     await seed(page,data);await settle(page);
     // Warm allocation pools before the retained-node and heap bounds.
     for(let i=0;i<2;i++){await call('reference',true);await call('reference',false);await settle(page);}

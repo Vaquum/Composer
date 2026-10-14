@@ -156,7 +156,7 @@ const TactileFlow = (() => {
     element.style.overflow = 'hidden';
     const target=natural(element,axis);
     spring(element, 'disclosure', { from: { size: start, opacity: open && !start ? 0 : Number(getComputedStyle(element).opacity) },
-      to: () => ({ size: open ? target() : 0, opacity: open ? 1 : 0 }),
+      to: () => ({ size: open ? reduced()?start:target() : 0, opacity: open ? 1 : 0 }),
       write: ({ size, opacity }) => { element.style[axis] = `${Math.max(0, size)}px`; element.style.opacity = String(bounded(opacity));invalidate(element.parentElement); },
       done: () => { element.style[axis] = ''; element.style.opacity = ''; element.style.overflow = ''; element.style.removeProperty('--flow-display'); delete element.dataset.flowDisclosure; delete element.dataset.flowVisible;measurements.delete(element);invalidate(element.parentElement); } });
   }
@@ -173,12 +173,12 @@ const TactileFlow = (() => {
     }
   }
   function detailVisibility(detail,open) {
-    const body=detail.querySelector(':scope > .flow-detail-body'),height=body.getBoundingClientRect().height;
+    const body=detail.querySelector(':scope > .flow-detail-body'),height=value(body,'disclosure')?.size??(detail.open?body.getBoundingClientRect().height:0);
     body.dataset.flowOpen=String(open);detail.dataset.flowDetails='';detail.open=open;
     body.hidden=!open;body.inert=!open;body.dataset.flowVisible='';body.dataset.flowDisclosure='';
     body.style.setProperty('--flow-display','block');body.style.overflow='hidden';
     const target=natural(body);
-    spring(body,'disclosure',{from:{size:height,opacity:open&&!height?0:Number(getComputedStyle(body).opacity)},to:()=>({size:open?target():0,opacity:open?1:0}),
+    spring(body,'disclosure',{from:{size:height,opacity:open&&!height?0:Number(getComputedStyle(body).opacity)},to:()=>({size:open?reduced()?height:target():0,opacity:open?1:0}),
       write:({size,opacity})=>{body.style.height=`${Math.max(0,size)}px`;body.style.opacity=String(bounded(opacity));invalidate(detail);},
       done:()=>{
         body.hidden=false;body.inert=!detail.open;body.style.height='';body.style.opacity='';body.style.overflow='';body.style.removeProperty('--flow-display');
@@ -213,14 +213,20 @@ const TactileFlow = (() => {
     const ancestors=[];for(let parent=element.parentElement;parent&&parent!==document.body;parent=parent.parentElement)ancestors.unshift(parent);
     for(const parent of ancestors){
       const shell=parent.cloneNode(false);shell.removeAttribute('id');shell.removeAttribute('hidden');
-      for(const attribute of [...shell.attributes])if(attribute.name.startsWith('data-flow-')||attribute.name==='data-motion-running')shell.removeAttribute(attribute.name);
+      for(const attribute of [...shell.attributes])if(attribute.name.startsWith('data-flow-')&&attribute.name!=='data-flow-details'||attribute.name==='data-motion-running')shell.removeAttribute(attribute.name);
       Object.assign(shell.style,{display:'contents',opacity:'1',translate:'none',transform:'none',filter:'none',contain:'none',containerType:'normal'});
+      shell.style.setProperty('display','contents','important');
       context.append(shell);context=shell;
     }
     for(const node of [snapshot,...snapshot.querySelectorAll('*')])node.removeAttribute('id');
     const style=getComputedStyle(element);
     for(const property of ['display','box-sizing','font','color','text-align','padding','border','border-radius','background','gap','flex-direction','align-items','justify-content'])snapshot.style.setProperty(property,style.getPropertyValue(property));
-    Object.assign(snapshot.style,{position:'absolute',left:'0',top:'0',width:`${box.width}px`,height:`${box.height}px`,margin:'0',translate:'none',transform:'none'});
+    if(element.tagName==='TR')for(let i=0;i<element.children.length;i++){
+      const cell=element.children[i],copy=snapshot.children[i],style=getComputedStyle(cell);
+      for(const property of ['border-top','border-bottom','padding'])copy.style.setProperty(property,style.getPropertyValue(property));
+      copy.style.width=`${cell.getBoundingClientRect().width}px`;
+    }
+    Object.assign(snapshot.style,{position:'absolute',left:'0',top:'0',width:`${box.width}px`,height:`${box.height}px`,margin:'0',opacity:'1',translate:'none',transform:'none'});
     context.append(snapshot);
     ghost.inert = true; ghost.setAttribute('aria-hidden', 'true'); ghost.dataset.flowRetiring = '';
     Object.assign(ghost.style, { position: 'fixed', left: `${box.left}px`, top: `${box.top}px`, width: `${box.width}px`, height: `${box.height}px`, margin: '0', translate: 'none', transform: 'none', pointerEvents: 'none', zIndex: '90' });
@@ -276,6 +282,8 @@ const TactileFlow = (() => {
     for (const name of incoming.style) if (!temporary(name)&&(current.style.getPropertyValue(name)!==incoming.style.getPropertyValue(name)||current.style.getPropertyPriority(name)!==incoming.style.getPropertyPriority(name))) current.style.setProperty(name, incoming.style.getPropertyValue(name), incoming.style.getPropertyPriority(name));
   }
   function reconcile(root, incoming, geometries, animate) {
+    // A retained disclosure inside this patch may have new children or text.
+    const measurement=measurements.get(root);if(measurement)measurement.dirty=true;
     const old = [...root.childNodes], desired = [...incoming.childNodes], used = new Set(), keyed = new Map(old.map((node, i) => [key(node, i), node]));
     let cursor = root.firstChild;
     desired.forEach((next, index) => {
