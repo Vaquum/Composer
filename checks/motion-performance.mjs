@@ -69,9 +69,8 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
     if(type===chromium){cdp=await context.newCDPSession(page);await cdp.send('Performance.enable');await cdp.send('Emulation.setCPUThrottlingRate',{rate});}
     await page.evaluate(()=>{
       const A=__perf;__samples.active=false;
-      const step=A.Stage.step,draw=A.Stage.draw;let work=0;
-      A.Stage.step=function(...args){const t=performance.now();try{return step.apply(this,args);}finally{work+=performance.now()-t;}};
-      A.Stage.draw=function(...args){const t=performance.now();try{return draw.apply(this,args);}finally{if(__samples.active)__samples.work.push(work+performance.now()-t);work=0;}};
+      const tick=A.App.tick;
+      A.App.tick=function(...args){const t=performance.now();try{return tick.apply(this,args);}finally{if(__samples.active)__samples.work.push(performance.now()-t);}};
       for(const [owner,names]of [[A.Stage,['move','down','up']],[A.Match,['presentResult']]])for(const name of names){
         const handler=owner[name];
         owner[name]=function(...args){const t=performance.now();try{return handler.apply(this,args);}finally{if(__samples.active)__samples.calls.push(performance.now()-t);}};
