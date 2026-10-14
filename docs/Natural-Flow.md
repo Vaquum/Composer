@@ -56,7 +56,9 @@ until content or available width changes. An unchanged size creates no spring.
 Guides, forecasts and foreground candles/traces use clipped native canvas layers
 in their original paint order. Scene opacity is composited by the browser; an
 interrupted scene is captured once at the next scene change. Offscreen capacity
-grows in chunks. The blurred fan wash uses bounded low-density pixels and may
+grows in chunks. Wide reference layouts retain reading-pane widths where space
+allows and composite those scrolling panes, avoiding repeated Retina text/track
+repainting. The blurred fan wash uses bounded low-density pixels and may
 reuse projections within half a CSS pixel; quantile contours remain exact and
 render at native density. Forecast semantics and hit geometry update only when
 their state or geometry changes. Pointer drawing remains direct.
