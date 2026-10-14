@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parent.parent
 checks = [
     [sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-v'],
     *[['node', f'checks/{name}.mjs'] for name in
-      ('page', 'pane-designs', 'forecast', 'forecast-ux', 'drag', 'chain', 'motion-model', 'motion-browser')],
+      ('page', 'pane-designs', 'forecast', 'forecast-ux', 'drag', 'chain', 'motion-model', 'motion-browser', 'motion-performance')],
     *[[sys.executable, 'checks/with_bars.py', f'checks/{name}.mjs'] for name in
       ('similarity-windows', 'similarity-look', 'similarity-equivalence', 'panes')],
     [sys.executable, 'checks/container.py'],

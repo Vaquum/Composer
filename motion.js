@@ -36,6 +36,34 @@ const TactileFlow = (() => {
   if (typeof window === 'undefined') return { model, integrate, advance, bounds };
   const preference = matchMedia('(prefers-reduced-motion: reduce)');
   const owners = new WeakMap(), moving = new Set(), settlers = new Set();
+  const pendingLayouts=new Map();
+  const layoutObserver=typeof ResizeObserver==='function'?new ResizeObserver(entries=>{for(const {target}of entries)flushLayouts(target);}):null;
+  function flushLayouts(root){
+    for(const [node,complete]of [...pendingLayouts])if(!root||node===root||node.contains(root)||root.contains(node)){
+      pendingLayouts.delete(node);layoutObserver.unobserve(node);complete();
+    }
+  }
+  let visibility=new WeakMap();const observed=new Set(),arrivals=new Set();
+  let viewportScroll=[scrollX,scrollY];
+  const viewport=typeof IntersectionObserver==='function'?new IntersectionObserver(entries=>{for(const entry of entries)visibility.set(entry.target,entry.isIntersecting);},{rootMargin:'160px'}):null;
+  // A separate one-shot sample cannot mistake a queued cache observation for
+  // this layout's arrival, and does not depend on browser timestamp precision.
+  const arrivalSampler=viewport?new IntersectionObserver(entries=>{
+    const entering=new Set(entries.filter(entry=>arrivals.has(entry.target)&&entry.isIntersecting&&entry.target.isConnected&&presented(entry.target)&&!reduced()).map(entry=>entry.target));
+    for(const entry of entries){
+      arrivalSampler.unobserve(entry.target);
+      arrivals.delete(entry.target);
+    }
+    for(const node of entering){let parent=node.parentElement;while(parent&&!entering.has(parent)&&!owners.get(parent)?.has('entry'))parent=parent.parentElement;if(!parent)reveal(node);}
+  },{rootMargin:'160px'}):null;
+  function releaseObservers(){for(const node of observed)if(!node.isConnected){viewport.unobserve(node);observed.delete(node);arrivalSampler.unobserve(node);arrivals.delete(node);}}
+  function observe(nodes){if(viewport)for(const node of nodes)if(!observed.has(node)){observed.add(node);viewport.observe(node);}}
+  function resetVisibility(){
+    visibility=new WeakMap();viewportScroll=[scrollX,scrollY];if(!viewport)return;
+    viewport.takeRecords();
+    releaseObservers();for(const node of observed){viewport.unobserve(node);viewport.observe(node);}
+  }
+  addEventListener('scroll',resetVisibility,true);addEventListener('resize',resetVisibility);
   let frame = 0, previousTime = 0, suspended = document.hidden, printing = false;
   const reduced = () => preference.matches || suspended || printing;
   const bounded = value => Math.max(0, Math.min(1, value));
@@ -90,6 +118,8 @@ const TactileFlow = (() => {
   }
   function value(owner, name) { const c = owners.get(owner)?.get(name); return c ? { ...c.value } : null; }
   function finish(root) {
+    flushLayouts(root);
+    for(const node of arrivals)if(!root||node===root||root.contains(node)){arrivalSampler.unobserve(node);arrivals.delete(node);}
     for (const channel of [...moving]) if (moving.has(channel) && (!root || channel.owner === root || root.contains(channel.owner))) complete(channel);
     if (!root) for (const settle of settlers) settle();
   }
@@ -119,16 +149,36 @@ const TactileFlow = (() => {
     element.parentElement.append(clone);
     try { return clone.getBoundingClientRect()[axis]; } finally { clone.remove(); }
   }
+  // Natural height changes with content or available width, not with each spring sample.
+  const measurements = new WeakMap();
+  function invalidate(element) {
+    for (let node=element;node;node=node.parentElement) {
+      const measurement=measurements.get(node);if(measurement)measurement.dirty=true;
+    }
+  }
+  function natural(element,axis='height',initial=null) {
+    const measurement={dirty:!initial,width:initial?.width??NaN,size:initial?.size??0};measurements.set(element,measurement);
+    return ()=>{
+      const width=element.getBoundingClientRect().width;
+      if(measurement.dirty||width!==measurement.width){measurement.size=intrinsic(element,axis);measurement.width=width;measurement.dirty=false;}
+      return measurement.size;
+    };
+  }
   const sizes = new WeakMap();
   function resize(element, change) {
-    const height = element.getBoundingClientRect().height;
+    const height = element.getBoundingClientRect().height,free=!sizes.has(element)&&!element.style.height;
     const result = change();
     if (!element.getClientRects().length || reduced()) return result;
+    // These containers have natural CSS height. Read their live target before
+    // constraining it; unchanged content size needs neither a spring nor a clone.
+    const box=free?element.getBoundingClientRect():null;
+    if(box&&Math.abs(box.height-height)<.5)return result;
     if (!sizes.has(element)) sizes.set(element, { height: element.style.height, overflow: element.style.overflow });
     element.dataset.flowSizing = ''; element.style.overflow = 'hidden';
-    spring(element, 'size', { from: { height }, to: () => ({ height: intrinsic(element) }),
-      write: ({ height }) => { element.style.height = `${Math.max(0, height)}px`; },
-      done: () => { Object.assign(element.style, sizes.get(element)); sizes.delete(element); delete element.dataset.flowSizing; } });
+    const target=natural(element,'height',box?{width:box.width,size:box.height}:null);
+    spring(element, 'size', { from: { height }, to: () => ({ height: target() }),
+      write: ({ height }) => { element.style.height = `${Math.max(0, height)}px`;invalidate(element.parentElement); },
+      done: () => { Object.assign(element.style, sizes.get(element)); sizes.delete(element);measurements.delete(element);delete element.dataset.flowSizing;invalidate(element.parentElement); } });
     return result;
   }
   function disclosure(element, open, axis = 'height') {
@@ -138,17 +188,20 @@ const TactileFlow = (() => {
     element.dataset.flowDisclosure = ''; element.dataset.flowVisible = '';
     element.style.setProperty('--flow-display', display || getComputedStyle(element).display);
     element.style.overflow = 'hidden';
+    const target=natural(element,axis);
     spring(element, 'disclosure', { from: { size: start, opacity: open && !start ? 0 : Number(getComputedStyle(element).opacity) },
-      to: () => ({ size: open ? intrinsic(element, axis) : 0, opacity: open ? 1 : 0 }),
-      write: ({ size, opacity }) => { element.style[axis] = `${Math.max(0, size)}px`; element.style.opacity = String(bounded(opacity)); },
-      done: () => { element.style[axis] = ''; element.style.opacity = ''; element.style.overflow = ''; element.style.removeProperty('--flow-display'); delete element.dataset.flowDisclosure; delete element.dataset.flowVisible; } });
+      to: () => ({ size: open ? reduced()?start:target() : 0, opacity: open ? 1 : 0 }),
+      write: ({ size, opacity }) => { element.style[axis] = `${Math.max(0, size)}px`; element.style.opacity = String(bounded(opacity));invalidate(element.parentElement); },
+      done: () => { element.style[axis] = ''; element.style.opacity = ''; element.style.overflow = ''; element.style.removeProperty('--flow-display'); delete element.dataset.flowDisclosure; delete element.dataset.flowVisible;measurements.delete(element);invalidate(element.parentElement); } });
   }
   function details(root) {
     for (const detail of root.querySelectorAll('details')) {
       let body = detail.querySelector(':scope > .flow-detail-body');
       if (!body) {
         body = document.createElement('div'); body.className = 'flow-detail-body';
-        for (const child of [...detail.childNodes]) if (!(child instanceof Element && child.tagName === 'SUMMARY')) body.append(child);
+        const content=document.createElement('div');content.className='flow-detail-content';
+        for (const child of [...detail.childNodes]) if (!(child instanceof Element && child.tagName === 'SUMMARY')) content.append(child);
+        body.append(content);
         detail.append(body);
       }
       if(value(body,'disclosure')){if(body.dataset.flowOpen!==String(detail.open))detailVisibility(detail,detail.open);}
@@ -156,15 +209,19 @@ const TactileFlow = (() => {
     }
   }
   function detailVisibility(detail,open) {
-    const body=detail.querySelector(':scope > .flow-detail-body'),height=body.getBoundingClientRect().height;
+    const body=detail.querySelector(':scope > .flow-detail-body'),height=value(body,'disclosure')?.size??(detail.open?body.getBoundingClientRect().height:0);
     body.dataset.flowOpen=String(open);detail.dataset.flowDetails='';detail.open=open;
     body.hidden=!open;body.inert=!open;body.dataset.flowVisible='';body.dataset.flowDisclosure='';
     body.style.setProperty('--flow-display','block');body.style.overflow='hidden';
-    spring(body,'disclosure',{from:{size:height,opacity:open&&!height?0:Number(getComputedStyle(body).opacity)},to:()=>({size:open?intrinsic(body):0,opacity:open?1:0}),
-      write:({size,opacity})=>{body.style.height=`${Math.max(0,size)}px`;body.style.opacity=String(bounded(opacity));},
+    // On the first opening the unconstrained live body already has its natural
+    // height. A clone would lay out the entire readings list a second time.
+    const box=open&&!reduced()&&!body.style.height?body.getBoundingClientRect():null;
+    const target=natural(body,'height',box?{width:box.width,size:box.height}:null);
+    spring(body,'disclosure',{from:{size:height,opacity:open&&!height?0:Number(getComputedStyle(body).opacity)},to:()=>({size:open?reduced()?height:target():0,opacity:open?1:0}),
+      write:({size,opacity})=>{body.style.height=`${Math.max(0,size)}px`;body.style.opacity=String(bounded(opacity));invalidate(detail);},
       done:()=>{
         body.hidden=false;body.inert=!detail.open;body.style.height='';body.style.opacity='';body.style.overflow='';body.style.removeProperty('--flow-display');
-        delete body.dataset.flowVisible;delete body.dataset.flowDisclosure;delete body.dataset.flowOpen;delete detail.dataset.flowDetails;
+        delete body.dataset.flowVisible;delete body.dataset.flowDisclosure;delete body.dataset.flowOpen;delete detail.dataset.flowDetails;measurements.delete(body);invalidate(detail);
       }});
   }
   document.addEventListener('click',event=>{
@@ -172,53 +229,133 @@ const TactileFlow = (() => {
     if(detail?.tagName!=='DETAILS')return;
     event.preventDefault();details(detail.parentElement);detailVisibility(detail,!detail.open);
   });
-  document.addEventListener('toggle',event=>{if(event.target.tagName==='DETAILS')details(event.target.parentElement);},true);
-  function clip(element) {
-    const bounds = { left: 0, top: 0, right: innerWidth, bottom: innerHeight };
-    for (let parent = element.parentElement; parent && parent !== document.body; parent = parent.parentElement) {
-      const style = getComputedStyle(parent), box = parent.getBoundingClientRect();
-      if (/auto|scroll|hidden|clip/.test(style.overflowX)) { bounds.left = Math.max(bounds.left, box.left + parent.clientLeft); bounds.right = Math.min(bounds.right, box.left + parent.clientLeft + parent.clientWidth); }
-      if (/auto|scroll|hidden|clip/.test(style.overflowY)) { bounds.top = Math.max(bounds.top, box.top + parent.clientTop); bounds.bottom = Math.min(bounds.bottom, box.top + parent.clientTop + parent.clientHeight); }
-    }
-    return bounds;
+  document.addEventListener('toggle',event=>{if(event.target.tagName==='DETAILS'){details(event.target.parentElement);invalidate(event.target);}},true);
+  function clip(element,cache=new Map()) {
+    const parent=element.parentElement;
+    if(!parent||parent===document.body)return{left:0,top:0,right:innerWidth,bottom:innerHeight};
+    if(cache.has(parent))return cache.get(parent);
+    const bounds={...clip(parent,cache)},style=getComputedStyle(parent),x=/auto|scroll|hidden|clip/.test(style.overflowX),y=/auto|scroll|hidden|clip/.test(style.overflowY);
+    const box=x||y?parent.getBoundingClientRect():null;
+    if (x) { bounds.left = Math.max(bounds.left, box.left + parent.clientLeft); bounds.right = Math.min(bounds.right, box.left + parent.clientLeft + parent.clientWidth); }
+    if (y) { bounds.top = Math.max(bounds.top, box.top + parent.clientTop); bounds.bottom = Math.min(bounds.bottom, box.top + parent.clientTop + parent.clientHeight); }
+    cache.set(parent,bounds);return bounds;
   }
-  function capture(element) { return { box: element.getBoundingClientRect(), clip: clip(element) }; }
-  function retire(element, geometry = capture(element)) {
+  function presented(element) {
+    return !element.closest('[hidden]:not([data-flow-visible])')&&!element.parentElement?.closest('details:not([open]):not([data-flow-details])');
+  }
+  function capture(element,cache) {
+    if(!presented(element))return{box:{width:0,height:0},clip:null};
+    if(!moving.size&&visibility.get(element)===false)return{box:{width:0,height:0},clip:null,unseen:true};
+    const box=element.getBoundingClientRect();return { box, clip: box.width&&box.height?clip(element,cache):null };
+  }
+  function retire(element, geometry = capture(element), contexts=new Map(), remove=true) {
     const { box, clip: bounds } = geometry;
-    let opacity = Number(getComputedStyle(element).opacity);
-    for (let parent = element.parentElement; parent && parent !== document.body; parent = parent.parentElement) opacity *= Number(getComputedStyle(parent).opacity);
-    if (reduced() || !box.width || !box.height || !opacity || box.right <= bounds.left || box.left >= bounds.right || box.bottom <= bounds.top || box.top >= bounds.bottom) { finish(element); element.remove(); return; }
-    const ghost = element.cloneNode(true), source = [element, ...element.querySelectorAll('*')], copies = [ghost, ...ghost.querySelectorAll('*')];
-    source.forEach((node, i) => {
-      const style = getComputedStyle(node);
-      for (const property of style) copies[i].style.setProperty(property, style.getPropertyValue(property));
-      copies[i].removeAttribute('id');
-      for (const attribute of [...copies[i].attributes]) if (attribute.name.startsWith('data-flow-') || attribute.name === 'data-motion-running') copies[i].removeAttribute(attribute.name);
-    });
+    const settle=()=>{finish(element);if(remove)element.remove();};
+    if(reduced()||!box.width||!box.height)return settle;
+    if(box.right<=bounds.left||box.left>=bounds.right||box.bottom<=bounds.top||box.top>=bounds.bottom)return settle;
+    const style=getComputedStyle(element);let path=contexts.get(element.parentElement);
+    if(!path){
+      const template=document.createElement('div');let context=template,opacity=1;
+      const ancestors=[];for(let parent=element.parentElement;parent&&parent!==document.body;parent=parent.parentElement)ancestors.unshift(parent);
+      for(const parent of ancestors){
+        opacity*=Number(getComputedStyle(parent).opacity);
+        const shell=parent.cloneNode(false);shell.removeAttribute('id');shell.removeAttribute('hidden');
+        for(const attribute of [...shell.attributes])if(attribute.name.startsWith('data-flow-')&&attribute.name!=='data-flow-details'||attribute.name==='data-motion-running')shell.removeAttribute(attribute.name);
+        shell.style.cssText+=';display:contents!important;opacity:1!important;translate:none!important;transform:none!important;filter:none!important;contain:none!important;container-type:normal!important';
+        context.append(shell);context=shell;
+      }
+      path={template,opacity};contexts.set(element.parentElement,path);
+    }
+    const opacity=Number(style.opacity)*path.opacity;
+    if (!opacity)return settle;
+    // Preserve selector/inheritance context with shallow shells. Copying every computed
+    // property of every descendant made a pane switch a hundreds-of-ms blocking task.
+    const ghost=path.template.cloneNode(true),snapshot=element.cloneNode(true);let context=ghost;
+    while(context.firstElementChild)context=context.firstElementChild;
+    for(const node of [snapshot,...snapshot.querySelectorAll('*')])node.removeAttribute('id');
+    const frozen=['display','box-sizing','font','color','text-align','padding','border','border-radius','background','gap','flex-direction','align-items','justify-content'].map(property=>`${property}:${style.getPropertyValue(property)}!important`).join(';');
+    if(element.tagName==='TR')for(let i=0;i<element.children.length;i++){
+      const cell=element.children[i],copy=snapshot.children[i],style=getComputedStyle(cell);
+      for(const property of ['border-top','border-bottom','padding'])copy.style.setProperty(property,style.getPropertyValue(property));
+      copy.style.width=`${cell.getBoundingClientRect().width}px`;
+    }
+    snapshot.style.cssText+=`;${frozen};position:absolute!important;left:0!important;top:0!important;width:${box.width}px!important;height:${box.height}px!important;margin:0!important;opacity:1!important;translate:none!important;transform:none!important`;
+    context.append(snapshot);
     ghost.inert = true; ghost.setAttribute('aria-hidden', 'true'); ghost.dataset.flowRetiring = '';
-    Object.assign(ghost.style, { position: 'fixed', left: `${box.left}px`, top: `${box.top}px`, width: `${box.width}px`, height: `${box.height}px`, margin: '0', translate: 'none', transform: 'none', pointerEvents: 'none', zIndex: '90' });
-    finish(element); element.remove(); document.body.append(ghost);
+    ghost.style.cssText=`position:fixed;left:${box.left}px;top:${box.top}px;width:${box.width}px;height:${box.height}px;margin:0;translate:none;transform:none;pointer-events:none;z-index:90`;
+    const commit=()=>{
+    settle(); document.body.append(ghost);
     spring(ghost, 'retirement', { from: { opacity, y: 0 }, to: { opacity: 0, y: -model.information },
       write: ({ opacity, y }) => {
         ghost.style.opacity = String(bounded(opacity)); ghost.style.translate = `0 ${y}px`;
         ghost.style.clipPath = `inset(${Math.max(0, bounds.top - box.top - y)}px ${Math.max(0, box.right - bounds.right)}px ${Math.max(0, box.bottom + y - bounds.bottom)}px ${Math.max(0, bounds.left - box.left)}px)`;
       }, done: () => ghost.remove() });
+    };commit.snapshot=ghost;return commit;
   }
   const actors = ':scope > *, [data-reading], [data-detail], .pane-group, .prow, .pnear';
-  function layout(root, change, selector = actors) {
+  function layout(root, change, selector = actors, measure = true, defer=false) {
+    flushLayouts(root);
+    if(viewportScroll[0]!==scrollX||viewportScroll[1]!==scrollY)resetVisibility();
+    releaseObservers();
     const active = document.activeElement;
-    const before = new Map([...root.querySelectorAll(selector)].map(el => [el, capture(el)]));
+    const restore=()=>{if(active?.isConnected&&root.contains(active)&&document.activeElement!==active)active.focus({preventScroll:true});};
+    if(reduced()||!measure){const result=change(new Map());restore();return result;}
+    const initial=[...root.querySelectorAll(selector)];observe(initial);
+    const clips=new Map(),before = new Map(initial.map(el => [el, capture(el,clips)]));before.retirements=new Map();before.bookends=new Map();
+    if(defer){const box=root.getBoundingClientRect();before.origin={left:box.left-root.scrollLeft,top:box.top-root.scrollTop};}
     const result = change(before);
-    if (active?.isConnected && root.contains(active) && document.activeElement !== active) active.focus({ preventScroll: true });
-    const after = [...root.querySelectorAll(selector)], deltas = new Map();
-    for (const el of after) { el.style.removeProperty('--flow-layout-x'); el.style.removeProperty('--flow-layout-y'); }
+    // Read departing styles before removals/ghost insertion can force another layout.
+    for(const [node,commit]of before.retirements){
+      let parent=node.parentElement;
+      while(parent&&!before.retirements.get(parent)?.snapshot)parent=parent.parentElement;
+      if(!parent)commit();
+    }
+    releaseObservers();
+    restore();
+    const complete=()=>completeLayout(root,before,selector);
+    // A fresh observation runs after native layout and before paint, even when
+    // only row order changed. Translate writes do not resize the observed pane.
+    if(defer&&layoutObserver&&root.isConnected){pendingLayouts.set(root,complete);layoutObserver.observe(root);}
+    else complete();
+    return result;
+  }
+  function completeLayout(root,before,selector){
+    const after = [...root.querySelectorAll(selector)], actorsAfter=new Set(after),deltas = new Map(),entries=new Set(),afterClips=new Map();
+    const origin=before.origin?root.getBoundingClientRect():null,shift=origin?{x:origin.left-root.scrollLeft-before.origin.left,y:origin.top-root.scrollTop-before.origin.top}:{x:0,y:0};
+    observe(after);
+    const visible=(box,bounds)=>bounds&&box.width&&box.height&&box.right>bounds.left&&box.left<bounds.right&&box.bottom>bounds.top&&box.top<bounds.bottom;
+    for (const el of after) if(owners.get(el)?.has('layout')) { el.style.removeProperty('--flow-layout-x'); el.style.removeProperty('--flow-layout-y'); }
     for (const el of after) {
-      const old = before.get(el), box = el.getBoundingClientRect();
-      if (old?.box.width && old.box.height && box.width && box.height) deltas.set(el, { x: old.box.left - box.left, y: old.box.top - box.top });
+      if(!presented(el))continue;
+      const old = before.get(el);
+      // Entry only needs opacity/translation. Measuring a newly inserted tree
+      // forces its entire SVG/readings layout inside the input/result task.
+      if(!old?.box.width||!old.box.height){
+        const channel=old?.unseen&&owners.get(el)?.get('layout');if(channel)complete(channel);
+        if(old?.unseen&&arrivalSampler){arrivals.add(el);arrivalSampler.observe(el);}
+        else if(before.entrances?.has(el))entries.add(el);
+        continue;
+      }
+      const box=el.getBoundingClientRect();
+      const bounds=clip(el,afterClips),previous=shift.x||shift.y?{width:old.box.width,height:old.box.height,left:old.box.left+shift.x,right:old.box.right+shift.x,top:old.box.top+shift.y,bottom:old.box.bottom+shift.y}:old.box;
+      const wasVisible=visible(previous,shift.x||shift.y?bounds:old.clip),isVisible=visible(box,bounds);
+      if(!wasVisible){
+        const channel=owners.get(el)?.get('layout');if(channel)complete(channel);
+        if(isVisible)entries.add(el);
+        continue;
+      }
+      if (box.width && box.height) deltas.set(el, { x: previous.left - box.left, y: previous.top - box.top });
     }
     for (const el of after) {
       const delta = deltas.get(el);
-      if (!delta) { if (!before.has(el) && !after.some(parent => parent !== el && parent.contains(el) && !before.has(parent)) && el.getClientRects().length) reveal(el); continue; }
+      if (!delta) {
+        let parent=el.parentElement,nested=false;
+        while(parent){
+          if(owners.get(parent)?.has('entry')||actorsAfter.has(parent)&&(!before.has(parent)||entries.has(parent)||arrivals.has(parent))){nested=true;break;}
+          if(parent===root)break;parent=parent.parentElement;
+        }
+        if((!before.has(el)||entries.has(el))&&!nested&&presented(el))reveal(el);continue;
+      }
       let parent = el.parentElement;
       while (parent && parent !== root && !deltas.has(parent)) parent = parent.parentElement;
       const ancestor = deltas.get(parent), from = { x: delta.x - (ancestor?.x || 0), y: delta.y - (ancestor?.y || 0) };
@@ -228,42 +365,152 @@ const TactileFlow = (() => {
         write: ({ x, y }) => { el.style.setProperty('--flow-layout-x', `${x}px`); el.style.setProperty('--flow-layout-y', `${y}px`); },
         done: () => { el.style.removeProperty('--flow-layout-x'); el.style.removeProperty('--flow-layout-y'); delete el.dataset.flowLayout; } });
     }
-    return result;
   }
+  const keyPriority=Object.assign(Object.create(null),{'data-motion-key':0,id:1,'data-reading':2,'data-detail':3,'data-key':4,'data-design':5,'data-k':6});
   function key(node, index) {
     if (node.nodeType !== 1) return `text-${index}`;
-    for (const name of ['data-motion-key', 'id', 'data-reading', 'data-detail', 'data-key', 'data-design', 'data-k']) if (node.hasAttribute(name)) return `${node.tagName}:${name}:${node.getAttribute(name)}`;
+    let selected=null,priority=Infinity;
+    for(const name of node.getAttributeNames())if(keyPriority[name]<priority){selected=name;priority=keyPriority[name];if(priority===0)break;}
+    if(selected)return `${node.tagName}:${selected}:${node.getAttribute(selected)}`;
     return `${node.tagName}:${node.classList[0] || ''}:${index}`;
   }
   function attributes(current, incoming) {
+    let equal=current.attributes.length===incoming.attributes.length;
+    if(equal)for(const attr of current.attributes)if(incoming.getAttribute(attr.name)!==attr.value){equal=false;break;}
+    if(equal)return false;
     const preserve = name => name.startsWith('data-flow-') || name === 'data-motion-running' || current.tagName === 'DETAILS' && name === 'open' || name==='inert'&&current.classList.contains('flow-detail-body');
     for (const attr of [...current.attributes]) if (!preserve(attr.name) && attr.name !== 'style' && !incoming.hasAttribute(attr.name)) current.removeAttribute(attr.name);
     for (const attr of incoming.attributes) if (!preserve(attr.name) && attr.name !== 'style' && current.getAttribute(attr.name) !== attr.value) current.setAttribute(attr.name, attr.value);
-    const temporary = name => name.startsWith('--flow-') || Boolean(owners.get(current)?.size) && ['height', 'width', 'opacity', 'overflow', 'translate'].includes(name);
-    for (const name of [...current.style]) if (!temporary(name) && !incoming.style.getPropertyValue(name)) current.style.removeProperty(name);
-    for (const name of incoming.style) if (!temporary(name)) current.style.setProperty(name, incoming.style.getPropertyValue(name), incoming.style.getPropertyPriority(name));
-  }
-  function reconcile(root, incoming, geometries, animate) {
-    const old = [...root.childNodes], desired = [...incoming.childNodes], used = new Set(), keyed = new Map(old.map((node, i) => [key(node, i), node]));
-    let cursor = root.firstChild;
-    desired.forEach((next, index) => {
-      let node = keyed.get(key(next, index));
-      if (!node || used.has(node) || node.nodeType !== next.nodeType || node.nodeName !== next.nodeName) node = next.cloneNode(true);
-      else if (node.nodeType === 1) { attributes(node, next); reconcile(node, next, geometries, animate); }
-      else if (node.textContent !== next.textContent) node.textContent = next.textContent;
-      used.add(node);
-      if (node !== cursor) root.insertBefore(node, cursor);
-      cursor = node.nextSibling;
-    });
-    for (const node of old) if (!used.has(node)) {
-      if (node.nodeType === 1 && animate && geometries.has(node)) retire(node, geometries.get(node));
-      else { if (node.nodeType === 1) finish(node); node.remove(); }
+    if(current.getAttribute('style')===incoming.getAttribute('style'))return false;
+    const running=Boolean(owners.get(current)?.size),style=incoming.getAttribute('style');
+    // Ordinary chart marks have no spring-owned styles. Apply their declaration
+    // once rather than iterating CSSOM properties and invalidating each one.
+    if(!running&&!(current.getAttribute('style')||'').includes('--flow-')&&!(style||'').includes('--flow-')){
+      if(style===null)current.removeAttribute('style');else current.setAttribute('style',style);
+      return false;
     }
+    const temporary = name => name.startsWith('--flow-') || running && ['height', 'width', 'opacity', 'overflow', 'overflow-x', 'overflow-y', 'translate'].includes(name);
+    let deferred=false;
+    for(const name of new Set([...current.style,...incoming.style]))if(temporary(name)&&!name.startsWith('--flow-')&&(current.style.getPropertyValue(name)!==incoming.style.getPropertyValue(name)||current.style.getPropertyPriority(name)!==incoming.style.getPropertyPriority(name)))deferred=true;
+    for (const name of [...current.style]) if (!temporary(name) && !incoming.style.getPropertyValue(name)) current.style.removeProperty(name);
+    for (const name of incoming.style) if (!temporary(name)&&(current.style.getPropertyValue(name)!==incoming.style.getPropertyValue(name)||current.style.getPropertyPriority(name)!==incoming.style.getPropertyPriority(name))) current.style.setProperty(name, incoming.style.getPropertyValue(name), incoming.style.getPropertyPriority(name));
+    return deferred;
   }
-  function patch(root, markup, animate = true) {
+  function planReconcile(root, incoming, geometries, animate, retain, contexts) {
+    markups.delete(root);
+    // A retained disclosure inside this patch may have new children or text.
+    const measurement=measurements.get(root);if(measurement)measurement.dirty=true;
+    const old = [...root.childNodes], desired = [...incoming.childNodes], used = new Set(), keyed = new Map(old.map((node, i) => [key(node, i), node]));
+    const plan=desired.map((next,index)=>{
+      let node = keyed.get(key(next, index));
+      if (!node || used.has(node) || node.nodeType !== next.nodeType || node.nodeName !== next.nodeName) node = next;
+      used.add(node);
+      // Another patch in this transaction may have restored a queued actor.
+      geometries.retirements?.delete(node);
+      return {node,next};
+    });
+    // Prepare the entire subtree before any retained DOM writes. Preparing a
+    // later sibling after an earlier insertion otherwise forces repeated layout.
+    const remove=[];
+    for (const node of old) if (!used.has(node)) {
+      if (node.nodeType === 1 && animate && geometries.has(node)) geometries.retirements.set(node,retire(node,geometries.get(node),contexts));
+      else if(node.nodeType===1&&animate&&geometries.retirements){
+        const captured=[...geometries].filter(([actor])=>node.contains(actor));
+        if(captured.length){
+          for(const [actor,geometry]of captured){
+            if(geometries.retirements.has(actor))continue;
+            let parent=actor.parentElement;while(parent&&!geometries.retirements.get(parent)?.snapshot)parent=parent.parentElement;
+            if(!parent)geometries.retirements.set(actor,retire(actor,geometry,contexts));
+          }
+          geometries.retirements.set(node,()=>{finish(node);node.remove();});
+        }else remove.push(node);
+      }else remove.push(node);
+    }
+    for(const item of plan){
+      const {node,next}=item;
+      if(node!==next){
+        if(node.nodeType===1&&!node.isEqualNode(next)){
+          item.retain=retain?.(node,next);
+          if(!item.retain)item.children=planReconcile(node,next,geometries,animate,retain,contexts);
+        }
+        else {
+          // An equal restored subtree implicitly restores queued descendants.
+          if(node.nodeType===1&&geometries.retirements?.size)for(const pending of geometries.retirements.keys())if(node.contains(pending)){
+            geometries.retirements.delete(pending);
+            for(let ancestor=pending;ancestor;ancestor=ancestor.parentElement){markups.delete(ancestor);if(ancestor===node)break;}
+          }
+        }
+      }
+    }
+    return {root,plan,remove};
+  }
+  function applyReconcile({root,plan,remove},geometries){
+    for(const node of remove){if(node.nodeType===1)finish(node);node.remove();}
+    let cursor=root.firstChild,deferred=false;
+    for(const {node,next,children,retain}of plan){
+      if(children){deferred=attributes(node,next)||deferred;deferred=applyReconcile(children,geometries)||deferred;}
+      else if(retain){
+        deferred=attributes(node,next)||deferred;retain();markups.delete(node);
+        const walker=document.createTreeWalker(node,NodeFilter.SHOW_ALL);let child;
+        while((child=walker.nextNode())){markups.delete(child);const measurement=measurements.get(child);if(measurement)measurement.dirty=true;}
+      }
+      else if(node!==next&&node.nodeType!==1&&node.nodeValue!==next.nodeValue)node.nodeValue=next.nodeValue;
+      if(node!==cursor)root.insertBefore(node,cursor);
+      cursor=node.nextSibling;
+    }
+    geometries.bookends?.set(root,{first:plan[0]?.node??null,last:plan.at(-1)?.node??null});
+    return deferred;
+  }
+  function reconcile(root,incoming,geometries,animate,retain){
+    return applyReconcile(planReconcile(root,incoming,geometries,animate,retain,new Map()),geometries);
+  }
+  const markups=new WeakMap();let transaction=null;
+  function update(root,markup,change,intrinsic=false){
+    const previous=markups.get(root);
+    if(!previous||previous.first!==root.firstChild||previous.last!==root.lastChild)return false;
+    const geometries=transaction?.root.contains(root)?transaction.geometries:null,contexts=new Map();
+    const move={depart:node=>{const geometry=geometries?.get(node);if(geometry)geometries.retirements?.set(node,retire(node,geometry,contexts,false));},arrive:node=>{if(geometries)(geometries.entrances??=new Set()).add(node);}};
+    const memo=change(previous.memo,move);if(!memo)return false;
+    for(let parent=root.parentElement;parent;parent=parent.parentElement)markups.delete(parent);
+    const walker=document.createTreeWalker(root,NodeFilter.SHOW_ALL);let node;
+    while((node=walker.nextNode())){markups.delete(node);if(intrinsic){const measurement=measurements.get(node);if(measurement)measurement.dirty=true;}}
+    if(intrinsic)invalidate(root);
+    markups.set(root,{markup,first:root.firstChild,last:root.lastChild,memo});return true;
+  }
+  function stableUpdate(root,incoming){
+    const old=document.createTreeWalker(root,NodeFilter.SHOW_ALL),next=document.createTreeWalker(incoming,NodeFilter.SHOW_ALL),parents=new WeakMap([[root,incoming]]),pairs=[];
+    let current=old.nextNode(),desired=next.nextNode();
+    while(current||desired){
+      if(!current||!desired||current.nodeType!==desired.nodeType||current.nodeName!==desired.nodeName||parents.get(current.parentNode)!==desired.parentNode||key(current,0)!==key(desired,0))return null;
+      pairs.push([current,desired]);parents.set(current,desired);current=old.nextNode();desired=next.nextNode();
+    }
+    let deferred=false;
+    for(const [current,desired]of pairs){
+      markups.delete(current);const measurement=measurements.get(current);if(measurement)measurement.dirty=true;
+      if(current.nodeType===1)deferred=attributes(current,desired)||deferred;
+      else if(current.nodeValue!==desired.nodeValue)current.nodeValue=desired.nodeValue;
+    }
+    return deferred;
+  }
+  function batch(root,change,measure=true,defer=false){
+    return layout(root,geometries=>{
+      const previous=transaction;transaction={root,geometries};
+      try{return change();}finally{transaction=previous;}
+    },actors,measure,defer);
+  }
+  function patch(root, markup, animate = true, stable = false, retain = null) {
+    const previous=markups.get(root);
+    if(previous?.markup===markup&&previous.first===root.firstChild&&previous.last===root.lastChild){details(root);return;}
+    for(let parent=root.parentElement;parent;parent=parent.parentElement)markups.delete(parent);
     const template = document.createElement('template'); template.innerHTML = markup; details(template.content);
-    const result=animate?layout(root,geometries=>reconcile(root,template.content,geometries,true)):reconcile(root,template.content,new Map(),false);
-    details(root);return result;
+    let result=stable&&!retain&&previous&&previous.first===root.firstChild&&previous.last===root.lastChild?stableUpdate(root,template.content):null;
+    if(result===null)result=animate?(transaction?.root.contains(root)?reconcile(root,template.content,transaction.geometries,true,retain):layout(root,geometries=>reconcile(root,template.content,geometries,true,retain))):reconcile(root,template.content,new Map(),false,retain);
+    details(root);invalidate(root);
+    // A spring owns temporary presentation styles until it settles. Do not
+    // memoize an incoming style request that reconciliation had to defer.
+    const ends=transaction?.root.contains(root)?transaction.geometries.bookends?.get(root):null;
+    if(!result)markups.set(root,{markup,first:ends?ends.first:root.firstChild,last:ends?ends.last:root.lastChild});else markups.delete(root);
+    return result;
   }
   function switchControl(input) {
     const target = input.checked ? 13 : 0;
@@ -283,5 +530,5 @@ const TactileFlow = (() => {
   addEventListener('pageshow', () => { suspended = document.hidden; });
   document.addEventListener('visibilitychange', () => { suspended = document.hidden; if (suspended) finish(); });
   details(document);
-  return { model, integrate, advance, bounds, reduced, spring, value, cancel, finish, reveal, visible, disclosure, resize, layout, patch, details, switchControl, onSettle: fn => settlers.add(fn), active: () => moving.size > 0 };
+  return { model, integrate, advance, bounds, reduced, spring, value, cancel, finish, reveal, visible, disclosure, resize, layout, batch, patch, update, details, switchControl, onSettle: fn => settlers.add(fn), active: () => moving.size > 0 || arrivals.size > 0 || pendingLayouts.size > 0 };
 })();

@@ -78,7 +78,7 @@ assert.doesNotMatch($('#forecast-body').innerHTML,/\d%/,'sparse/loading placehol
 
 // Execute the real draw method: the reported narrow layout must draw all 24 marks, never one selected row.
 const drawStart=html.indexOf('  drawPaths(ctx,G){'),drawEnd=html.indexOf('  drawBranches(ctx,G){',drawStart);
-const painter=new Function('Forecast','ForecastViews','COL','FONT_UI','rgbOf','rgbStr','return ({'+html.slice(drawStart,drawEnd)+'});')({source:fixture,view:'paths',current:true,selected:'IIIIII',field:V.field},V,{paper:'#eee',up:'#080',flat:'#888',down:'#800',ink:'#111','ink-2':'#555'},'sans-serif',()=>[128,128,128],()=> '#888');
+const painter=new Function('Forecast','ForecastViews','COL','FONT_UI','rgbOf','rgbStr','return ({'+html.slice(drawStart,drawEnd)+'});')({source:fixture,view:'paths',current:true,selected:'IIIIII',field:V.field,outcomes:prefix=>V.outcomes(fixture,prefix)},V,{paper:'#eee',up:'#080',flat:'#888',down:'#800',ink:'#111','ink-2':'#555'},'sans-serif',()=>[128,128,128],()=> '#888');
 for(const width of [320,600,736,1024]){
   const shapes=[],ctx={save(){},restore(){},fillText(){},fillRect(...r){shapes.push(r);}};
   painter.modeMix=1;painter.drawStateGlyph=()=>{};

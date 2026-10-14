@@ -507,11 +507,16 @@ function moveParams(P, i, dv) {
 function flipParams(P) { const Q = copyParams(P); Q.o0 = P.c[0]; Q.c[0] = P.o0; Q.d[0] = P.d[0] === 'u' ? 'd' : 'u'; return Q; }
 /* ---- end of the chain ---- */
 function rr(ctx, x, y, w, h, r) { r = Math.max(0, Math.min(r, w / 2, h / 2)); ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
-function fitCanvas(cv, w, h) {
-  const dpr = Math.min(2, window.devicePixelRatio || 1), W = Math.round(w * dpr), H = Math.round(h * dpr);
-  if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+function fitCanvas(cv, w, h, dpr = Math.min(2, window.devicePixelRatio || 1), reserve = false) {
+  const W = Math.round(w * dpr), H = Math.round(h * dpr);
+  // Offscreen capacity grows in chunks instead of reallocating for every reference-panel pixel.
+  if (reserve ? cv.width < W || cv.height < H || cv.flowDpr !== dpr : cv.width !== W || cv.height !== H) {
+    cv.width = reserve ? Math.ceil(W/64)*64 : W; cv.height = reserve ? Math.ceil(H/64)*64 : H;
+  }
+  cv.flowDpr=dpr;cv.flowWidth=W;cv.flowHeight=H;
   const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); return ctx;
 }
+function paintCanvas(ctx,cv,x,y,w,h){ctx.drawImage(cv,0,0,cv.flowWidth??cv.width,cv.flowHeight??cv.height,x,y,w,h);}
 const FONT_UI = '"Zen Kaku Gothic New", "Hiragino Sans", system-ui, sans-serif';
 const FONT_MIN = '"Shippori Mincho", "Hiragino Mincho ProN", serif';
 
@@ -801,16 +806,18 @@ const Forecast = {
     const next=ForecastViews.reconcile(this,{fresh:Match.fresh(),failed:Match.failed,data:Match.result?.panes?.cont,key:Match.resultKey});
     const changed=next.source!==this.source;Object.assign(this,next);
     const c=this.source,F=this.field(G),busy=['loading','refreshing'].includes(this.phase);
+    const semantic=[this.view,this.prefix,this.selected,this.phase,this.current,this.fan].join('|');
+    if(changed||semantic!==this.semantic){
+    this.semantic=semantic;
     this.panel.setAttribute('aria-busy',String(busy));this.panel.dataset.phase=this.phase;
     $('#forecast-retry').hidden=this.phase!=='error';
     const messages={ready:'',loading:'Finding matching continuations…',refreshing:'Updating · previous result',sparse:'Fewer than 30 complete continuations',error:c?'Update failed · previous result':'Continuation unavailable'};
     $('#forecast-message').textContent=messages[this.phase];
-    Object.assign($('#forecast-message').style,{left:`${F.left}px`,top:`${F.top-22}px`,width:`${Math.max(0,F.right-F.left-50)}px`});
-    Object.assign($('#forecast-retry').style,{left:`${F.right-48}px`,top:`${F.top-22}px`});
     $('#forecast-message').dataset.tip=(messages[this.phase]||'Historical continuation probabilities')+'. '+(c?`${c.n.toLocaleString('en-GB')} matched windows with all six following bars. `:'No probability estimate is available. ')+(this.current?'':c?'These are the previous composition’s readings; outcome selection waits for the update. ':'')+ForecastViews.definition;
     const status=`${messages[this.phase]||`${c?.n.toLocaleString('en-GB')} complete matched windows`}. ${this.view}. Fan ${this.fan?'on':'off'}.`;
     if($('#forecast-status').textContent!==status)$('#forecast-status').textContent=status;
     for(const pane of document.querySelectorAll('.pane')){pane.dataset.updating=String(!!Match.result&&!this.current);pane.setAttribute('aria-busy',String(busy));}
+    }
     const key=`${this.view}|${this.prefix}|${this.selected}|${this.phase}`;
     const sceneKey=`${this.view}|${this.prefix}`;
     if(changed||sceneKey!==this.sceneKey&&(this.view==='branches'||this.sceneKey?.startsWith('branches|')))Stage.changeForecast();
@@ -820,10 +827,16 @@ const Forecast = {
       this.rendered=key;this.context?.cancelFor?.(this.body);this.context?.cancelFor?.(this.fanHits);
       Flow.patch(this.body,this.markup(),false);
       Flow.patch(this.fanHits,c?'<button type="button" class="forecast-fan-hit" data-kind="fan" aria-label="Historical closing-price fan"></button>'+c.fan.flatMap((q,j)=>q.map((_,k)=>`<span class="forecast-fan-point" data-step="${j}" data-quantile="${k}" data-key="fan-${j}-${k}"></span>`)).join(''):'',false);
+      this.placement=null;this.tipSource=null;
       if(focused){const target=[...this.body.querySelectorAll('[data-key]')].find(b=>b.dataset.key===focused);target?.focus({preventScroll:true});}
       App.redraw();
     }
     this.place(G,F);
+  },
+  outcomes(prefix=''){
+    if(this.cohortSource!==this.source){this.cohortSource=this.source;this.cohorts=new Map();}
+    if(!this.cohorts.has(prefix))this.cohorts.set(prefix,ForecastViews.outcomes(this.source,prefix));
+    return this.cohorts.get(prefix);
   },
   markup(){
     const c=this.source,V=ForecastViews,escape=s=>String(s).replaceAll('&','&amp;').replaceAll('"','&quot;').replaceAll('<','&lt;');
@@ -856,8 +869,12 @@ const Forecast = {
     return html;
   },
   place(G,F){
-    const set=this.source?ForecastViews.outcomes(this.source,this.view==='branches'?this.prefix:''):null;
+    let lo=Infinity,hi=-Infinity;for(const b of S.bars){lo=Math.min(lo,b.dv[0]);hi=Math.max(hi,b.dv[3]);}
+    const placement=[G.w,G.h,G.forecastLeft,G.plotTop,G.plotBottom,...F.xs,F.width,lo,hi,Stage.view.lo,Stage.view.hi,this.semantic].join('|');
+    if(this.placement===placement)return;this.placement=placement;
+    const set=this.source?this.outcomes(this.view==='branches'?this.prefix:''):null;
     const put=(el,x,y,w,h)=>Object.assign(el.style,{left:`${x}px`,top:`${y}px`,width:`${Math.max(0,w)}px`,height:`${Math.max(0,h)}px`});
+    put($('#forecast-message'),F.left,F.top-22,F.right-F.left-50,22);put($('#forecast-retry'),F.right-48,F.top-22,48,22);
     this.body.querySelectorAll('[data-kind]').forEach(el=>{
       const j=+el.dataset.step,k=+el.dataset.stateIndex,kind=el.dataset.kind;
       if(kind==='path'){
@@ -876,13 +893,14 @@ const Forecast = {
     this.fanHits.hidden=!this.fan||!this.source;
     if(this.source){
       const c=this.source,fan=this.fanHits.querySelector('[data-kind="fan"]');
-      fan.dataset.tip=ForecastViews.fanTip(c)+(this.current?'':' Previous composition’s fan.');
+      const tipsChanged=this.tipSource!==c||this.tipCurrent!==this.current;
+      if(tipsChanged)fan.dataset.tip=ForecastViews.fanTip(c)+(this.current?'':' Previous composition’s fan.');
       put(fan,G.forecastLeft+8,G.plotTop,F.xs[5]-G.forecastLeft-8,G.plotH);
-      let lo=Infinity,hi=-Infinity;for(const b of S.bars){lo=Math.min(lo,b.dv[0]);hi=Math.max(hi,b.dv[3]);}
       this.fanHits.querySelectorAll('[data-quantile]').forEach(el=>{
         const j=+el.dataset.step,k=+el.dataset.quantile,y=Stage.Y(lo+c.fan[j][k]*(hi-lo),G);
-        put(el,F.xs[j]-9,y-5,18,10);el.dataset.tip=ForecastViews.fanTip(c,j,k)+(this.current?'':' Previous composition’s fan.');
+        put(el,F.xs[j]-9,y-5,18,10);if(tipsChanged)el.dataset.tip=ForecastViews.fanTip(c,j,k)+(this.current?'':' Previous composition’s fan.');
       });
+      this.tipSource=c;this.tipCurrent=this.current;
     }
   },
 };
@@ -893,11 +911,12 @@ const Stage = {
   fanWeight: 1, exampleWeight: 0, futureBars: null,
   plot: { cur: new Float64Array(2), vel: new Float64Array(2), tgt: new Float64Array(2), ready: false },
   pinFrom: null, pinHov: null, pinPress: null, trace: null,
+  measureBox(){return this.box={w:this.wrap.clientWidth,h:this.wrap.clientHeight,hintTop:this.hint.offsetTop,hintHeight:this.hint.offsetHeight};},
   geom() {
-    const w = this.wrap.clientWidth, h = this.wrap.clientHeight, N = S.bars.length;
+    const {w,h,hintTop,hintHeight}=this.frameBox||this.measureBox(),N=S.bars.length;
     // the plot starts below the hint, which wraps onto several lines on a phone. Where it starts and ends follows the
     // canvas, but eases there and holds still while you drag, so a change of layout around the paper never jumps the drawing
-    const top = Math.max(70, this.hint.offsetTop + this.hint.offsetHeight + 24), P = this.plot;
+    const top = Math.max(70, hintTop + hintHeight + 24), P = this.plot;
     const fixed=ForecastViews.geometry(w,N),bw=fixed.baseBw*(.55+S.space*.65);
     const {spacing,xs}=fixed,extra=Forecast.reserve(w,fixed.forecastLeft,top);
     P.tgt[0] = top; P.tgt[1] = Math.max(top + 160, h - 84 - extra);
@@ -935,22 +954,27 @@ const Stage = {
     return busy;
   },
   changeForecast() {
-    if (this.forecastSurface && !calm()) {
-      this.departingForecast = document.createElement('canvas');
-      this.departingForecast.width = this.forecastSurface.width; this.departingForecast.height = this.forecastSurface.height;
-      this.departingForecast.getContext('2d').drawImage(this.forecastSurface, 0, 0);
+    if (this.forecastSurface?.flowBox && !calm()) {
+      const current=this.forecastSurface,old=this.departingForecast,C=current.flowBox,O=old?.flowBox;
+      const box={x:Math.min(C.x,O?.x??C.x),y:Math.min(C.y,O?.y??C.y)};
+      box.w=Math.max(C.x+C.w,O?O.x+O.w:0)-box.x;box.h=Math.max(C.y+C.h,O?O.y+O.h:0)-box.y;
+      const snapshot=document.createElement('canvas'),ctx=fitCanvas(snapshot,box.w,box.h);ctx.translate(-box.x,-box.y);
+      const opacity=canvas=>{const n=parseFloat(canvas.style.opacity);return Number.isFinite(n)?n:1;};
+      ctx.globalAlpha=opacity(current);paintCanvas(ctx,current,C.x,C.y,C.w,C.h);
+      if(old){ctx.globalCompositeOperation='destination-over';ctx.globalAlpha=opacity(old);paintCanvas(ctx,old,O.x,O.y,O.w,O.h);}
+      old?.remove();current.remove();this.departingForecast=snapshot;this.forecastSurface=null;this.layer(snapshot,box);snapshot.style.opacity='1';
       this.scene = 0;
-    } else { this.scene = 1; this.sceneVelocity = 0; this.departingForecast = null; }
+    } else { this.scene = 1; this.sceneVelocity = 0; this.departingForecast?.remove();this.departingForecast = null; }
   },
-  settle() {
+  settle(paint=true) {
     const G = this.geom(),id=identity(); this.view.cur.set(this.view.tgt); this.view.vel.fill(0); this.plot.cur.set(this.plot.tgt); this.plot.vel.fill(0);
     S.bars.forEach((b,i) => { b.x = G.xs[i]; b.vx = 0; b.dv.set(b.v); b.vv.fill(0); b.a = 1; b.va = 0; b.col=(S.colored?COL.rgb[id.d[i]]:COL.rgb.z).slice(); });
-    this.ghosts = []; this.traces = []; this.scene = 1; this.sceneVelocity = 0; this.departingForecast = null;
+    this.ghosts = []; this.traces = []; this.scene = 1; this.sceneVelocity = 0; this.departingForecast?.remove();this.departingForecast = null;
     this.modeMix = Forecast.view === 'paths' ? 1 : 0; this.fanWeight = Forecast.fan ? 1 : 0;
     this.fanA = Match.fresh() && !Match.failed ? 1 : Forecast.source ? .35 : 0;
     this.tracePresence = this.trace ? 1 : 0;
     if (this.trace) { this.trace.a = 1; this.trace.va = 0; }
-    this.scalarVelocity = {}; this.draw();
+    this.scalarVelocity = {}; if(paint)this.draw();
   },
   step(dt) {
     let busy = false;
@@ -966,7 +990,7 @@ const Stage = {
     if (this.departingForecast) {
       const x=[this.scene],v=[this.sceneVelocity];
       if (Flow.advance(x,v,[1],dt,.0008,calm())) busy=true;
-      else this.departingForecast=null;
+      else{this.departingForecast.remove();this.departingForecast=null;}
       this.scene=clamp(x[0],0,1);this.sceneVelocity=v[0];
     }
     S.bars.forEach((b,i) => {
@@ -1219,37 +1243,39 @@ const Stage = {
     const G = this.geom(); if (!G.w || !G.h) return;
     const ctx = fitCanvas(this.cv, G.w, G.h), id = identity();
     ctx.clearRect(0, 0, G.w, G.h);
+    if(!this.guideSurface)this.guideSurface=document.createElement('canvas');
+    const guide=fitCanvas(this.guideSurface,G.w,G.h,Math.min(2,devicePixelRatio||1),true);this.layer(this.guideSurface,{x:0,y:0,w:G.w,h:G.h},true);
+    guide.clearRect(0,0,this.guideSurface.width/this.guideSurface.flowDpr,this.guideSurface.height/this.guideSurface.flowDpr);
     const Y = v => this.Y(v, G), x0 = 24, x1 = G.w - 52;
     // Keep the root levels as faint rules; rank labels would overlap the future columns.
     const sb = S.bars[S.sel];
-    ctx.font = `500 11px ${FONT_MIN}`; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
     const seen = new Set();
     for (let k = 3; k >= 0; k--) {
       const rank = id.r[S.sel * 4 + k]; if (seen.has(rank)) continue; seen.add(rank);
       const y = Math.round(Y(sb.dv[k])) + 0.5;
-      ctx.strokeStyle = COL.mist; ctx.lineWidth = 1; ctx.setLineDash([1, 4]);
-      ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke(); ctx.setLineDash([]);
+      guide.strokeStyle = COL.mist; guide.lineWidth = 1; guide.setLineDash([1, 4]);
+      guide.beginPath(); guide.moveTo(x0, y); guide.lineTo(x1, y); guide.stroke(); guide.setLineDash([]);
     }
     // 鎖: each bar opens where the one before it closed, a hairline from that close to this open
-    ctx.strokeStyle = COL['ink-3']; ctx.lineWidth = 1; ctx.globalAlpha = this.trace ? 0.25 : 0.6;
+    guide.strokeStyle = COL['ink-3']; guide.lineWidth = 1; guide.globalAlpha = this.trace ? 0.25 : 0.6;
     for (let i = 1; i < G.N; i++) {
       const a = S.bars[i - 1], c = S.bars[i], y = Y(closeOf(a.dv, a.d)), x0 = a.x + G.bw / 2, x1 = c.x - G.bw / 2;
-      if (x1 > x0) { ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke(); }
+      if (x1 > x0) { guide.beginPath(); guide.moveTo(x0, y); guide.lineTo(x1, y); guide.stroke(); }
     }
     // exact ties between bars, besides the chain itself: the only equalities the engine sees
-    ctx.strokeStyle = COL.ai; ctx.lineWidth = 1; ctx.setLineDash([3, 4]); ctx.globalAlpha = this.trace ? 0.3 : 0.8;
+    guide.strokeStyle = COL.ai; guide.lineWidth = 1; guide.setLineDash([3, 4]); guide.globalAlpha = this.trace ? 0.3 : 0.8;
     for (let i = 0; i < G.N; i++) for (let j = i + 1; j < G.N; j++) {
       const a = S.bars[i], c = S.bars[j], done = new Set(j === i + 1 ? [closeOf(a.v, a.d)] : []);
       for (let k = 0; k < 4; k++) for (let q = 0; q < 4; q++) if (a.v[k] === c.v[q] && !done.has(a.v[k])) {
         done.add(a.v[k]); const y = Math.round(Y(a.dv[k])) + 0.5;
-        ctx.beginPath(); ctx.moveTo(a.x, y); ctx.lineTo(c.x, y); ctx.stroke();
+        guide.beginPath(); guide.moveTo(a.x, y); guide.lineTo(c.x, y); guide.stroke();
       }
     }
-    ctx.setLineDash([]); ctx.globalAlpha = 1;
+    guide.setLineDash([]); guide.globalAlpha = 1;ctx.setLineDash([]); ctx.globalAlpha = 1;
     // the level a dragged part is easing onto, drawn in as it comes near and full once it rests there
     if (this.snapV !== null && this.snapA > 0.02) {
       const y = Math.round(Y(this.snapV)) + 0.5;
-      ctx.strokeStyle = COL.ai; ctx.lineWidth = 1.2; ctx.globalAlpha = this.snapA * this.snapA; ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke(); ctx.globalAlpha = 1;
+      guide.strokeStyle = COL.ai; guide.lineWidth = 1.2; guide.globalAlpha = this.snapA * this.snapA; guide.beginPath(); guide.moveTo(x0, y); guide.lineTo(x1, y); guide.stroke(); guide.globalAlpha = 1;
     }
     this.drawForecast(ctx,G);
     for (const g of this.ghosts) this.drawCandle(ctx, G, g.x, g.dv, g.col, g.a);
@@ -1318,16 +1344,25 @@ const Stage = {
   },
   // 続: the bars after the windows that match, each scaled so its own low and high sit on the drawing's, as a fan of
   // their closes (10 to 90%, 25 to 75% and the median) from the last bar's close, with the shape's high and low carried on
+  layer(canvas,box,background=false){
+    if(!this.paintRoot){this.paintRoot=document.createElement('div');this.paintRoot.setAttribute('aria-hidden','true');this.paintRoot.inert=true;
+      Object.assign(this.paintRoot.style,{position:'absolute',inset:'0',overflow:'hidden',pointerEvents:'none'});this.wrap.insertBefore(this.paintRoot,this.cv);}
+    if(canvas.parentElement!==this.paintRoot){if(background)this.paintRoot.prepend(canvas);else this.paintRoot.append(canvas);}
+    canvas.flowBox={...box};canvas.setAttribute('aria-hidden','true');
+    const styles={left:`${box.x}px`,top:`${box.y}px`,right:'auto',bottom:'auto',width:`${canvas.width/canvas.flowDpr}px`,height:`${canvas.height/canvas.flowDpr}px`,pointerEvents:'none'};
+    for(const [key,value]of Object.entries(styles))if(canvas.style[key]!==value)canvas.style[key]=value;
+  },
   drawForecast(ctx,G) {
     if(!this.forecastSurface)this.forecastSurface=document.createElement('canvas');
-    const layer=fitCanvas(this.forecastSurface,G.w,G.h);layer.clearRect(0,0,G.w,G.h);
+    const x=Math.max(0,Math.floor(G.forecastLeft-24)),y=Math.max(0,Math.floor(G.plotTop-24));
+    const box={x,y,w:G.w-x,h:Math.min(G.h,Math.ceil(G.plotBottom+24))-y};
+    const layer=fitCanvas(this.forecastSurface,box.w,box.h,Math.min(2,devicePixelRatio||1),true);layer.clearRect(0,0,this.forecastSurface.width/this.forecastSurface.flowDpr,this.forecastSurface.height/this.forecastSurface.flowDpr);layer.translate(-x,-y);
+    this.layer(this.forecastSurface,box);
     this.drawFan(layer,G);
     if(Forecast.source){this.drawStates(layer,G);this.drawPaths(layer,G);this.drawBranches(layer,G);}else this.drawForecastEmpty(layer,G);
     if(this.departingForecast){
-      layer.save();layer.globalCompositeOperation='destination-in';layer.globalAlpha=this.scene;layer.fillRect(0,0,G.w,G.h);layer.restore();
-      layer.save();layer.globalCompositeOperation='destination-over';layer.globalAlpha=1-this.scene;layer.drawImage(this.departingForecast,0,0,G.w,G.h);layer.restore();
-    }
-    ctx.drawImage(this.forecastSurface,0,0,G.w,G.h);
+      this.forecastSurface.style.opacity=String(this.scene);this.departingForecast.style.opacity=String(1-this.scene);
+    }else this.forecastSurface.style.opacity='1';
   },
   drawFan(ctx, G) {
     const c=Forecast.source;
@@ -1341,9 +1376,16 @@ const Stage = {
     const neutral=rgbOf(COL['ink-2']),indigo=rgbOf(COL.ai);
     const pigment=neutral.map((v,j)=>Math.round(v*.78+indigo[j]*.22));
     const paint=rgbStr(pigment),weight=this.fanA*this.fanWeight*FAN_OPTIONS.strength*(1-(this.tracePresence||0)*.7);
+    // The blurred wash cannot resolve sub-half-pixel projection changes. Keep
+    // its texture stable while painting every quantile contour at exact coordinates.
+    const key=[G.w,G.h,G.plotTop,G.plotBottom,y0,lx,...xs,...c.fan.flat().map(Y)].map(v=>Math.round(v*2)).join('|')+'|'+paint+'|'+FAN_OPTIONS.softness;
+    // Raster work is limited to the fan's clipped region; fading reuses its ink.
+    const box={x:Math.max(0,Math.floor(lx-24)),y:Math.max(0,Math.floor(G.plotTop-24))};
+    box.w=Math.max(1,G.w-box.x);box.h=Math.max(1,Math.min(G.h,Math.ceil(G.plotBottom+24))-box.y);
+    if(this.fanCache?.source!==c||this.fanCache.key!==key){
     if(!this.fanSurface)this.fanSurface=document.createElement('canvas');
-    const wash=fitCanvas(this.fanSurface,G.w,G.h);
-    wash.clearRect(0,0,G.w,G.h);wash.fillStyle=paint;
+    const density=.4, wash=fitCanvas(this.fanSurface,box.w*density,box.h*density,1,true);
+    wash.clearRect(0,0,this.fanSurface.width,this.fanSurface.height);wash.scale(density,density);wash.translate(-box.x,-box.y);wash.fillStyle=paint;
     const hull=(lower,upper)=>{
       wash.beginPath();wash.moveTo(lx,y0);
       c.fan.forEach((q,j)=>wash.lineTo(xs[j],Y(upper(q))));
@@ -1361,10 +1403,14 @@ const Stage = {
     const fade=wash.createLinearGradient(lx,0,end,0);
     fade.addColorStop(0,'rgba(0,0,0,0)');fade.addColorStop(.08,'rgba(0,0,0,1)');
     fade.addColorStop(.94,'rgba(0,0,0,1)');fade.addColorStop(1,'rgba(0,0,0,0)');
-    wash.fillStyle=fade;wash.fillRect(0,0,G.w,G.h);wash.globalCompositeOperation='source-over';
-    ctx.save();ctx.beginPath();ctx.rect(0,G.plotTop-24,G.w,G.plotH+48);ctx.clip();
-    ctx.globalAlpha=weight;ctx.filter=`blur(${6*FAN_OPTIONS.softness}px)`;
-    ctx.drawImage(this.fanSurface,0,0,G.w,G.h);ctx.filter='none';
+    wash.fillStyle=fade;wash.fillRect(box.x,box.y,box.w,box.h);wash.globalCompositeOperation='source-over';
+    if(!this.fanBlurSurface)this.fanBlurSurface=document.createElement('canvas');
+    const blur=fitCanvas(this.fanBlurSurface,box.w*density,box.h*density,1,true);blur.clearRect(0,0,this.fanBlurSurface.width,this.fanBlurSurface.height);
+    blur.filter=`blur(${6*FAN_OPTIONS.softness*density}px)`;paintCanvas(blur,this.fanSurface,0,0,box.w*density,box.h*density);blur.filter='none';
+    this.fanCache={source:c,key,box};
+    }
+    ctx.save();ctx.beginPath();ctx.rect(0,G.plotTop-24,G.w,G.plotH+48);ctx.clip();ctx.globalAlpha=weight;
+    const texture=this.fanCache.box;paintCanvas(ctx,this.fanBlurSurface,texture.x,texture.y,texture.w,texture.h);
     const line=ctx.createLinearGradient(lx,0,end,0);
     line.addColorStop(0,rgbStr(pigment,0));line.addColorStop(.08,paint);
     line.addColorStop(.94,paint);line.addColorStop(1,rgbStr(pigment,0));
@@ -1388,7 +1434,7 @@ const Stage = {
   drawStates(ctx,G) {
     const mix=this.modeMix??(Forecast.view==='paths'?1:0);
     if(Forecast.view==='branches'||mix>.999)return;
-    const c=Forecast.source,set=ForecastViews.outcomes(c),F=Forecast.field(G);
+    const c=Forecast.source,set=Forecast.outcomes(),F=Forecast.field(G);
     ctx.save();
     const opacity=(Forecast.current?1:.4)*(1-mix);
     for(let j=0;j<6;j++){
@@ -1414,7 +1460,7 @@ const Stage = {
     const colors={U:COL.up,I:COL.flat,D:COL.down},glyphs={U:'↑',I:'•',D:'↓'};
     const alpha=(Forecast.current?1:.4)*mix,other=c.n-leaders.reduce((n,[,k])=>n+k,0);
     const tint=(color,a)=>rgbStr(paper.map((v,j)=>Math.round(v+(rgbOf(color)[j]-v)*a)));
-    const fromY=(key,j)=>{const p=ForecastViews.outcomes(c).grid[j].map(n=>n/c.n),k='UID'.indexOf(key);return F.top+F.height*(p.slice(0,k).reduce((a,b)=>a+b,0)+p[k]/2);};
+    const fromY=(key,j)=>{const p=Forecast.outcomes().grid[j].map(n=>n/c.n),k='UID'.indexOf(key);return F.top+F.height*(p.slice(0,k).reduce((a,b)=>a+b,0)+p[k]/2);};
     ctx.save();ctx.textBaseline='middle';ctx.textAlign='left';ctx.font=`400 11px ${FONT_UI}`;ctx.fillStyle=COL['ink-2'];ctx.globalAlpha=alpha;
     ctx.fillText(F.right-F.left<170?'Whole-path odds':'Whole-path probability',F.left,F.top+8);
     ctx.fillText(`Other paths ${ForecastViews.percent(other/c.n)}`,F.left,F.top+F.height-8);
@@ -1431,7 +1477,7 @@ const Stage = {
   },
   drawBranches(ctx,G){
     if(Forecast.view!=='branches')return;
-    const c=Forecast.source,F=Forecast.field(G),set=ForecastViews.outcomes(c,Forecast.prefix),j=Forecast.prefix.length;
+    const c=Forecast.source,F=Forecast.field(G),set=Forecast.outcomes(Forecast.prefix),j=Forecast.prefix.length;
     const glyphs={U:'↑',I:'•',D:'↓'},colors=[COL.up,COL.flat,COL.down],paper=rgbOf(COL.paper);
     const fresh=Forecast.current?1:.4,showRates=F.width>=30,cellHeight=F.branchHeight-4;
     ctx.save();ctx.beginPath();ctx.rect(F.left,F.top,F.right-F.left,F.height);ctx.clip();
@@ -1580,14 +1626,16 @@ Stage.cv.addEventListener('keydown', e => {
 });
 // a pinch on the paper spreads the bars apart or draws them together
 Stage.cv.addEventListener('wheel', e => { if (!e.ctrlKey) return; e.preventDefault(); setSpace(S.space - e.deltaY * 0.006); }, { passive: false });
-new ResizeObserver(() => {
-  if(!Flow.value($('#ref'),'reference')){Flow.finish();Stage.plot.ready=false;if(!Stage.drag)Stage.settle();}
+const canvasResize=new ResizeObserver(entries => {
+  Stage.measureBox();
+  if(entries.some(entry=>entry.target===Stage.wrap)&&!Flow.value($('#ref'),'reference'))Stage.resizePending=true;
   App.redraw();
-}).observe(Stage.wrap);
+});
+canvasResize.observe(Stage.wrap);canvasResize.observe(Stage.hint);
 
 /* ================= the history: one matcher, three ways of holding, mixed as you like ================= */
 const Match = {
-  worker: null, ready: false, failed: false, id: 0, shown: 0, sentKey: '', timer: 0, sent: null, result: null, sticky: -1,
+  worker: null, ready: false, failed: false, id: 0, shown: 0, sentKey: '', timer: 0, sent: null, result: null, resultSent:null, sticky: -1,
   drawnKey: '', resultKey: '',
   start() {
     try {
@@ -1618,6 +1666,7 @@ const Match = {
   },
   key() { return JSON.stringify(this.query().q); },
   fail(msg) {
+    this.flushPresentation();
     this.failed = true; $('#prog').hidden = true; $('#mmsg').textContent = msg; $('#emaki').classList.add('stale');
     if (!this.result) { $('#emaki').innerHTML = ''; Panes.clear(); }
     App.redraw();
@@ -1628,8 +1677,24 @@ const Match = {
     if (m.type === 'progress') { if (m.id === this.id) { $('#prog').hidden = false; $('#prog i').style.width = `${(m.f * 100).toFixed(1)}%`; } return; }
     if (m.type === 'readings') { Panes.readings = 'ready'; if (this.result) { this.sentKey = ''; this.send(); } return; }
     if (m.type === 'readings-error') { Panes.readings = 'failed'; Panes.note = m.message; if (this.result) Panes.render(this.result); return; }
-    if (m.type === 'result' && m.id === this.id) { this.result = m; this.resultKey = this.sentKey; this.render(); Panes.render(m); Stage.fit(); App.redraw(); }
+    if (m.type === 'result' && m.id === this.id) {
+      this.result = m; this.resultSent=this.sent;this.resultKey = this.sentKey;
+      const sent=this.resultSent,cards=()=>{this.render(sent);Stage.fit();App.redraw();};
+      if((m.panes?.rows.length||0)>70){
+        this.presentation={result:m,tasks:[()=>Panes.render(m,'left',sent),()=>Panes.render(m,'right',sent),cards]};
+        setTimeout(()=>this.presentResult(),0);
+      }else{this.presentation=null;Panes.render(m);cards();}
+    }
   },
+  presentResult(schedule=true){
+    const pending=this.presentation;if(!pending)return;
+    if(pending.result!==this.result){this.presentation=null;return;}
+    pending.tasks.shift()();
+    if(this.presentation!==pending)return;
+    if(!pending.tasks.length)this.presentation=null;
+    else if(schedule)setTimeout(()=>this.presentResult(),0);
+  },
+  flushPresentation(){while(this.presentation)this.presentResult(false);},
   query() {
     const held = heldNow();
     const nx = S.next, next = nx.dir ? { dir: nx.dir, measure: nx.measure, value: nx.measure === 'bps' ? nx.bps : nx.measure === 'atr' ? nx.atr : 0 } : null;
@@ -1650,11 +1715,12 @@ const Match = {
     if (this.ready || !this.result) $('#mmsg').textContent = this.ready ? 'Searching the BTCUSDT history…' : 'Loading the BTCUSDT 15m to 4h klines…';
     this.worker.postMessage({ type: 'query', id: this.id, q });
   },
-  render() {
-    const r = this.result, held = this.sent.held, n = this.sent.q.bars.length;
-    $('#prog').hidden = true;
+  render(sent=this.resultSent||this.sent) {
+    const r = this.result, held = sent.held, n = sent.q.bars.length,current=r.id===this.id;
+    this.presentedResults=r.results;
+    if(current)$('#prog').hidden = true;
     // every count in the sentence covers the timeframes shown, like the rates it is compared with; the chips keep all five
-    const F = r.filter, on = this.sent.q.tfs, sum = a => a.reduce((x, y, k) => x + (on[k] ? y : 0), 0);
+    const F = r.filter, on = sent.q.tfs, sum = a => a.reduce((x, y, k) => x + (on[k] ? y : 0), 0);
     const counts = r.mode === 'nearest' ? (F ? r.exactF : r.exact) : F ? r.countsF : r.counts, total = sum(r.counts), totalF = sum(r.countsF);
     const totalAll = r.counts.reduce((x, y) => x + y, 0), where = on.every(Boolean) ? 'in the history' : 'on the timeframes shown';
     renderChips(counts);
@@ -1668,7 +1734,7 @@ const Match = {
     if (r.mode === 'nearest') {
       const tw = twins ? `${fmt(twins)} exact twin${twins > 1 ? 's' : ''} of the whole pattern ${where}` : `The whole ${NWORD[n] || n}-bar pattern has no exact twin ${where}`;
       msg = F ? `<b>Nothing held.</b> Closest in shape among windows whose next bar ${words} (${everyWindow}). ${twins ? `${tw}; after ${fmt(twinsF)} of them it did.` : tw + '.'}`
-        : `<b>Nothing held.</b> Closest in shape first${this.sent.q.oriented ? ', with your colours' : ''}. ${tw}.`;
+        : `<b>Nothing held.</b> Closest in shape first${sent.q.oriented ? ', with your colours' : ''}. ${tw}.`;
     } else if (r.mode === 'held' && !total) {
       msg = `<b>${fmt(totalAll)} window${totalAll === 1 ? '' : 's'}</b> hold ${relations}, all on timeframes you left out.`;
     } else if (r.mode === 'held') {
@@ -1677,8 +1743,8 @@ const Match = {
         : `<b>${fmt(total)} window${total === 1 ? '' : 's'}</b> hold ${relations}. After them the next bar rose ${pct(sp.up, seen)} and fell ${pct(sp.down, seen)} of the time (whole history: rose ${pct(r.base.up, r.base.n)}). Closest in shape first.`;
     } else if (total) msg = `<b>${fmt(total)} window${total === 1 ? '' : 's'}</b> hold ${relations}, but after none of them the next bar ${words}. The nearest windows where it did are shown with the relations each one breaks.`;
     else msg = `<b>No window holds ${relations}</b>${r.stretch ? ' even with bars skipped' : ''}. The nearest windows${F ? ` whose next bar ${words}` : ''} are shown with the relations each one breaks.`;
-    $('#mmsg').innerHTML = msg + ` <span style="color: var(--ink-3)">· ${r.ms < 1000 ? r.ms + ' ms' : (r.ms / 1000).toFixed(1) + ' s'}${this.until ? ` · BTCUSDT to ${day(this.until)}` : ''}</span>`;
-    const em = $('#emaki'); em.classList.remove('stale');
+    if(current)$('#mmsg').innerHTML = msg + ` <span style="color: var(--ink-3)">· ${r.ms < 1000 ? r.ms + ' ms' : (r.ms / 1000).toFixed(1) + ' s'}${this.until ? ` · BTCUSDT to ${day(this.until)}` : ''}</span>`;
+    const em = $('#emaki'); em.classList.toggle('stale',!current);
     if (!r.results.length) { Flow.patch(em,`<p class="empty">${r.mode === 'held' ? 'Every window that holds is on a timeframe you left out. Include it above to see them.' : 'Nothing to show on the selected timeframes.'}</p>`); this.setTrace(-1); return; }
     const selected=em.querySelector('[aria-pressed="true"]')?.dataset.motionKey;
     Flow.patch(em,r.results.map((x,i)=>this.card(x,i,held)).join(''));
@@ -1688,7 +1754,7 @@ const Match = {
   },
   resultKeyOf(r){return `${r.tf}:${r.start}:${r.picks.join(',')}`;},
   card(r, i, held) {
-    const d = new Date(r.start * 1000), when = `${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })} ${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+    const d = new Date(r.start * 1000), when = `${calendarDay.format(d)} ${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
     const broken = r.broken.map(i2 => held[i2].label);
     const flips = r.flips === 0 ? 'exact' : `${r.flips} flip${r.flips === 1 ? '' : 's'}`, off = `${(r.off * 100).toFixed(1)}% off`;
     const nx = r.next;
@@ -1724,17 +1790,18 @@ const Match = {
     return s + '</svg>';
   },
   setTrace(i) {
-    const r=this.result&&i>=0?this.result.results[i]:null;
+    const r=i>=0?(this.presentedResults||this.result?.results)?.[i]:null;
     if(!r){if(Stage.trace){Stage.trace.retiring=true;Stage.traces.push(Stage.trace);Stage.trace=null;}App.redraw();return;}
     const d=new Date(r.start*1000),key=this.resultKeyOf(r);
-    const content={key,bars:r.drawn,next:r.next?r.next.bar:null,caption:`${r.tf} · ${d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'})} · ${(r.off*100).toFixed(1)}% off · ${r.flips===0?'exact':r.flips+' flips'}`};
+    const content={key,bars:r.drawn,next:r.next?r.next.bar:null,caption:`${r.tf} · ${calendarDay.format(d)} · ${(r.off*100).toFixed(1)}% off · ${r.flips===0?'exact':r.flips+' flips'}`};
     if(Stage.trace?.key===key)Object.assign(Stage.trace,content);
     else{if(Stage.trace){Stage.trace.retiring=true;Stage.traces.push(Stage.trace);}Stage.trace={...content,a:calm()?1:0,va:0};}
     App.redraw();
   },
 };
 // a day as the cards write it, "10 Oct 2026"
-const day = t => new Date(t * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+const calendarDay=new Intl.DateTimeFormat('en-GB',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'});
+const day = t => calendarDay.format(new Date(t * 1000));
 // 次 in words: "rose", "rose at least 10 bps", "fell at least 1 ATR"
 function nextWords(f) {
   const verb = f.dir > 0 ? 'rose' : 'fell', v = Number.isInteger(f.value) ? String(f.value) : String(+f.value.toFixed(2));
@@ -1752,7 +1819,7 @@ async function loadBars() {
 /* ================= the panes: what sets the matching windows apart, and what the shape became ================= */
 const pct = (x, d = 1) => `${(x * 100).toFixed(d)}%`;
 const Panes = {
-  readings: 'loading', note: '', views: { left: 'signal', right: 'signal' }, details: new Map(),
+  readings: 'loading', note: '', views: { left: 'signal', right: 'signal' }, details: new Map(), layoutKeys: new Map(),
   init() {
     try {
       const saved = JSON.parse(localStorage.getItem('ashi.pane-designs'));
@@ -1809,32 +1876,43 @@ const Panes = {
     if (Match.result) this.render(Match.result, side);
   },
   clear() {
+    this.layoutKeys.clear();
     for (const id of ['lrows','lnext','rnext','rbecame','rfan','ncap','rnear']) $('#' + id).replaceChildren();
     $('#lcap').textContent = 'Matching data unavailable.'; $('#rcap').textContent = 'Continuation unavailable.';
   },
-  render(r, onlySide = null) {
+  render(r, onlySide = null, sent=r===Match.result?Match.resultSent||Match.sent:Match.sent) {
     const P = r.panes; if (!P) return;
-    const ctx = { barCount: S.bars.length, timeframes: TF_LABELS.map((label,k) => ({label,k})).filter(t => this.on(t.k)), readings: this.readings, note: this.note, nextWords };
+    const ctx = { barCount: sent?.q.bars.length??S.bars.length, timeframes: TF_LABELS.map((label,k) => ({label,k})).filter(t => sent?.q.tfs[t.k]), readings: this.readings, note: this.note, nextWords };
     for (const side of onlySide ? [onlySide] : ['left','right']) {
       this.remember(side);
       const pane = $(`.pane[data-side="${side}"]`), variant = this.views[side];
-      Flow.resize($('.pane-body',pane),()=>{
-      if (side === 'left') {
-        Flow.patch($('#lcap'), PaneDesigns.caption(r,ctx));
-        Flow.patch($('#lrows'), PaneDesigns.left(variant,r,ctx));
-        Flow.patch($('#lnext'), PaneDesigns.next(r,ctx));
-        Flow.patch($('#lmethod'), PaneDesigns.leftMethod(S.bars.length));
-      } else {
-        Flow.patch($('#rcap'), `<strong>Next ${P.after} bars</strong><span class="pane-meta">${P.cont ? fmt(P.cont.n) + ' windows with all ' + P.after + ' bars available' : 'Complete continuations below 30'}</span>`);
+      const markup=side==='left'?{
+        lcap:PaneDesigns.caption(r,ctx),lrows:PaneDesigns.left(variant,r,ctx),lnext:PaneDesigns.next(r,ctx),lmethod:PaneDesigns.leftMethod(ctx.barCount)
+      }:{
+        rcap:`<strong>Next ${P.after} bars</strong><span class="pane-meta">${P.cont ? fmt(P.cont.n) + ' windows with all ' + P.after + ' bars available' : 'Complete continuations below 30'}</span>`,
+        rnext:PaneDesigns.next(r,ctx),rbecame:PaneDesigns.right(variant,r),rfan:PaneDesigns.terminal(P),rmethod:PaneDesigns.rightMethod(P.after),
+        rnear:P.near.length ? P.near.map((nb,i) => `<div class="pnear" data-motion-key="${nb.a}-${nb.b}-${nb.rel}"><span>${esc(this.nearWord(nb))}<small>${fmt(nb.n)} windows${nb.up ? ` · next rose ${pct(nb.up[0])} · 95% interval ${pct(nb.up[1])}–${pct(nb.up[2])}` : ' · next-bar estimate unavailable'}</small></span><button type="button" data-i="${i}" title="Put its closest instance on the canvas">Try it</button></div>`).join('') : '<p class="pcap">No neighboring patterns found on these timeframes.</p>'
+      };
+      // Generated pane styles only position absolute chart marks. Tabular figure
+      // substitutions keep text width; all other markup/layout changes still FLIP.
+      const layoutKey=variant+'|'+Object.values(markup).join('|').replace(/\s(?:style|aria-label|title)="[^"]*"/g,'').replace(/>([^<]*)</g,(_,text)=>'>'+text.replace(/[0-9]/g,'#')+'<');
+      const measure=this.layoutKeys.get(side)!==layoutKey;this.layoutKeys.set(side,layoutKey);
+      const retainReading=side==='left'&&pane.dataset.view===variant?PaneDesigns.readingUpdater(r):null;
+      const update=()=>Flow.batch(pane,()=>{
+      if(side==='right'){
         Flow.disclosure($('#rnextsec'),variant==='bars');
-        Flow.patch($('#rnext'), PaneDesigns.next(r,ctx));
-        Flow.patch($('#rbecame'), PaneDesigns.right(variant,r));
-        Flow.patch($('#rfan'), PaneDesigns.terminal(P));
-        Flow.patch($('#rmethod'), PaneDesigns.rightMethod(P.after));
         $('#ncap').textContent = 'One changed bar-end comparison · selected timeframes';
-        Flow.patch($('#rnear'), P.near.length ? P.near.map((nb,i) => `<div class="pnear" data-motion-key="${nb.a}-${nb.b}-${nb.rel}"><span>${esc(this.nearWord(nb))}<small>${fmt(nb.n)} windows${nb.up ? ` · next rose ${pct(nb.up[0])} · 95% interval ${pct(nb.up[1])}–${pct(nb.up[2])}` : ' · next-bar estimate unavailable'}</small></span><button type="button" data-i="${i}" title="Put its closest instance on the canvas">Try it</button></div>`).join('') : '<p class="pcap">No neighboring patterns found on these timeframes.</p>');
       }
-      });
+      for(const [id,html]of Object.entries(markup)){
+        const root=$('#'+id);
+        if(id==='lrows'&&!measure&&variant==='signal'&&Flow.update(root,html,memo=>PaneDesigns.updateSignal(root,r,memo)))continue;
+        if(id==='lrows'&&variant==='ledger'&&pane.dataset.view==='ledger'&&Flow.update(root,html,(_,move)=>PaneDesigns.updateLedger(root,r,move),true))continue;
+        Flow.patch(root,html,true,!measure,id==='lrows'?retainReading:null);
+      }
+      },measure,side==='left'&&(P.rows?.length||0)>70);
+      // The pane itself scrolls; its body has no painted size boundary. Keep its
+      // height natural while the visible rows/sections carry the position springs.
+      update();
       pane.dataset.view = variant;
       const remembered = this.details.get(side + '-' + variant);
       for (const d of pane.querySelectorAll('details[data-detail]')) if (remembered?.has(d.dataset.detail)) d.open = remembered.get(d.dataset.detail);
@@ -1954,15 +2032,18 @@ const Ref = {
   transition(open) {
     const wasHidden=this.pane.hidden;
     if(wasHidden&&!open&&!Flow.value(this.pane,'reference'))return;
-    if(open&&!Flow.value(this.pane,'reference')){
+    if((open||!wasHidden)&&!Flow.value(this.pane,'reference')){
       this.work.style.gridTemplateColumns='';this.pane.hidden=false;this.work.dataset.reference='open';
       const columns=getComputedStyle(this.work).gridTemplateColumns.split(' ').map(parseFloat);
       this.columns=columns;
+      const style=getComputedStyle(this.pane);
+      this.contentWidth=columns[0]-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight)-parseFloat(style.borderLeftWidth)-parseFloat(style.borderRightWidth);
     }
     this.pane.hidden=!open;this.pane.inert=!open;this.pane.setAttribute('aria-hidden',String(!open));
     this.pane.dataset.flowVisible='';this.pane.style.setProperty('--flow-display','flex');
     this.work.dataset.reference='open';this.pane.style.overflow='hidden';
     const mobile=innerWidth<=700;
+    if(!mobile)this.pane.style.setProperty('--flow-reference-content-width',`${this.contentWidth}px`);
     Flow.spring(this.pane,'reference',{from:{progress:wasHidden?0:1},to:{progress:open?1:0},
       write:({progress})=>{
         const p=clamp(progress,0,1);this.pane.style.opacity=String(p);
@@ -1972,7 +2053,7 @@ const Ref = {
         App.redraw();this.schedule();
       },done:()=>{
         this.work.style.gridTemplateColumns='';this.pane.style.opacity='';this.pane.style.translate='';this.pane.style.overflow='';
-        this.pane.style.removeProperty('--flow-display');delete this.pane.dataset.flowVisible;
+        this.pane.style.removeProperty('--flow-display');this.pane.style.removeProperty('--flow-reference-content-width');delete this.pane.dataset.flowVisible;
         if(!open)delete this.work.dataset.reference;App.redraw();this.schedule();
       }});
   },
@@ -2110,7 +2191,12 @@ const App = {
     const dt = Math.min(0.032, Math.max(0, (now - this.lastT) / 1000)); this.lastT = now; this.dirty = false;
     let busy = false;
     // one bad frame must never stop the paper for good
-    try { busy = Stage.step(dt); Stage.draw(); } catch (err) { console.error(err); }
+    try {
+      Stage.frameBox=Stage.box&&!Flow.value(Ref.pane,'reference')?Stage.box:Stage.measureBox();
+      if(Stage.resizePending){Stage.resizePending=false;if(!Flow.value(Ref.pane,'reference')){Stage.plot.ready=false;Flow.finish();}}
+      busy = Stage.step(dt); Stage.draw();
+    } catch (err) { console.error(err); }
+    finally{Stage.frameBox=null;}
     if (busy || this.dirty) requestAnimationFrame(t => this.tick(t)); else this.running = false;
   },
 };
@@ -2179,7 +2265,7 @@ $('#space').dataset.tip='Width of the drawn root candle bodies only. Their cente
 Stage.fit(true);
 refresh();
 Match.start();
-Flow.onSettle(()=>{Stage.settle();App.redraw();});
+Flow.onSettle(()=>{if(Match.presentation){Match.flushPresentation();Flow.finish();}Stage.settle(!Stage.frameBox);App.redraw();});
 Flow.reveal($('.top'),0);Flow.reveal($('.stage'),0);Flow.reveal($('.lpane'));Flow.reveal($('.rpane'));
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => {Flow.finish();App.redraw();});
 })();

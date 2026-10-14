@@ -22,7 +22,7 @@ const server=http.createServer((request,response)=>{
 });
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const base=`http://127.0.0.1:${server.address().port}`;
-const settled=page=>page.waitForFunction(()=>!window.__motionProbe.App.running&&!window.__motionProbe.Flow.active()&&!document.getAnimations().some(a=>a.playState==='running'));
+const settled=page=>page.waitForFunction(()=>!window.__motionProbe.Match.presentation&&!window.__motionProbe.App.running&&!window.__motionProbe.Flow.active()&&!document.getAnimations().some(a=>a.playState==='running'));
 const seed=page=>page.evaluate(r=>{
   const M=window.__motionProbe.Match;M.ready=true;M.failed=false;M.sent=M.query();M.sentKey=M.key();
   M.onmsg({...r,type:'result',id:M.id});
@@ -36,6 +36,12 @@ for(const [name,type] of [['Chromium',chromium],['WebKit',webkit]]){
   await page.addInitScript(()=>{window.Worker=class{postMessage(){} terminate(){}};});
   await page.route('https://fonts.**/**',route=>route.abort());
   await page.goto(base);await settled(page);await seed(page);await settled(page);
+  const offsets=await page.evaluate(()=>{
+    const parent=document.createElement('div'),child=document.createElement('div');parent.append(child);document.body.append(parent);
+    const names=['--flow-layout-x','--flow-layout-y','--flow-enter-y'];for(const name of names)parent.style.setProperty(name,'20px');
+    const values=names.map(name=>getComputedStyle(child).getPropertyValue(name).trim());parent.remove();return values;
+  });
+  assert.deepEqual(offsets,['0px','0px','0px'],`${name}: motion offsets must stay local to the actor`);
   await page.screenshot({path:path.join(screenshots,name+'.png')});
   console.log(`${name} resting scene: ${path.join(screenshots,name+'.png')}`);
   const feedback=await page.evaluate(()=>['.seg button','.icon','.chip','.pane-step','.prog i'].map(s=>getComputedStyle(document.querySelector(s)).transitionDuration));
@@ -70,14 +76,15 @@ for(const [name,type] of [['Chromium',chromium],['WebKit',webkit]]){
   });
   assert.deepEqual(retainedDetails,{open:true,detailRetained:true,bodyRetained:true,available:true},`${name}: an open disclosure stays accessible on data refresh`);
   const reference=await page.evaluate(async()=>{
-    const A=window.__motionProbe,width=A.Stage.wrap.clientWidth;document.querySelector('#reftoggle').focus();A.Ref.open();const initial=A.Stage.wrap.clientWidth;
+    const A=window.__motionProbe,width=A.Stage.wrap.clientWidth;document.querySelector('#reftoggle').focus();A.Ref.open();const initial=A.Stage.wrap.clientWidth,textInitial=document.querySelector('#ref-body').clientWidth;
     for(let i=0;i<6;i++)await new Promise(requestAnimationFrame);
-    const before=A.Stage.wrap.clientWidth;A.Ref.close();const after=A.Stage.wrap.clientWidth,closed={hidden:A.Ref.pane.hidden,inert:A.Ref.pane.inert,focus:document.activeElement.id};
-    A.Ref.open();const reopened=A.Stage.wrap.clientWidth;A.Flow.finish();return{width,initial,before,after,reopened,closed};
+    const before=A.Stage.wrap.clientWidth,textBefore=document.querySelector('#ref-body').clientWidth;A.Ref.close();const after=A.Stage.wrap.clientWidth,textAfter=document.querySelector('#ref-body').clientWidth,closed={hidden:A.Ref.pane.hidden,inert:A.Ref.pane.inert,focus:document.activeElement.id};
+    A.Ref.open();const reopened=A.Stage.wrap.clientWidth;A.Flow.finish();return{width,initial,before,after,reopened,closed,textInitial,textBefore,textAfter};
   });
   assert.ok(Math.abs(reference.initial-reference.width)<=1,`${name}: opening preserves presented geometry`);
   assert.ok(reference.before<reference.width);assert.ok(Math.abs(reference.before-reference.after)<=1);assert.ok(Math.abs(reference.after-reference.reopened)<=1);
   assert.deepEqual(reference.closed,{hidden:true,inert:true,focus:'reftoggle'});
+  assert.ok(Math.abs(reference.textBefore-reference.textInitial)<=1&&Math.abs(reference.textAfter-reference.textBefore)<=1,`${name}: reference text width stays stable through opening and reversal`);
   await page.evaluate(()=>window.__motionProbe.Ref.close());await settled(page);
   const spotlight=await page.evaluate(()=>{
     const A=window.__motionProbe;A.Ref.open();A.Flow.finish();document.querySelector('#ref-targets button').click();A.Ref.paint();A.Flow.finish();
@@ -179,7 +186,7 @@ for(const [name,type] of [['Chromium',chromium],['WebKit',webkit]]){
     A.Ops.restore(saved);return minimum;
   });
   assert.ok(collapse>0,`${name}: a one-price composition keeps a positive frame`);
-  await page.emulateMedia({reducedMotion:'reduce'});await settled(page);
+  await page.emulateMedia({reducedMotion:'reduce'});await page.waitForFunction(()=>window.__motionProbe.Flow.reduced());await settled(page);
   const reduced=await page.evaluate(()=>{
     const A=window.__motionProbe;A.Ops.add();A.Stage.step(.016);const b=A.S.bars.at(-1),exact=b.a===1&&b.x===A.Stage.geom().xs.at(-1)&&b.dv.every((v,i)=>v===b.v[i]);
     A.Ops.remove();const ghosts=A.Stage.ghosts.length;A.Forecast.choose('states');A.Stage.step(.016);

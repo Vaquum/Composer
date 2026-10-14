@@ -1,6 +1,6 @@
 /* Shared pane hierarchy: one header rule, section rules at their beginnings,
    16px section spacing, 8px row spacing, and the same type roles in every view. */
-.pane { --pane-font: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; --pane-title: 20px; --pane-heading: 14px; --pane-label: 13px; --pane-small: 12px; --pane-value: 16px; --pane-headline: 32px; --pane-space: 16px; --pane-row: 8px; --pane-selected: var(--ai); font-family: var(--pane-font); font-size: var(--pane-heading); line-height: 1.45; gap: var(--pane-space); background: var(--paper); }
+.pane { --pane-font: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; --pane-title: 20px; --pane-heading: 14px; --pane-label: 13px; --pane-small: 12px; --pane-value: 16px; --pane-headline: 32px; --pane-space: 16px; --pane-row: 8px; --pane-selected: var(--ai); font-family: var(--pane-font); font-size: var(--pane-heading); font-variant-numeric: tabular-nums; line-height: 1.45; gap: var(--pane-space); background: var(--paper); }
 .pane h2 { font: 600 var(--pane-title)/1.25 var(--pane-font); letter-spacing: -.025em; margin: 0; }
 .pane h3 { font: 600 var(--pane-heading)/1.4 var(--pane-font); margin: 0 0 var(--pane-row); }
 .pane p { margin: 0; }
@@ -112,5 +112,11 @@
 .pnear button:hover { background: var(--paper-2); }
 .pane :is(.pane-hero-value,.pane-hero-compare,.pane-next-value,.pane-terminal-value strong,.pane-rate-head b,.pl b,.pane-baseline,.pane-ledger,.pane-timeframes,.pane-bar-summary) { font-variant-numeric: tabular-nums; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-@media (min-width: 1181px) { .work:not([data-reference="open"]) { grid-template-columns: minmax(290px,330px) minmax(0,1fr) minmax(300px,340px); } }
+@media (min-width: 1181px) {
+  .work:not([data-reference="open"]) { grid-template-columns: minmax(290px,330px) minmax(0,1fr) minmax(300px,340px); }
+  /* Retain reading widths when space allows; resizing hundreds of text/track
+     nodes per spring sample made WebKit repaint the full pane at Retina density. */
+  .work[data-reference="open"] { grid-template-columns: var(--ref-w) minmax(240px,330px) minmax(340px,1fr) minmax(250px,340px); }
+  .work > .pane, .work > .ref { transform: translateZ(0); }
+}
 @media (pointer: coarse) { .pane-switch { grid-template-columns: 44px minmax(0,1fr) 44px; } .pane-switch > button, .pane-menu button, .pane-details summary, .pnear button { min-height: 44px; } }

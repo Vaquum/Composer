@@ -1,4 +1,4 @@
-// Pure presentation of the matcher's results. Each pane chooses its own layout;
+// Presentation of the matcher's results. HTML and retained updates share formatting.
 // changing a layout never changes the cohort or recomputes a statistic.
 const PaneDesigns = (() => {
   const variants = [
@@ -15,24 +15,36 @@ const PaneDesigns = (() => {
   const label = w => names[w.key];
   const value = (w, x) => w.log ? `${Math.exp(x).toFixed(2)}×` : w.key === 'maker' ? pct(x) : w.key === 'day' ? `${(x * 100).toFixed(0)}%` : f2(x);
   const unit = w => w.key === 'body' || w.key === 'range' ? ' ATR' : '';
+  const readingContext=w=>`Bar ${w.bar+1}${unit(w)?' · ATR':w.log?' · vs prior 11':''}`;
   const displayed = (w, x) => value(w, x) + unit(w);
   const sorted = P => (P.rows || []).slice().sort((a, b) => Math.abs(b.d) - Math.abs(a.d));
   const clear = w => w.set[1] > w.all[0] || w.set[2] < w.all[0];
+  const ledgerNote=rows=>`${rows.filter(clear).length} of ${rows.length} intervals exclude the all-window mean.`;
   const detail = (key, title, content, open = false) => `<details class="pane-details" data-detail="${key}"${open ? ' open' : ''}><summary>${title}</summary>${content}</details>`;
   const legend = () => '<div class="pane-legend"><span><i class="legend-dot" aria-hidden="true"></i>Selected</span><span><i class="legend-band" aria-hidden="true"></i>95% interval</span><span><i class="legend-tick" aria-hidden="true"></i>All</span></div>';
-  function track(w) {
+  const formattedReadings=new WeakMap();
+  function trackFields(w) {
+    const cached=formattedReadings.get(w),mean=w.set[0];
     const lo = w.set[1], hi = w.set[2], ref = w.all[0], a = Math.min(lo, ref), b = Math.max(hi, ref);
+    if(cached&&cached.key===w.key&&cached.log===w.log&&cached.mean===mean&&cached.lo===lo&&cached.hi===hi&&cached.ref===ref)return cached.fields;
     const pad = (b - a) * .6 || .05, mn = a - pad, mx = b + pad, at = x => (x - mn) / (mx - mn) * 100;
-    return `<div class="trk" role="img" aria-label="Selected mean ${displayed(w,w.set[0])}; 95% interval ${displayed(w,lo)} to ${displayed(w,hi)}; all-window mean ${displayed(w,ref)}"><i class="bd" style="left:${at(lo)}%;width:${at(hi)-at(lo)}%"></i><i class="dt" style="left:${at(w.set[0])}%"></i><i class="tk" style="left:${at(ref)}%"></i></div>`;
+    const selected=value(w,mean),baseline=value(w,ref),selectedDisplay=selected+unit(w),baselineDisplay=baseline+unit(w);
+    const fields={selected,baseline,selectedDisplay,baselineDisplay,
+      aria:`Selected mean ${selectedDisplay}; 95% interval ${displayed(w,lo)} to ${displayed(w,hi)}; all-window mean ${baselineDisplay}`,band:`left:${at(lo)}%;width:${at(hi)-at(lo)}%`,dot:`left:${at(mean)}%`,reference:`left:${at(ref)}%`};
+    formattedReadings.set(w,{key:w.key,log:w.log,mean,lo,hi,ref,fields});return fields;
   }
-  const reading = (w, showBar = true) => `<div class="prow" data-reading="${w.bar}-${w.key}"><div class="pl"><span>${showBar ? 'Bar '+(w.bar+1)+' · ' : ''}${label(w)}</span><b>${displayed(w,w.set[0])}</b></div><div class="pane-reading-bottom">${track(w)}<span class="pane-baseline">All ${displayed(w,w.all[0])}</span></div></div>`;
+  function track(w) {
+    const f=trackFields(w);
+    return `<div class="trk" role="img" aria-label="${f.aria}"><i class="bd" style="${f.band}"></i><i class="dt" style="${f.dot}"></i><i class="tk" style="${f.reference}"></i></div>`;
+  }
+  const reading = (w, showBar = true) => `<div class="prow" data-reading="${w.bar}-${w.key}"><div class="pl"><span>${showBar ? 'Bar '+(w.bar+1)+' · ' : ''}${label(w)}</span><b>${trackFields(w).selectedDisplay}</b></div><div class="pane-reading-bottom">${track(w)}<span class="pane-baseline">All ${trackFields(w).baselineDisplay}</span></div></div>`;
   const difference = w => {
     if (w.key === 'maker' || w.key === 'day') { const d = (w.set[0]-w.all[0])*100; return `${d > 0 ? '+' : ''}${d.toFixed(1).replace('-','−')} pp`; }
     const ratio = w.log ? Math.exp(w.set[0]-w.all[0]) : w.all[0] > 0 ? w.set[0]/w.all[0] : null;
     return ratio === null ? '' : `${ratio.toFixed(1)}× as large`;
   };
   function table(rows) {
-    return `<table class="pane-ledger"><caption class="sr-only">Selected-window means compared with all-window means</caption><thead><tr><th>Reading</th><th>Selected</th><th>All</th></tr></thead><tbody>${rows.map(w=>`<tr class="prow" data-reading="${w.bar}-${w.key}"><td>${label(w)}<small>Bar ${w.bar+1}${unit(w) ? ' · ATR' : w.log ? ' · vs prior 11' : ''}</small></td><td>${value(w,w.set[0])}</td><td>${value(w,w.all[0])}</td></tr>`).join('')}</tbody></table>`;
+    return `<table class="pane-ledger"><caption class="sr-only">Selected-window means compared with all-window means</caption><thead><tr><th>Reading</th><th>Selected</th><th>All</th></tr></thead><tbody>${rows.map(w=>`<tr class="prow" data-reading="${w.bar}-${w.key}"><td>${label(w)}<small>${readingContext(w)}</small></td><td>${trackFields(w).selected}</td><td>${trackFields(w).baseline}</td></tr>`).join('')}</tbody></table>`;
   }
   function left(variant, r, ctx) {
     const P = r.panes, all = sorted(P), first = all.slice(0,10);
@@ -47,12 +59,81 @@ const PaneDesigns = (() => {
     }
     const remaining = all.length > 10 ? detail('more', `${all.length-10} more readings`, variant === 'ledger' ? table(all.slice(10)) : all.slice(10).map(w=>reading(w)).join('')) : '';
     if (variant === 'ledger') {
-      const count = first.filter(clear).length;
-      return '<p class="pane-order">Largest differences first</p>'+table(first)+`<p class="pane-note">${count} of ${first.length} intervals exclude the all-window mean.</p>`+remaining+detail('intervals',`95% intervals · all ${all.length} readings`,legend()+all.map(w=>reading(w)).join(''));
+      return '<p class="pane-order">Largest differences first</p>'+table(first)+`<p class="pane-note">${ledgerNote(first)}</p>`+remaining+detail('intervals',`95% intervals · all ${all.length} readings`,legend()+all.map(w=>reading(w)).join(''));
     }
     const lead = first[0], delta = difference(lead), rest = first.slice(1);
     return `<div class="pane-hero" data-reading="${lead.bar}-${lead.key}"><p class="pane-hero-label">Largest difference · Bar ${lead.bar+1} ${label(lead).toLowerCase()}</p><p class="pane-hero-value">${value(lead,lead.set[0])}<span class="pane-unit">${unit(lead)}</span></p><p class="pane-hero-compare">All ${displayed(lead,lead.all[0])}${delta ? ' · <strong>'+delta+'</strong>' : ''}</p>${track(lead)}</div>`+legend()+
       [...new Set(rest.map(w=>groups[w.key]))].map(group=>`<section class="pane-group" data-motion-key="group-${group}"><h3>${group}${group === 'Activity' || group === 'Trade size' ? '<span class="pane-unit">vs prior 11 bars</span>' : ''}</h3>${rest.filter(w=>groups[w.key]===group).map(w=>reading(w)).join('')}</section>`).join('')+remaining;
+  }
+  // Used only after the caller verifies unchanged layout/identity. Bindings live
+  // in Flow's markup entry, so a structural patch releases old DOM references.
+  function updateSignal(root,r,memo){
+    const rows=new Map((r.panes.rows||[]).map(w=>[`${w.bar}-${w.key}`,w]));
+    if(!memo){
+      const nodes=[...root.querySelectorAll('[data-reading]')];
+      if(nodes.length!==rows.size||!nodes.length)return false;
+      memo=nodes.map(node=>{
+        const hero=node.classList.contains('pane-hero'),track=node.querySelector('.trk');
+        const binding={node,key:node.dataset.reading,hero,value:hero?node.querySelector('.pane-hero-value')?.firstChild:node.querySelector('.pl b')?.firstChild,
+          baseline:hero?node.querySelector('.pane-hero-compare')?.firstChild:node.querySelector('.pane-baseline')?.firstChild,
+          delta:hero?node.querySelector('.pane-hero-compare strong'):null,track,band:track?.querySelector('.bd'),dot:track?.querySelector('.dt'),reference:track?.querySelector('.tk')};
+        if(!hero)retainedReadings.set(node,{value:binding.value,baseline:binding.baseline,track,band:binding.band,dot:binding.dot,reference:binding.reference});
+        return binding;
+      });
+    }
+    if(memo.length!==rows.size||memo.some(b=>!rows.has(b.key)||b.node.dataset.reading!==b.key||![b.node,b.value,b.baseline,b.track,b.band,b.dot,b.reference,...(b.delta?[b.delta]:[])].every(n=>n&&root.contains(n))))return false;
+    const text=(node,value)=>{if(node.nodeValue!==value)node.nodeValue=value;},attribute=(node,name,value)=>{if(node.getAttribute(name)!==value)node.setAttribute(name,value);};
+    for(const b of memo){
+      const w=rows.get(b.key),f=trackFields(w),delta=b.hero?difference(w):'';
+      text(b.value,b.hero?f.selected:f.selectedDisplay);
+      text(b.baseline,`All ${f.baselineDisplay}${b.hero&&delta?' · ':''}`);
+      if(b.delta&&b.delta.textContent!==delta)b.delta.textContent=delta;
+      attribute(b.track,'aria-label',f.aria);attribute(b.band,'style',f.band);attribute(b.dot,'style',f.dot);attribute(b.reference,'style',f.reference);
+    }
+    return memo;
+  }
+  const retainedReadings=new WeakMap();
+  function readingUpdater(r){
+    const rows=new Map((r.panes.rows||[]).map(w=>[`${w.bar}-${w.key}`,w]));
+    return (node,next)=>{
+      if(!['DIV','TR'].includes(node.nodeName)||node.nodeName!==next.nodeName||node.className!=='prow'||next.className!=='prow'||node.dataset.reading!==next.dataset.reading)return null;
+      const w=rows.get(node.dataset.reading);if(!w)return null;
+      let b=retainedReadings.get(node);
+      if(!b){
+        if(node.nodeName==='TR')b={value:node.children[1]?.firstChild,baseline:node.children[2]?.firstChild,label:node.children[0]?.firstChild,context:node.children[0]?.querySelector('small')?.firstChild};
+        else {const track=node.querySelector('.trk');b={value:node.querySelector('.pl b')?.firstChild,baseline:node.querySelector('.pane-baseline')?.firstChild,
+          track,band:track?.querySelector('.bd'),dot:track?.querySelector('.dt'),reference:track?.querySelector('.tk')};}
+        retainedReadings.set(node,b);
+      }
+      if(!Object.values(b).every(n=>n&&node.contains(n))||b.value.nodeType!==3||b.baseline.nodeType!==3)return null;
+      const f=trackFields(w);
+      return ()=>{
+        const text=(n,v)=>{if(n.nodeValue!==v)n.nodeValue=v;},attr=(n,k,v)=>{if(n.getAttribute(k)!==v)n.setAttribute(k,v);};
+        text(b.value,b.track?f.selectedDisplay:f.selected);text(b.baseline,b.track?`All ${f.baselineDisplay}`:f.baseline);
+        if(b.context){text(b.label,label(w));text(b.context,readingContext(w));}
+        if(b.track){attr(b.track,'aria-label',f.aria);attr(b.band,'style',f.band);attr(b.dot,'style',f.dot);attr(b.reference,'style',f.reference);}
+      };
+    };
+  }
+  function updateLedger(root,r,move){
+    const all=sorted(r.panes),tables=[...root.querySelectorAll('.pane-ledger tbody')],intervals=root.querySelector('details[data-detail="intervals"] .flow-detail-content'),note=root.querySelector(':scope > .pane-note');
+    if(r.panes.n<30||!r.panes.readings||!all.length||tables.length!==(all.length>10?2:1)||!intervals||!note)return false;
+    const rows=tables.flatMap(body=>[...body.children]),charts=[...intervals.querySelectorAll(':scope > [data-reading]')],keys=all.map(w=>`${w.bar}-${w.key}`);
+    const byKey=nodes=>new Map(nodes.map(node=>[node.dataset.reading,node])),tableRows=byKey(rows),chartRows=byKey(charts);
+    if(rows.length!==all.length||charts.length!==all.length||tableRows.size!==all.length||chartRows.size!==all.length||keys.some(key=>!tableRows.has(key)||!chartRows.has(key)))return false;
+    const updater=readingUpdater(r),changes=[...rows,...charts].map(node=>updater(node,node));if(changes.some(change=>!change))return false;
+    const more=root.querySelector('details[data-detail="more"]'),leading=new Set(keys.slice(0,10));
+    if(more&&!more.open&&!more.hasAttribute('data-flow-details')){
+      for(const node of tables[0].children)if(!leading.has(node.dataset.reading))move?.depart(node);
+      for(const key of leading){const node=tableRows.get(key);if(more.contains(node))move?.arrive(node);}
+    }
+    for(const change of changes)change();
+    const order=(parent,nodes,start=parent.firstChild)=>{let cursor=start;for(const node of nodes){if(node!==cursor)parent.insertBefore(node,cursor);cursor=node.nextSibling;}};
+    order(tables[0],keys.slice(0,10).map(key=>tableRows.get(key)));
+    if(tables[1])order(tables[1],keys.slice(10).map(key=>tableRows.get(key)));
+    order(intervals,keys.map(key=>chartRows.get(key)),charts[0]);
+    const text=ledgerNote(all.slice(0,10));if(note.textContent!==text)note.textContent=text;
+    return {kind:'ledger'};
   }
   function meter(w, direction = 'selected', reference = null) {
     if (!w) return '';
@@ -89,5 +170,5 @@ const PaneDesigns = (() => {
   }
   const leftMethod = barCount => `<ul class="pane-method"><li>All means every ${barCount}-bar window on the selected timeframes. Rows compare selected-window and all-window means.</li><li>Volume, trades and mean trade size: relative to the median of the prior 11 bars; geometric means.</li><li>Body and range: prior-bar Wilder ATR(14). Maker share: share of volume. Last close: position in the prior UTC day's range.</li><li>Every reading track has its own scale. Differences are ranked in standard deviations of all windows.</li><li>95% intervals: t for means, Wilson for rates. No estimate below 30 windows.</li></ul>`;
   const rightMethod = after => `<ul class="pane-method"><li>Each window is scaled from its own low and high to your drawing. The canvas fan shows the median and middle 50% and 80% of closes.</li><li>Breaks count any crossing during the next ${after} bars. Final close compares bar ${after} with the window's last close.</li><li>The terminal band is the middle 50% of closes, not a confidence interval. Outcome rates use all complete continuations, with Wilson 95% intervals.</li></ul>`;
-  return { variants, left, right, next, terminal, caption, leftMethod, rightMethod };
+  return { variants, left, updateSignal, readingUpdater, updateLedger, right, next, terminal, caption, leftMethod, rightMethod };
 })();
