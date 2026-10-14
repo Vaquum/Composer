@@ -1256,21 +1256,21 @@ const Stage = {
       guide.beginPath(); guide.moveTo(x0, y); guide.lineTo(x1, y); guide.stroke(); guide.setLineDash([]);
     }
     // 鎖: each bar opens where the one before it closed, a hairline from that close to this open
-    ctx.strokeStyle = COL['ink-3']; ctx.lineWidth = 1; ctx.globalAlpha = this.trace ? 0.25 : 0.6;
+    guide.strokeStyle = COL['ink-3']; guide.lineWidth = 1; guide.globalAlpha = this.trace ? 0.25 : 0.6;
     for (let i = 1; i < G.N; i++) {
       const a = S.bars[i - 1], c = S.bars[i], y = Y(closeOf(a.dv, a.d)), x0 = a.x + G.bw / 2, x1 = c.x - G.bw / 2;
-      if (x1 > x0) { ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke(); }
+      if (x1 > x0) { guide.beginPath(); guide.moveTo(x0, y); guide.lineTo(x1, y); guide.stroke(); }
     }
     // exact ties between bars, besides the chain itself: the only equalities the engine sees
-    ctx.strokeStyle = COL.ai; ctx.lineWidth = 1; ctx.setLineDash([3, 4]); ctx.globalAlpha = this.trace ? 0.3 : 0.8;
+    guide.strokeStyle = COL.ai; guide.lineWidth = 1; guide.setLineDash([3, 4]); guide.globalAlpha = this.trace ? 0.3 : 0.8;
     for (let i = 0; i < G.N; i++) for (let j = i + 1; j < G.N; j++) {
       const a = S.bars[i], c = S.bars[j], done = new Set(j === i + 1 ? [closeOf(a.v, a.d)] : []);
       for (let k = 0; k < 4; k++) for (let q = 0; q < 4; q++) if (a.v[k] === c.v[q] && !done.has(a.v[k])) {
         done.add(a.v[k]); const y = Math.round(Y(a.dv[k])) + 0.5;
-        ctx.beginPath(); ctx.moveTo(a.x, y); ctx.lineTo(c.x, y); ctx.stroke();
+        guide.beginPath(); guide.moveTo(a.x, y); guide.lineTo(c.x, y); guide.stroke();
       }
     }
-    ctx.setLineDash([]); ctx.globalAlpha = 1;
+    guide.setLineDash([]); guide.globalAlpha = 1;ctx.setLineDash([]); ctx.globalAlpha = 1;
     // the level a dragged part is easing onto, drawn in as it comes near and full once it rests there
     if (this.snapV !== null && this.snapA > 0.02) {
       const y = Math.round(Y(this.snapV)) + 0.5;
