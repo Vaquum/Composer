@@ -37,6 +37,7 @@ const TactileFlow = (() => {
   const preference = matchMedia('(prefers-reduced-motion: reduce)');
   const owners = new WeakMap(), moving = new Set(), settlers = new Set();
   let visibility=new WeakMap();const observed=new Set(),arrivals=new Set();
+  let viewportScroll=[scrollX,scrollY];
   const viewport=typeof IntersectionObserver==='function'?new IntersectionObserver(entries=>{for(const entry of entries)visibility.set(entry.target,entry.isIntersecting);},{rootMargin:'160px'}):null;
   // A separate one-shot sample cannot mistake a queued cache observation for
   // this layout's arrival, and does not depend on browser timestamp precision.
@@ -51,7 +52,8 @@ const TactileFlow = (() => {
   function releaseObservers(){for(const node of observed)if(!node.isConnected){viewport.unobserve(node);observed.delete(node);arrivalSampler.unobserve(node);arrivals.delete(node);}}
   function observe(nodes){if(viewport)for(const node of nodes)if(!observed.has(node)){observed.add(node);viewport.observe(node);}}
   function resetVisibility(){
-    visibility=new WeakMap();if(!viewport)return;
+    visibility=new WeakMap();viewportScroll=[scrollX,scrollY];if(!viewport)return;
+    viewport.takeRecords();
     releaseObservers();for(const node of observed){viewport.unobserve(node);viewport.observe(node);}
   }
   addEventListener('scroll',resetVisibility,true);addEventListener('resize',resetVisibility);
@@ -284,6 +286,7 @@ const TactileFlow = (() => {
   }
   const actors = ':scope > *, [data-reading], [data-detail], .pane-group, .prow, .pnear';
   function layout(root, change, selector = actors, measure = true) {
+    if(viewportScroll[0]!==scrollX||viewportScroll[1]!==scrollY)resetVisibility();
     releaseObservers();
     const active = document.activeElement;
     const restore=()=>{if(active?.isConnected&&root.contains(active)&&document.activeElement!==active)active.focus({preventScroll:true});};
