@@ -338,15 +338,17 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
       F.finish(root);root.remove();return state;
     });
     assert.deepEqual(viewport,{visibleEntry:true,visibleLayout:false,hiddenLayout:false},'newly visible readings enter locally; unseen readings do not run position springs');
-    const nestedArrival=await page.evaluate(async()=>{
+    for(const warmed of [false,true]){
+    const nestedArrival=await page.evaluate(async warmed=>{
       const F=__perf.Flow,root=document.createElement('div');root.style.cssText='position:fixed;left:10px;top:10px;width:220px;height:70px;overflow:hidden';document.body.append(root);
       const space='<div data-motion-key="space" style="height:140px"></div>',group='<section class="pane-group" data-motion-key="group"><div class="prow" data-reading="arrival-a" style="height:80px">A</div><div class="prow" data-reading="arrival-b" style="height:80px">B</div></section>';
-      F.patch(root,space+group);F.finish();for(let i=0;i<3;i++)await new Promise(requestAnimationFrame);
+      F.patch(root,space+group,warmed);F.finish();for(let i=0;i<3;i++)await new Promise(requestAnimationFrame);
       const section=root.lastElementChild,reading=section.firstElementChild;F.patch(root,group+space);
       for(let i=0;i<3&&!F.value(section,'entry');i++)await new Promise(requestAnimationFrame);
       const state={parent:!!F.value(section,'entry'),child:!!F.value(reading,'entry'),childOpacity:+getComputedStyle(reading).opacity};F.finish();root.remove();return state;
-    });
+    },warmed);
     assert.deepEqual(nestedArrival,{parent:true,child:false,childOpacity:1},'nested cached-offscreen arrivals must have one entry owner and one opacity/translation');
+    }
     await seed(page,data);await settle(page);
     // Warm allocation pools before the retained-node and heap bounds.
     for(let i=0;i<2;i++){await call('reference',true);await call('reference',false);await settle(page);}
