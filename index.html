@@ -966,7 +966,7 @@ const Stage = {
       this.scene = 0;
     } else { this.scene = 1; this.sceneVelocity = 0; this.departingForecast?.remove();this.departingForecast = null; }
   },
-  settle() {
+  settle(paint=true) {
     const G = this.geom(),id=identity(); this.view.cur.set(this.view.tgt); this.view.vel.fill(0); this.plot.cur.set(this.plot.tgt); this.plot.vel.fill(0);
     S.bars.forEach((b,i) => { b.x = G.xs[i]; b.vx = 0; b.dv.set(b.v); b.vv.fill(0); b.a = 1; b.va = 0; b.col=(S.colored?COL.rgb[id.d[i]]:COL.rgb.z).slice(); });
     this.ghosts = []; this.traces = []; this.scene = 1; this.sceneVelocity = 0; this.departingForecast?.remove();this.departingForecast = null;
@@ -974,7 +974,7 @@ const Stage = {
     this.fanA = Match.fresh() && !Match.failed ? 1 : Forecast.source ? .35 : 0;
     this.tracePresence = this.trace ? 1 : 0;
     if (this.trace) { this.trace.a = 1; this.trace.va = 0; }
-    this.scalarVelocity = {}; this.draw();
+    this.scalarVelocity = {}; if(paint)this.draw();
   },
   step(dt) {
     let busy = false;
@@ -2193,8 +2193,9 @@ const App = {
     let busy = false;
     // one bad frame must never stop the paper for good
     try {
-      if(Stage.resizePending){Stage.resizePending=false;if(!Flow.value(Ref.pane,'reference')){Flow.finish();Stage.plot.ready=false;if(!Stage.drag)Stage.settle();}}
-      Stage.frameBox=Stage.box&&!Flow.value(Ref.pane,'reference')?Stage.box:Stage.measureBox();busy = Stage.step(dt); Stage.draw();
+      Stage.frameBox=Stage.box&&!Flow.value(Ref.pane,'reference')?Stage.box:Stage.measureBox();
+      if(Stage.resizePending){Stage.resizePending=false;if(!Flow.value(Ref.pane,'reference')){Stage.plot.ready=false;Flow.finish();}}
+      busy = Stage.step(dt); Stage.draw();
     } catch (err) { console.error(err); }
     finally{Stage.frameBox=null;}
     if (busy || this.dirty) requestAnimationFrame(t => this.tick(t)); else this.running = false;
@@ -2265,7 +2266,7 @@ $('#space').dataset.tip='Width of the drawn root candle bodies only. Their cente
 Stage.fit(true);
 refresh();
 Match.start();
-Flow.onSettle(()=>{if(Match.presentation){Match.flushPresentation();Flow.finish();}Stage.settle();App.redraw();});
+Flow.onSettle(()=>{if(Match.presentation){Match.flushPresentation();Flow.finish();}Stage.settle(!Stage.frameBox);App.redraw();});
 Flow.reveal($('.top'),0);Flow.reveal($('.stage'),0);Flow.reveal($('.lpane'));Flow.reveal($('.rpane'));
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => {Flow.finish();App.redraw();});
 })();

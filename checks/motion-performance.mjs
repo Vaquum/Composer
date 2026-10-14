@@ -407,6 +407,12 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
     await page.waitForFunction(()=>__perf.Flow.reduced());
     const reduced=await measure('reduced-motion',async()=>{await call('reference',true);await call('pane','bars');await call('forecast','states');await call('reference',false);});
     assert.equal(reduced.measures,0,'reduced motion must bypass intrinsic measurement clones');
+    const resizeFrame=await page.evaluate(async()=>{
+      const A=__perf,draw=A.Stage.draw;let paints=0;A.Stage.draw=function(...args){paints++;return draw.apply(this,args);};
+      try{A.Stage.resizePending=true;A.App.redraw();await new Promise(requestAnimationFrame);return{paints,settled:A.Stage.plot.ready,temporary:!!A.Stage.frameBox};}
+      finally{A.Stage.draw=draw;}
+    });
+    assert.deepEqual(resizeFrame,{paints:1,settled:true,temporary:false},'resize settlement must draw one complete frame and release its geometry snapshot');
     const focus=await page.evaluate(()=>{
       const F=__perf.Flow,root=document.createElement('div');Object.assign(root.style,{position:'fixed',left:'10px',top:'10px'});document.body.append(root);
       F.patch(root,'<button data-motion-key="a">A</button><button data-motion-key="b">B</button>');

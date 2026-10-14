@@ -108,7 +108,9 @@ reference motion and pointer handlers still read live geometry. Observer work
 is included in frame-work measurements. Failure completes the accepted cohort
 before displaying the error, keeping both panes and cards consistent.
 Resize callbacks only refresh measurements and request work; layout writes run
-in the next canvas frame to avoid observer loops. Nested arrivals share their
+in the next canvas frame to avoid observer loops. Resize settlement shares that
+frame's geometry and draws once, rather than drawing inside each settle call.
+Nested arrivals share their
 ancestor's entry. Retirement contexts are reused only within one read-only
 reconciliation plan, and clipping reads bounds only for clipping ancestors.
 Ledger updates retain rows across the leading/rest tables and reorder existing
