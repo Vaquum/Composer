@@ -117,6 +117,7 @@ for(const [name,type] of [['Chromium',chromium],['WebKit',webkit]]){
     });
     assert.equal(refreshedDisclosure.rows,5);assert.ok(refreshedDisclosure.natural>100,'refreshed disclosure must include every timeframe');
     assert.ok(refreshedDisclosure.jump<1,'a refreshed opening disclosure must release height without a final jump');
+    await page.locator('#cv').scrollIntoViewIfNeeded();
     const point=await page.evaluate(()=>{
       const A=__perf,G=A.Stage.geom(),b=A.S.bars[0],box=A.Stage.cv.getBoundingClientRect();
       return{x:box.left+b.x,y:box.top+A.Stage.Y((b.dv[1]+b.dv[2])/2,G)};
@@ -144,6 +145,7 @@ for(const [name,type] of [['Chromium',chromium],['WebKit',webkit]]){
       await page.evaluate(async()=>{for(let i=0;i<24;i++){__perf.Forecast.sync(__perf.Stage.geom());await new Promise(requestAnimationFrame);}});
     });
     assert.equal(quiet.mutations,0,'stationary forecast frames must not rewrite semantic or hit-target DOM');
+    await page.locator('#emaki .card').first().scrollIntoViewIfNeeded();
     const retiring=await page.evaluate(()=>{
       const A=__perf,card=document.querySelector('#emaki .card'),read=node=>{
         const s=getComputedStyle(node);return[s.fontFamily,s.fontSize,s.color,s.backgroundColor,s.padding,s.borderRadius];
@@ -152,8 +154,9 @@ for(const [name,type] of [['Chromium',chromium],['WebKit',webkit]]){
     });
     assert.deepEqual(retiring.after,retiring.before,'retirement must retain context-dependent visual styles');
     const interrupted=await page.evaluate(async()=>{
-      const A=__perf,root=document.createElement('div');document.querySelector('.lpane .pane-body').append(root);
+      const A=__perf,root=document.createElement('div');document.querySelector('.lpane .pane-body').prepend(root);
       A.Flow.patch(root,'<div data-motion-key="entering" class="prow"><span>Retiring reading</span></div>');
+      root.scrollIntoView();
       for(let i=0;i<5;i++)await new Promise(requestAnimationFrame);
       const actor=root.firstElementChild,opacity=+getComputedStyle(actor).opacity;
       A.Flow.patch(root,'');const wrapper=[...document.querySelectorAll('[data-flow-retiring]')].at(-1),copy=wrapper.querySelector('.prow');
@@ -161,6 +164,7 @@ for(const [name,type] of [['Chromium',chromium],['WebKit',webkit]]){
     });
     assert.ok(interrupted.opacity>0&&interrupted.opacity<1);assert.ok(Math.abs(interrupted.presented-interrupted.opacity)<.001,'interrupted entry must transfer opacity once');
     await call('pane','ledger');await settle(page);
+    await page.locator('#lrows tbody tr').nth(1).scrollIntoViewIfNeeded();
     const rowRetirement=await page.evaluate(()=>{
       const A=__perf,root=document.querySelector('#lrows tbody'),row=root.children[1],cell=row.firstElementChild;
       const border=getComputedStyle(cell).borderTop,markup=[...root.children].filter(r=>r!==row).map(r=>r.outerHTML).join('');
@@ -169,6 +173,7 @@ for(const [name,type] of [['Chromium',chromium],['WebKit',webkit]]){
     });
     assert.equal(rowRetirement.after,rowRetirement.border,'a retiring ledger row must retain its sibling separator');
     await call('pane','bars');await settle(page);
+    await page.locator('#lrows details').first().locator('.prow').first().scrollIntoViewIfNeeded();
     const closing=await page.evaluate(async()=>{
       const A=__perf,detail=document.querySelector('#lrows details'),body=detail.querySelector('.flow-detail-body');detail.querySelector('summary').click();
       for(let i=0;i<4;i++)await new Promise(requestAnimationFrame);
