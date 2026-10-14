@@ -109,7 +109,8 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
     await measure('forecast',async()=>{for(const v of ['paths','branches','states']){await call('forecast',v);await settle(page);}await call('fan',false);await settle(page);await call('fan',true);});
     await measure('refresh',async()=>{for(let i=0;i<3;i++){await call('refresh');await settle(page);}});
     const refreshedDisclosure=await page.evaluate(async()=>{
-      const A=__perf,summary=document.querySelector('#lnext details summary'),detail=summary.parentElement;
+      const A=__perf;A.S.tfOn.fill(false);A.S.tfOn[0]=true;A.Match.sent=A.Match.query();A.Panes.render(A.Match.result);A.Flow.finish();
+      const summary=document.querySelector('#lnext details summary'),detail=summary.parentElement;
       if(detail.open){summary.click();A.Flow.finish();}summary.click();
       for(let i=0;i<5;i++)await new Promise(requestAnimationFrame);
       A.S.tfOn.fill(true);A.Match.sent=A.Match.query();A.Panes.render(A.Match.result);

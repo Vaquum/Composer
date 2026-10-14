@@ -293,9 +293,13 @@ const TactileFlow = (() => {
     return `${node.tagName}:${node.classList[0] || ''}:${index}`;
   }
   function attributes(current, incoming) {
+    let equal=current.attributes.length===incoming.attributes.length;
+    if(equal)for(const attr of current.attributes)if(incoming.getAttribute(attr.name)!==attr.value){equal=false;break;}
+    if(equal)return;
     const preserve = name => name.startsWith('data-flow-') || name === 'data-motion-running' || current.tagName === 'DETAILS' && name === 'open' || name==='inert'&&current.classList.contains('flow-detail-body');
     for (const attr of [...current.attributes]) if (!preserve(attr.name) && attr.name !== 'style' && !incoming.hasAttribute(attr.name)) current.removeAttribute(attr.name);
     for (const attr of incoming.attributes) if (!preserve(attr.name) && attr.name !== 'style' && current.getAttribute(attr.name) !== attr.value) current.setAttribute(attr.name, attr.value);
+    if(current.getAttribute('style')===incoming.getAttribute('style'))return;
     const temporary = name => name.startsWith('--flow-') || Boolean(owners.get(current)?.size) && ['height', 'width', 'opacity', 'overflow', 'overflow-x', 'overflow-y', 'translate'].includes(name);
     for (const name of [...current.style]) if (!temporary(name) && !incoming.style.getPropertyValue(name)) current.style.removeProperty(name);
     for (const name of incoming.style) if (!temporary(name)&&(current.style.getPropertyValue(name)!==incoming.style.getPropertyValue(name)||current.style.getPropertyPriority(name)!==incoming.style.getPropertyPriority(name))) current.style.setProperty(name, incoming.style.getPropertyValue(name), incoming.style.getPropertyPriority(name));
