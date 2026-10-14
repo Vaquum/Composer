@@ -1364,13 +1364,13 @@ const Stage = {
     const neutral=rgbOf(COL['ink-2']),indigo=rgbOf(COL.ai);
     const pigment=neutral.map((v,j)=>Math.round(v*.78+indigo[j]*.22));
     const paint=rgbStr(pigment),weight=this.fanA*this.fanWeight*FAN_OPTIONS.strength*(1-(this.tracePresence||0)*.7);
-    const key=[G.w,G.h,G.plotTop,G.plotBottom,this.view.lo,this.view.hi,lo,hi,y0,lx,...xs,paint].join('|');
-    if(this.fanCache?.source===c&&this.fanCache.key===key){
-      const {box}=this.fanCache;ctx.save();ctx.globalAlpha=weight;paintCanvas(ctx,this.fanInkSurface,box.x,box.y,box.w,box.h);ctx.restore();return;
-    }
+    // The blurred wash cannot resolve sub-half-pixel projection changes. Keep
+    // its texture stable while painting every quantile contour at exact coordinates.
+    const key=[G.w,G.h,G.plotTop,G.plotBottom,y0,lx,...xs,...c.fan.flat().map(Y)].map(v=>Math.round(v*2)).join('|')+'|'+paint+'|'+FAN_OPTIONS.softness;
     // Raster work is limited to the fan's clipped region; fading reuses its ink.
     const box={x:Math.max(0,Math.floor(lx-24)),y:Math.max(0,Math.floor(G.plotTop-24))};
     box.w=Math.max(1,G.w-box.x);box.h=Math.max(1,Math.min(G.h,Math.ceil(G.plotBottom+24))-box.y);
+    if(this.fanCache?.source!==c||this.fanCache.key!==key){
     if(!this.fanSurface)this.fanSurface=document.createElement('canvas');
     const density=.5, wash=fitCanvas(this.fanSurface,box.w*density,box.h*density,1,true);
     wash.clearRect(0,0,this.fanSurface.width,this.fanSurface.height);wash.scale(density,density);wash.translate(-box.x,-box.y);wash.fillStyle=paint;
@@ -1395,23 +1395,23 @@ const Stage = {
     if(!this.fanBlurSurface)this.fanBlurSurface=document.createElement('canvas');
     const blur=fitCanvas(this.fanBlurSurface,box.w*density,box.h*density,1,true);blur.clearRect(0,0,this.fanBlurSurface.width,this.fanBlurSurface.height);
     blur.filter=`blur(${6*FAN_OPTIONS.softness*density}px)`;paintCanvas(blur,this.fanSurface,0,0,box.w*density,box.h*density);blur.filter='none';
-    if(!this.fanInkSurface)this.fanInkSurface=document.createElement('canvas');
-    const ink=fitCanvas(this.fanInkSurface,box.w,box.h,Math.min(2,devicePixelRatio||1),true);ink.clearRect(0,0,this.fanInkSurface.width/this.fanInkSurface.flowDpr,this.fanInkSurface.height/this.fanInkSurface.flowDpr);ink.translate(-box.x,-box.y);
-    paintCanvas(ink,this.fanBlurSurface,box.x,box.y,box.w,box.h);
-    const line=ink.createLinearGradient(lx,0,end,0);
+    this.fanCache={source:c,key,box};
+    }
+    ctx.save();ctx.beginPath();ctx.rect(0,G.plotTop-24,G.w,G.plotH+48);ctx.clip();ctx.globalAlpha=weight;
+    const texture=this.fanCache.box;paintCanvas(ctx,this.fanBlurSurface,texture.x,texture.y,texture.w,texture.h);
+    const line=ctx.createLinearGradient(lx,0,end,0);
     line.addColorStop(0,rgbStr(pigment,0));line.addColorStop(.08,paint);
     line.addColorStop(.94,paint);line.addColorStop(1,rgbStr(pigment,0));
-    ink.strokeStyle=line;ink.lineJoin='round';ink.lineCap='round';
+    ctx.strokeStyle=line;ctx.lineJoin='round';ctx.lineCap='round';
     const contour=(k,alpha,width)=>{
-      ink.globalAlpha=FAN_OPTIONS.lines*alpha;ink.lineWidth=width;
-      ink.beginPath();ink.moveTo(lx,y0);
-      c.fan.forEach((q,j)=>ink.lineTo(xs[j],Y(q[k])));ink.stroke();
+      ctx.globalAlpha=weight*FAN_OPTIONS.lines*alpha;ctx.lineWidth=width;
+      ctx.beginPath();ctx.moveTo(lx,y0);
+      c.fan.forEach((q,j)=>ctx.lineTo(xs[j],Y(q[k])));ctx.stroke();
     };
     contour(0,.17,.8);contour(4,.17,.8);
     contour(1,.23,.8);contour(3,.23,.8);
     if(FAN_OPTIONS.median)contour(2,.34,1);
-    ink.globalAlpha=1;this.fanCache={source:c,key,box};
-    ctx.save();ctx.globalAlpha=weight;paintCanvas(ctx,this.fanInkSurface,box.x,box.y,box.w,box.h);ctx.restore();
+    ctx.restore();
   },
   drawStateGlyph(ctx,glyph,x,center){
     const baseline=ctx.textBaseline;ctx.textBaseline='alphabetic';

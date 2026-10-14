@@ -209,10 +209,10 @@ const TactileFlow = (() => {
   }
   function retire(element, geometry = capture(element)) {
     const { box, clip: bounds } = geometry;
-    if(reduced()||!box.width||!box.height){finish(element);element.remove();return;}
+    if(reduced()||!box.width||!box.height)return()=>{finish(element);element.remove();};
     let opacity = Number(getComputedStyle(element).opacity);
     for (let parent = element.parentElement; parent && parent !== document.body; parent = parent.parentElement) opacity *= Number(getComputedStyle(parent).opacity);
-    if (reduced() || !box.width || !box.height || !opacity || box.right <= bounds.left || box.left >= bounds.right || box.bottom <= bounds.top || box.top >= bounds.bottom) { finish(element); element.remove(); return; }
+    if (!opacity || box.right <= bounds.left || box.left >= bounds.right || box.bottom <= bounds.top || box.top >= bounds.bottom)return()=>{finish(element);element.remove();};
     // Preserve selector/inheritance context with shallow shells. Copying every computed
     // property of every descendant made a pane switch a hundreds-of-ms blocking task.
     const ghost=document.createElement('div'),snapshot=element.cloneNode(true);let context=ghost;
@@ -236,19 +236,23 @@ const TactileFlow = (() => {
     context.append(snapshot);
     ghost.inert = true; ghost.setAttribute('aria-hidden', 'true'); ghost.dataset.flowRetiring = '';
     Object.assign(ghost.style, { position: 'fixed', left: `${box.left}px`, top: `${box.top}px`, width: `${box.width}px`, height: `${box.height}px`, margin: '0', translate: 'none', transform: 'none', pointerEvents: 'none', zIndex: '90' });
+    return()=>{
     finish(element); element.remove(); document.body.append(ghost);
     spring(ghost, 'retirement', { from: { opacity, y: 0 }, to: { opacity: 0, y: -model.information },
       write: ({ opacity, y }) => {
         ghost.style.opacity = String(bounded(opacity)); ghost.style.translate = `0 ${y}px`;
         ghost.style.clipPath = `inset(${Math.max(0, bounds.top - box.top - y)}px ${Math.max(0, box.right - bounds.right)}px ${Math.max(0, box.bottom + y - bounds.bottom)}px ${Math.max(0, bounds.left - box.left)}px)`;
       }, done: () => ghost.remove() });
+    };
   }
   const actors = ':scope > *, [data-reading], [data-detail], .pane-group, .prow, .pnear';
   function layout(root, change, selector = actors) {
     if(reduced())return change(new Map());
     const active = document.activeElement;
-    const clips=new Map(),before = new Map([...root.querySelectorAll(selector)].map(el => [el, capture(el,clips)]));
+    const clips=new Map(),before = new Map([...root.querySelectorAll(selector)].map(el => [el, capture(el,clips)]));before.retirements=[];
     const result = change(before);
+    // Read departing styles before removals/ghost insertion can force another layout.
+    for(const commit of before.retirements)commit();
     if (active?.isConnected && root.contains(active) && document.activeElement !== active) active.focus({ preventScroll: true });
     const after = [...root.querySelectorAll(selector)], actorsAfter=new Set(after),deltas = new Map();
     for (const el of after) { el.style.removeProperty('--flow-layout-x'); el.style.removeProperty('--flow-layout-y'); }
@@ -295,15 +299,15 @@ const TactileFlow = (() => {
     let cursor = root.firstChild;
     desired.forEach((next, index) => {
       let node = keyed.get(key(next, index));
-      if (!node || used.has(node) || node.nodeType !== next.nodeType || node.nodeName !== next.nodeName) node = next.cloneNode(true);
-      else if (node.nodeType === 1) { attributes(node, next); reconcile(node, next, geometries, animate); }
+      if (!node || used.has(node) || node.nodeType !== next.nodeType || node.nodeName !== next.nodeName) node = next;
+      else if (node.nodeType === 1&&!node.isEqualNode(next)) { attributes(node, next); reconcile(node, next, geometries, animate); }
       else if (node.textContent !== next.textContent) node.textContent = next.textContent;
       used.add(node);
       if (node !== cursor) root.insertBefore(node, cursor);
       cursor = node.nextSibling;
     });
     for (const node of old) if (!used.has(node)) {
-      if (node.nodeType === 1 && animate && geometries.has(node)) retire(node, geometries.get(node));
+      if (node.nodeType === 1 && animate && geometries.has(node)) geometries.retirements.push(retire(node, geometries.get(node)));
       else { if (node.nodeType === 1) finish(node); node.remove(); }
     }
   }
