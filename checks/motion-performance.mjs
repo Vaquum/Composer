@@ -189,7 +189,7 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
     const closing=await page.evaluate(async()=>{
       const A=__perf,detail=document.querySelector('#lrows details'),body=detail.querySelector('.flow-detail-body');detail.querySelector('summary').click();
       for(let i=0;i<4;i++)await new Promise(requestAnimationFrame);
-      const row=body.querySelector('.prow'),markup=[...body.children].filter(r=>r!==row).map(r=>r.outerHTML).join('');A.Flow.patch(body,markup);
+      const row=body.querySelector('.prow'),root=row.parentElement,markup=[...root.children].filter(r=>r!==row).map(r=>r.outerHTML).join('');A.Flow.patch(root,markup);
       const ghost=[...document.querySelectorAll('[data-flow-retiring]')].at(-1),copy=ghost?.querySelector('.prow'),shell=copy?.closest('details');
       const visible=!!copy&&copy.getBoundingClientRect().height>0&&shell?.hasAttribute('data-flow-details');A.Flow.finish();return visible;
     });
@@ -209,13 +209,23 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
     assert.deepEqual(priority,{differences:[],ordinary:true,restored:true},'active temporary styles remain owned until settlement; repeated markup must then apply deferred styles');
     const entryReads=await page.evaluate(()=>{
       const F=__perf.Flow,root=document.createElement('div');document.body.append(root);
-      const rect=Element.prototype.getBoundingClientRect;let reads=0;
+      const rect=Element.prototype.getBoundingClientRect,rects=Element.prototype.getClientRects;let reads=0;
       Element.prototype.getBoundingClientRect=function(...args){if(this.dataset?.motionKey==='new-result')reads++;return rect.apply(this,args);};
+      Element.prototype.getClientRects=function(...args){if(this.dataset?.motionKey==='new-result')reads++;return rects.apply(this,args);};
       try{F.patch(root,'<button data-motion-key="new-result"><svg viewBox="0 0 132 80"><rect width="132" height="80"/></svg>New result</button>');}
-      finally{Element.prototype.getBoundingClientRect=rect;F.finish(root);root.remove();}
+      finally{Element.prototype.getBoundingClientRect=rect;Element.prototype.getClientRects=rects;F.finish(root);root.remove();}
       return reads;
     });
     assert.equal(entryReads,0,'new result actors must not force synchronous post-insertion geometry during their entry');
+    const restoredBatch=await page.evaluate(()=>{
+      const F=__perf.Flow,root=document.createElement('div');document.body.append(root);
+      const full='<button data-motion-key="a">A</button><button data-motion-key="b">B</button>';F.patch(root,full);F.finish(root);
+      const a=root.firstElementChild;a.focus();
+      F.batch(root,()=>{F.patch(root,'<button data-motion-key="b">B</button>');F.patch(root,full);});
+      const state={keys:[...root.children].map(n=>n.dataset.motionKey),retained:root.firstElementChild===a&&a.isConnected,focused:document.activeElement===a};
+      F.finish(root);root.remove();return state;
+    });
+    assert.deepEqual(restoredBatch,{keys:['a','b'],retained:true,focused:true},'restoring an actor within a batch must cancel its queued retirement');
     await seed(page,data);await settle(page);
     // Warm allocation pools before the retained-node and heap bounds.
     for(let i=0;i<2;i++){await call('reference',true);await call('reference',false);await settle(page);}

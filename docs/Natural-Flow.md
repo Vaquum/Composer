@@ -66,6 +66,9 @@ their state or geometry changes. Pointer drawing remains direct.
 Pane geometry is reused only when structure, identity/order and text width
 remain equivalent; readout digits are tabular. New actors need no prior-position
 geometry read. First disclosures seed natural size from their live open body.
+Disclosure contents use a stable composited inner layer so the height clip does
+not repaint the full reading list each frame. Restored actors cancel queued
+retirement inside a geometry transaction.
 
 `npm run test:performance` exercises native Chromium, Chromium at 4× CPU and
 WebKit at 390/1600 px, DPR 1/2 and 2/20 bars, with 140 readings and all 729 six-bar

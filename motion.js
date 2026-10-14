@@ -169,7 +169,9 @@ const TactileFlow = (() => {
       let body = detail.querySelector(':scope > .flow-detail-body');
       if (!body) {
         body = document.createElement('div'); body.className = 'flow-detail-body';
-        for (const child of [...detail.childNodes]) if (!(child instanceof Element && child.tagName === 'SUMMARY')) body.append(child);
+        const content=document.createElement('div');content.className='flow-detail-content';
+        for (const child of [...detail.childNodes]) if (!(child instanceof Element && child.tagName === 'SUMMARY')) content.append(child);
+        body.append(content);
         detail.append(body);
       }
       if(value(body,'disclosure')){if(body.dataset.flowOpen!==String(detail.open))detailVisibility(detail,detail.open);}
@@ -257,10 +259,10 @@ const TactileFlow = (() => {
     const active = document.activeElement;
     const restore=()=>{if(active?.isConnected&&root.contains(active)&&document.activeElement!==active)active.focus({preventScroll:true});};
     if(reduced()||!measure){const result=change(new Map());restore();return result;}
-    const clips=new Map(),before = new Map([...root.querySelectorAll(selector)].map(el => [el, capture(el,clips)]));before.retirements=[];
+    const clips=new Map(),before = new Map([...root.querySelectorAll(selector)].map(el => [el, capture(el,clips)]));before.retirements=new Map();
     const result = change(before);
     // Read departing styles before removals/ghost insertion can force another layout.
-    for(const commit of before.retirements)commit();
+    for(const commit of before.retirements.values())commit();
     restore();
     const after = [...root.querySelectorAll(selector)], actorsAfter=new Set(after),deltas = new Map();
     for (const el of after) { el.style.removeProperty('--flow-layout-x'); el.style.removeProperty('--flow-layout-y'); }
@@ -278,7 +280,7 @@ const TactileFlow = (() => {
       if (!delta) {
         let parent=el.parentElement,nested=false;
         while(parent&&parent!==root){if(actorsAfter.has(parent)&&!before.has(parent)){nested=true;break;}parent=parent.parentElement;}
-        if(!before.has(el)&&!nested&&presented(el)&&el.getClientRects().length)reveal(el);continue;
+        if(!before.has(el)&&!nested&&presented(el))reveal(el);continue;
       }
       let parent = el.parentElement;
       while (parent && parent !== root && !deltas.has(parent)) parent = parent.parentElement;
@@ -326,11 +328,13 @@ const TactileFlow = (() => {
       else if (node.nodeType === 1&&!node.isEqualNode(next)) { deferred=attributes(node,next)||deferred;deferred=reconcile(node,next,geometries,animate)||deferred; }
       else if (node.textContent !== next.textContent) node.textContent = next.textContent;
       used.add(node);
+      // Another patch in this transaction may have restored a queued actor.
+      geometries.retirements?.delete(node);
       if (node !== cursor) root.insertBefore(node, cursor);
       cursor = node.nextSibling;
     });
     for (const node of old) if (!used.has(node)) {
-      if (node.nodeType === 1 && animate && geometries.has(node)) geometries.retirements.push(retire(node, geometries.get(node)));
+      if (node.nodeType === 1 && animate && geometries.has(node)) geometries.retirements.set(node,retire(node,geometries.get(node)));
       else { if (node.nodeType === 1) finish(node); node.remove(); }
     }
     return deferred;
