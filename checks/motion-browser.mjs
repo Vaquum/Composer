@@ -64,7 +64,12 @@ for(const [name,type] of [['Chromium',chromium],['WebKit',webkit]]){
       const nodes=documentOf(actual),markers=s=>[...documentOf(s).querySelectorAll('.mk,.mkl')].map(n=>n.outerHTML);
       for(const dpr of[1,2]){
         const [a,b]=await Promise.all([pixels(actual,dpr),pixels(expected,dpr)]);let total=0,max=0;
-        for(let i=0;i<a.length;i++){const delta=Math.abs(a[i]-b[i]);total+=delta;max=Math.max(max,delta);}
+        // Compare premultiplied colour: an almost-transparent edge's raw RGB
+        // can differ by 255 while contributing less than one visible level.
+        for(let i=0;i<a.length;i++){
+          const alpha=i-i%4+3,delta=i%4===3?Math.abs(a[i]-b[i]):Math.abs(a[i]*a[alpha]-b[i]*b[alpha])/255;
+          total+=delta;max=Math.max(max,delta);
+        }
         results.push({bars:r.raw.length,dpr,max,mean:total/a.length,paths:nodes.querySelectorAll('path').length,markers:JSON.stringify(markers(actual))===JSON.stringify(markers(expected))});
       }
     }
@@ -74,7 +79,7 @@ for(const [name,type] of [['Chromium',chromium],['WebKit',webkit]]){
   for(const r of thumbnailPixels){
     assert.ok(r.paths<=12&&r.markers,`${name}: bounded thumbnail paths and unchanged broken-relation markers`);
     // Rect and path primitives differ slightly in rounded-edge antialiasing.
-    assert.ok(r.max<=16&&r.mean<=.02,`${name}: candle SVG raster parity at ${r.bars} bars/DPR ${r.dpr}: ${JSON.stringify(r)}`);
+    assert.ok(r.max<=8&&r.mean<=.02,`${name}: candle SVG raster parity at ${r.bars} bars/DPR ${r.dpr}: ${JSON.stringify(r)}`);
   }
   await page.screenshot({path:path.join(screenshots,name+'.png')});
   console.log(`${name} resting scene: ${path.join(screenshots,name+'.png')}`);
