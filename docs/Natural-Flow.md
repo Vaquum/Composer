@@ -13,6 +13,8 @@ Keyed result cards, timeframe chips, forecast controls and pane readings retain
 their nodes. Disclosures retain their native open state and focus. Departures
 are immediately removed from interaction; their inert, clipped visuals retire.
 Intrinsic sizing uses fixed measurement clones and releases temporary dimensions.
+Framing springs its center and logarithmic span; even a one-price composition
+keeps an ordered, positive frame.
 
 ## Surfaces
 

@@ -142,6 +142,13 @@ for(const [name,type] of [['Chromium',chromium],['WebKit',webkit]]){
   await page.mouse.move(point.x,point.y+1);
   const moved=await page.evaluate(()=>{const A=window.__motionProbe;return A.Stage.Y((A.S.bars[0].dv[1]+A.S.bars[0].dv[2])/2,A.Stage.geom());});
   await page.mouse.up();assert.ok(held.drag);assert.ok(Math.abs(moved-held.y)<2,`${name}: direct input takes over the presented candle`);
+  const collapse=await page.evaluate(()=>{
+    const A=window.__motionProbe,saved={bars:A.S.bars.map(b=>({v:Array.from(b.v),d:b.d})),pins:JSON.parse(JSON.stringify(A.S.pins))};
+    A.S.bars.forEach(b=>b.v.fill(30));A.Stage.fit(true);let minimum=Infinity;
+    for(let i=0;i<160;i++){A.Stage.step(.016);minimum=Math.min(minimum,A.Stage.view.hi-A.Stage.view.lo);}
+    A.Ops.restore(saved);return minimum;
+  });
+  assert.ok(collapse>0,`${name}: a one-price composition keeps a positive frame`);
   await page.emulateMedia({reducedMotion:'reduce'});await settled(page);
   const reduced=await page.evaluate(()=>{
     const A=window.__motionProbe;A.Ops.add();A.Stage.step(.016);const b=A.S.bars.at(-1),exact=b.a===1&&b.x===A.Stage.geom().xs.at(-1)&&b.dv.every((v,i)=>v===b.v[i]);

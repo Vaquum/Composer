@@ -21,7 +21,19 @@ const TactileFlow = (() => {
     }
     return busy;
   }
-  if (typeof window === 'undefined') return { model, integrate, advance };
+  // Spring the center and logarithmic span: zoom may overshoot, but never invert the price axis.
+  function bounds(values, velocities, targets, seconds, immediate = false) {
+    const span=values[1]-values[0],targetSpan=targets[1]-targets[0];
+    if(!(span>0)||!(targetSpan>0))throw Error('Tactile framing requires ordered bounds.');
+    const center=[(values[0]+values[1])/2],cv=[velocities[0]],zoom=[Math.log(span)],zv=[velocities[1]];
+    const p=advance(center,cv,[(targets[0]+targets[1])/2],seconds,targetSpan*1e-4,immediate);
+    const z=advance(zoom,zv,[Math.log(targetSpan)],seconds,.00001,immediate);
+    velocities[0]=cv[0];velocities[1]=zv[0];
+    if(p||z){const half=Math.exp(zoom[0])/2;values[0]=center[0]-half;values[1]=center[0]+half;}
+    else{values[0]=targets[0];values[1]=targets[1];}
+    return p||z;
+  }
+  if (typeof window === 'undefined') return { model, integrate, advance, bounds };
   const preference = matchMedia('(prefers-reduced-motion: reduce)');
   const owners = new WeakMap(), moving = new Set(), settlers = new Set();
   let frame = 0, previousTime = 0, suspended = document.hidden, printing = false;
@@ -271,5 +283,5 @@ const TactileFlow = (() => {
   addEventListener('pageshow', () => { suspended = document.hidden; });
   document.addEventListener('visibilitychange', () => { suspended = document.hidden; if (suspended) finish(); });
   details(document);
-  return { model, integrate, advance, reduced, spring, value, cancel, finish, reveal, visible, disclosure, resize, layout, patch, details, switchControl, onSettle: fn => settlers.add(fn), active: () => moving.size > 0 };
+  return { model, integrate, advance, bounds, reduced, spring, value, cancel, finish, reveal, visible, disclosure, resize, layout, patch, details, switchControl, onSettle: fn => settlers.add(fn), active: () => moving.size > 0 };
 })();
