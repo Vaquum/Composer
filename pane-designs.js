@@ -15,6 +15,7 @@ const PaneDesigns = (() => {
   const label = w => names[w.key];
   const value = (w, x) => w.log ? `${Math.exp(x).toFixed(2)}×` : w.key === 'maker' ? pct(x) : w.key === 'day' ? `${(x * 100).toFixed(0)}%` : f2(x);
   const unit = w => w.key === 'body' || w.key === 'range' ? ' ATR' : '';
+  const readingContext=w=>`Bar ${w.bar+1}${unit(w)?' · ATR':w.log?' · vs prior 11':''}`;
   const displayed = (w, x) => value(w, x) + unit(w);
   const sorted = P => (P.rows || []).slice().sort((a, b) => Math.abs(b.d) - Math.abs(a.d));
   const clear = w => w.set[1] > w.all[0] || w.set[2] < w.all[0];
@@ -43,7 +44,7 @@ const PaneDesigns = (() => {
     return ratio === null ? '' : `${ratio.toFixed(1)}× as large`;
   };
   function table(rows) {
-    return `<table class="pane-ledger"><caption class="sr-only">Selected-window means compared with all-window means</caption><thead><tr><th>Reading</th><th>Selected</th><th>All</th></tr></thead><tbody>${rows.map(w=>`<tr class="prow" data-reading="${w.bar}-${w.key}"><td>${label(w)}<small>Bar ${w.bar+1}${unit(w) ? ' · ATR' : w.log ? ' · vs prior 11' : ''}</small></td><td>${trackFields(w).selected}</td><td>${trackFields(w).baseline}</td></tr>`).join('')}</tbody></table>`;
+    return `<table class="pane-ledger"><caption class="sr-only">Selected-window means compared with all-window means</caption><thead><tr><th>Reading</th><th>Selected</th><th>All</th></tr></thead><tbody>${rows.map(w=>`<tr class="prow" data-reading="${w.bar}-${w.key}"><td>${label(w)}<small>${readingContext(w)}</small></td><td>${trackFields(w).selected}</td><td>${trackFields(w).baseline}</td></tr>`).join('')}</tbody></table>`;
   }
   function left(variant, r, ctx) {
     const P = r.panes, all = sorted(P), first = all.slice(0,10);
@@ -99,7 +100,7 @@ const PaneDesigns = (() => {
       const w=rows.get(node.dataset.reading);if(!w)return null;
       let b=retainedReadings.get(node);
       if(!b){
-        if(node.nodeName==='TR')b={value:node.children[1]?.firstChild,baseline:node.children[2]?.firstChild};
+        if(node.nodeName==='TR')b={value:node.children[1]?.firstChild,baseline:node.children[2]?.firstChild,label:node.children[0]?.firstChild,context:node.children[0]?.querySelector('small')?.firstChild};
         else {const track=node.querySelector('.trk');b={value:node.querySelector('.pl b')?.firstChild,baseline:node.querySelector('.pane-baseline')?.firstChild,
           track,band:track?.querySelector('.bd'),dot:track?.querySelector('.dt'),reference:track?.querySelector('.tk')};}
         retainedReadings.set(node,b);
@@ -109,6 +110,7 @@ const PaneDesigns = (() => {
       return ()=>{
         const text=(n,v)=>{if(n.nodeValue!==v)n.nodeValue=v;},attr=(n,k,v)=>{if(n.getAttribute(k)!==v)n.setAttribute(k,v);};
         text(b.value,b.track?f.selectedDisplay:f.selected);text(b.baseline,b.track?`All ${f.baselineDisplay}`:f.baseline);
+        if(b.context){text(b.label,label(w));text(b.context,readingContext(w));}
         if(b.track){attr(b.track,'aria-label',f.aria);attr(b.band,'style',f.band);attr(b.dot,'style',f.dot);attr(b.reference,'style',f.reference);}
       };
     };

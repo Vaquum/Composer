@@ -176,10 +176,11 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
         await page.evaluate(()=>{const root=document.querySelector('#lrows');root.querySelector('details[data-detail="more"]').open=false;__perf.Flow.details(root);});
         await settle(page);
         await page.locator('#lrows tbody tr').first().scrollIntoViewIfNeeded();
-        const crossing=await page.evaluate(()=>{
+        const crossing=await page.evaluate(async()=>{
           const A=__perf,root=document.querySelector('#lrows'),row=root.querySelector('tbody tr'),key=row.dataset.reading,text=row.textContent,r=A.Match.result;
           const next={...r,panes:{...r.panes,rows:r.panes.rows.map((w,i)=>({...w,d:(i+1)/r.panes.rows.length,set:w.set.map(v=>v+1)}))}};
           A.Panes.render(next,'left');
+          await new Promise(resolve=>{const observer=new ResizeObserver(()=>{observer.disconnect();resolve();});observer.observe(root.closest('.pane'));});
           const copy=[...document.querySelectorAll('[data-flow-retiring] tr')].find(node=>node.dataset.reading===key),newTop=root.querySelector('tbody tr');
           const state={retained:row.isConnected&&root.querySelector('details[data-detail="more"]').contains(row),snapshot:copy?.textContent===text,arrival:!!A.Flow.value(newTop,'entry')};
           A.Flow.finish();return state;
@@ -196,6 +197,15 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
         return JSON.stringify(fields(document.querySelector('#lrows')))===JSON.stringify(fields(expected));
       },variant);
       assert.ok(parity,`${variant} refresh must match the full renderer`);
+      if(variant==='ledger'){
+        const normalization=await page.evaluate(()=>{
+          const A=__perf,r=A.Match.result,root=document.querySelector('#lrows'),row=root.querySelector('tr[data-reading="0-vol"]');
+          const next={...r,panes:{...r.panes,rows:r.panes.rows.map(w=>w.key==='vol'?{...w,log:!w.log}:w)}};
+          A.Panes.render(next,'left');const expected=document.createElement('div');expected.innerHTML=A.PaneDesigns.left('ledger',next,{barCount:A.S.bars.length});
+          const fields=node=>[...node.querySelectorAll('.pane-ledger tbody tr')].map(n=>n.textContent),same=JSON.stringify(fields(root))===JSON.stringify(fields(expected)),retained=row.isConnected&&root.querySelector('tr[data-reading="0-vol"]')===row;A.Flow.finish();return{same,retained};
+        });
+        assert.deepEqual(normalization,{same:true,retained:true},'retained ledger rows must update normalization labels as well as numeric cells');
+      }
     }
     await call('pane','signal');await settle(page);
     await seed(page,data);await settle(page);
