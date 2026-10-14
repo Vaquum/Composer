@@ -284,7 +284,7 @@ const TactileFlow = (() => {
     const after = [...root.querySelectorAll(selector)], actorsAfter=new Set(after),deltas = new Map(),entries=new Set(),afterClips=new Map();
     observe(after);
     const visible=(box,bounds)=>bounds&&box.width&&box.height&&box.right>bounds.left&&box.left<bounds.right&&box.bottom>bounds.top&&box.top<bounds.bottom;
-    for (const el of after) { el.style.removeProperty('--flow-layout-x'); el.style.removeProperty('--flow-layout-y'); }
+    for (const el of after) if(owners.get(el)?.has('layout')) { el.style.removeProperty('--flow-layout-x'); el.style.removeProperty('--flow-layout-y'); }
     for (const el of after) {
       if(!presented(el))continue;
       const old = before.get(el);
@@ -322,7 +322,7 @@ const TactileFlow = (() => {
   function key(node, index) {
     if (node.nodeType !== 1) return `text-${index}`;
     let selected=null,priority=Infinity;
-    for(const name of node.getAttributeNames())if(keyPriority[name]<priority){selected=name;priority=keyPriority[name];}
+    for(const name of node.getAttributeNames())if(keyPriority[name]<priority){selected=name;priority=keyPriority[name];if(priority===0)break;}
     if(selected)return `${node.tagName}:${selected}:${node.getAttribute(selected)}`;
     return `${node.tagName}:${node.classList[0] || ''}:${index}`;
   }
@@ -373,7 +373,7 @@ const TactileFlow = (() => {
         else {
           // An equal restored subtree implicitly restores queued descendants.
           if(node.nodeType===1&&geometries.retirements?.size)for(const pending of geometries.retirements.keys())if(node.contains(pending)){geometries.retirements.delete(pending);markups.delete(node);}
-          if(node.textContent!==next.textContent)node.textContent=next.textContent;
+          if(node.nodeType!==1&&node.nodeValue!==next.nodeValue)node.nodeValue=next.nodeValue;
         }
       }
       if(node!==cursor)root.insertBefore(node,cursor);
