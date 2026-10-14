@@ -117,6 +117,6 @@
   /* Retain reading widths when space allows; resizing hundreds of text/track
      nodes per spring sample made WebKit repaint the full pane at Retina density. */
   .work[data-reference="open"] { grid-template-columns: var(--ref-w) minmax(240px,330px) minmax(340px,1fr) minmax(250px,340px); }
-  .work[data-reference="open"] > .pane { transform: translateZ(0); }
+  .work > .pane { transform: translateZ(0); }
 }
 @media (pointer: coarse) { .pane-switch { grid-template-columns: 44px minmax(0,1fr) 44px; } .pane-switch > button, .pane-menu button, .pane-details summary, .pnear button { min-height: 44px; } }

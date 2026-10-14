@@ -105,7 +105,7 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
     await measure('pane',async()=>{for(const v of ['bars','ledger','signal']){await call('pane',v);await settle(page);await call('paneRight',v);await settle(page);}});
     const size=await measure('disclosure',async()=>{await call('disclosure');});
     assert.ok(size.measures<=3,'opening a fixed-width disclosure must not clone/measure once per animation frame');
-    await measure('reference',async()=>{await call('reference',true);await settle(page);await call('topic',2);await settle(page);await call('reference',false);});
+    await measure('reference',async()=>{for(const topic of [2,3,4]){await call('reference',true);await settle(page);await call('topic',topic);await settle(page);await call('reference',false);await settle(page);}});
     await measure('forecast',async()=>{for(const v of ['paths','branches','states']){await call('forecast',v);await settle(page);}await call('fan',false);await settle(page);await call('fan',true);});
     await measure('refresh',async()=>{for(let i=0;i<3;i++){await call('refresh');await settle(page);}});
     const refreshedDisclosure=await page.evaluate(async()=>{
