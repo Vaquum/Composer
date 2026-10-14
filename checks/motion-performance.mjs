@@ -142,17 +142,27 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
       await page.evaluate(()=>{const A=__perf,r=A.Match.result;A.Match.onmsg({...r,type:'result',id:A.Match.id,results:r.results.slice(1)});A.Match.id++;});
       await settle(page);
       assert.deepEqual(await page.locator('#emaki .card').evaluateAll(nodes=>nodes.map(n=>n.dataset.motionKey)),before,'a new search must cancel obsolete queued presentation');
-      const failedCohort=await page.evaluate(()=>{
+      for(const newSearch of [false,true]){
+      const failedCohort=await page.evaluate(newSearch=>{
         const A=__perf,r=A.Match.result,next={...r,type:'result',id:A.Match.id,results:r.results.slice(1),panes:{...r.panes,rows:r.panes.rows.map(w=>({...w,set:w.set.map(v=>v+2)})),cont:{...r.panes.cont,aboveHigh:[.91,.9,.92]}}};
-        A.Match.onmsg(next);A.Match.presentResult();A.Match.fail('Synthetic presentation failure');
+        const sent=A.Match.sent,tfs=A.S.tfOn.slice();A.Match.onmsg(next);A.Match.presentResult();
+        if(newSearch){A.S.tfOn.fill(false);A.S.tfOn[0]=true;A.Match.sentKey='';A.Match.send();}
+        const message=document.querySelector('#mmsg').textContent;
+        if(newSearch){A.Match.presentResult();A.Match.presentResult();}
+        const searching=!newSearch||document.querySelector('#prog').hidden===false&&document.querySelector('#mmsg').textContent===message&&document.querySelector('#emaki').classList.contains('stale');
+        A.Match.fail('Synthetic presentation failure');A.S.tfOn=tfs;
         const left=document.createElement('div'),right=document.createElement('div');left.innerHTML=A.PaneDesigns.left('signal',next,{barCount:A.S.bars.length});right.innerHTML=A.PaneDesigns.right(A.Panes.views.right,next);
-        return{keys:next.results.map(x=>A.Match.resultKeyOf(x)),left:[...left.querySelectorAll('[data-reading]')].map(n=>n.textContent),right:right.textContent};
-      });
+        const caption=document.createElement('div');caption.innerHTML=A.PaneDesigns.caption(next,{timeframes:sent.q.tfs.map((on,k)=>({on,k,label:['15m','30m','1h','2h','4h'][k]})).filter(t=>t.on),nextWords:()=>''});
+        return{keys:next.results.map(x=>A.Match.resultKeyOf(x)),left:[...left.querySelectorAll('[data-reading]')].map(n=>n.textContent),right:right.textContent,caption:caption.textContent,searching};
+      },newSearch);
       await settle(page);
+      assert.ok(failedCohort.searching,'finishing an accepted cohort must preserve the next search status');
       assert.equal(await page.locator('#mmsg').textContent(),'Synthetic presentation failure','queued presentation must not overwrite a failure');
       assert.deepEqual(await page.locator('#emaki .card').evaluateAll(nodes=>nodes.map(n=>n.dataset.motionKey)),failedCohort.keys,'failure must retain a complete accepted cohort');
       assert.deepEqual(await page.locator('#lrows [data-reading]').evaluateAll(nodes=>nodes.map(n=>n.textContent)),failedCohort.left,'failure must keep the left pane on the accepted cohort');
       assert.equal(await page.locator('#rbecame').textContent(),failedCohort.right,'failure must keep the right pane on the accepted cohort');
+      assert.equal(await page.locator('#lcap').textContent(),failedCohort.caption,'an accepted cohort must retain its original query context');
+      }
     }
     for(const variant of ['bars','ledger']){
       await seed(page,data);await settle(page);await call('pane',variant);await settle(page);

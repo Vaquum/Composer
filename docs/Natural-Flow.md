@@ -100,6 +100,8 @@ Large result presentation yields between the left pane, right pane and cards,
 so one result cannot monopolize an input task. Each actual presentation task is
 timed by the performance guard, and settlement waits for the complete queue.
 New results replace queued work; a new search cancels obsolete presentation.
+Once presentation has begun, the accepted cohort finishes using its captured
+query context without clearing a newer search's progress or stale indication.
 Canvas frames share one DOM size/hint snapshot across stepping and drawing.
 Resize observers refresh settled dimensions without forcing layout each frame;
 reference motion and pointer handlers still read live geometry. Observer work

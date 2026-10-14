@@ -1679,16 +1679,17 @@ const Match = {
     if (m.type === 'readings-error') { Panes.readings = 'failed'; Panes.note = m.message; if (this.result) Panes.render(this.result); return; }
     if (m.type === 'result' && m.id === this.id) {
       this.result = m; this.resultKey = this.sentKey;
-      const cards=()=>{this.render();Stage.fit();App.redraw();};
+      const sent=this.sent,cards=()=>{this.render(sent);Stage.fit();App.redraw();};
       if((m.panes?.rows.length||0)>70){
-        this.presentation={result:m,tasks:[()=>Panes.render(m,'left'),()=>Panes.render(m,'right'),cards]};
+        this.presentation={result:m,tasks:[()=>Panes.render(m,'left',sent),()=>Panes.render(m,'right',sent),cards]};
         setTimeout(()=>this.presentResult(),0);
       }else{this.presentation=null;Panes.render(m);cards();}
     }
   },
   presentResult(schedule=true){
     const pending=this.presentation;if(!pending)return;
-    if(pending.result!==this.result||pending.result.id!==this.id){this.presentation=null;return;}
+    if(pending.result!==this.result||!pending.started&&pending.result.id!==this.id){this.presentation=null;return;}
+    pending.started=true;
     pending.tasks.shift()();
     if(this.presentation!==pending)return;
     if(!pending.tasks.length)this.presentation=null;
@@ -1715,12 +1716,12 @@ const Match = {
     if (this.ready || !this.result) $('#mmsg').textContent = this.ready ? 'Searching the BTCUSDT history…' : 'Loading the BTCUSDT 15m to 4h klines…';
     this.worker.postMessage({ type: 'query', id: this.id, q });
   },
-  render() {
-    const r = this.result, held = this.sent.held, n = this.sent.q.bars.length;
+  render(sent=this.sent) {
+    const r = this.result, held = sent.held, n = sent.q.bars.length,current=r.id===this.id;
     this.presentedResults=r.results;
-    $('#prog').hidden = true;
+    if(current)$('#prog').hidden = true;
     // every count in the sentence covers the timeframes shown, like the rates it is compared with; the chips keep all five
-    const F = r.filter, on = this.sent.q.tfs, sum = a => a.reduce((x, y, k) => x + (on[k] ? y : 0), 0);
+    const F = r.filter, on = sent.q.tfs, sum = a => a.reduce((x, y, k) => x + (on[k] ? y : 0), 0);
     const counts = r.mode === 'nearest' ? (F ? r.exactF : r.exact) : F ? r.countsF : r.counts, total = sum(r.counts), totalF = sum(r.countsF);
     const totalAll = r.counts.reduce((x, y) => x + y, 0), where = on.every(Boolean) ? 'in the history' : 'on the timeframes shown';
     renderChips(counts);
@@ -1734,7 +1735,7 @@ const Match = {
     if (r.mode === 'nearest') {
       const tw = twins ? `${fmt(twins)} exact twin${twins > 1 ? 's' : ''} of the whole pattern ${where}` : `The whole ${NWORD[n] || n}-bar pattern has no exact twin ${where}`;
       msg = F ? `<b>Nothing held.</b> Closest in shape among windows whose next bar ${words} (${everyWindow}). ${twins ? `${tw}; after ${fmt(twinsF)} of them it did.` : tw + '.'}`
-        : `<b>Nothing held.</b> Closest in shape first${this.sent.q.oriented ? ', with your colours' : ''}. ${tw}.`;
+        : `<b>Nothing held.</b> Closest in shape first${sent.q.oriented ? ', with your colours' : ''}. ${tw}.`;
     } else if (r.mode === 'held' && !total) {
       msg = `<b>${fmt(totalAll)} window${totalAll === 1 ? '' : 's'}</b> hold ${relations}, all on timeframes you left out.`;
     } else if (r.mode === 'held') {
@@ -1743,8 +1744,8 @@ const Match = {
         : `<b>${fmt(total)} window${total === 1 ? '' : 's'}</b> hold ${relations}. After them the next bar rose ${pct(sp.up, seen)} and fell ${pct(sp.down, seen)} of the time (whole history: rose ${pct(r.base.up, r.base.n)}). Closest in shape first.`;
     } else if (total) msg = `<b>${fmt(total)} window${total === 1 ? '' : 's'}</b> hold ${relations}, but after none of them the next bar ${words}. The nearest windows where it did are shown with the relations each one breaks.`;
     else msg = `<b>No window holds ${relations}</b>${r.stretch ? ' even with bars skipped' : ''}. The nearest windows${F ? ` whose next bar ${words}` : ''} are shown with the relations each one breaks.`;
-    $('#mmsg').innerHTML = msg + ` <span style="color: var(--ink-3)">· ${r.ms < 1000 ? r.ms + ' ms' : (r.ms / 1000).toFixed(1) + ' s'}${this.until ? ` · BTCUSDT to ${day(this.until)}` : ''}</span>`;
-    const em = $('#emaki'); em.classList.remove('stale');
+    if(current)$('#mmsg').innerHTML = msg + ` <span style="color: var(--ink-3)">· ${r.ms < 1000 ? r.ms + ' ms' : (r.ms / 1000).toFixed(1) + ' s'}${this.until ? ` · BTCUSDT to ${day(this.until)}` : ''}</span>`;
+    const em = $('#emaki'); em.classList.toggle('stale',!current);
     if (!r.results.length) { Flow.patch(em,`<p class="empty">${r.mode === 'held' ? 'Every window that holds is on a timeframe you left out. Include it above to see them.' : 'Nothing to show on the selected timeframes.'}</p>`); this.setTrace(-1); return; }
     const selected=em.querySelector('[aria-pressed="true"]')?.dataset.motionKey;
     Flow.patch(em,r.results.map((x,i)=>this.card(x,i,held)).join(''));
@@ -1880,14 +1881,14 @@ const Panes = {
     for (const id of ['lrows','lnext','rnext','rbecame','rfan','ncap','rnear']) $('#' + id).replaceChildren();
     $('#lcap').textContent = 'Matching data unavailable.'; $('#rcap').textContent = 'Continuation unavailable.';
   },
-  render(r, onlySide = null) {
+  render(r, onlySide = null, sent=Match.sent) {
     const P = r.panes; if (!P) return;
-    const ctx = { barCount: S.bars.length, timeframes: TF_LABELS.map((label,k) => ({label,k})).filter(t => this.on(t.k)), readings: this.readings, note: this.note, nextWords };
+    const ctx = { barCount: sent?.q.bars.length??S.bars.length, timeframes: TF_LABELS.map((label,k) => ({label,k})).filter(t => sent?.q.tfs[t.k]), readings: this.readings, note: this.note, nextWords };
     for (const side of onlySide ? [onlySide] : ['left','right']) {
       this.remember(side);
       const pane = $(`.pane[data-side="${side}"]`), variant = this.views[side];
       const markup=side==='left'?{
-        lcap:PaneDesigns.caption(r,ctx),lrows:PaneDesigns.left(variant,r,ctx),lnext:PaneDesigns.next(r,ctx),lmethod:PaneDesigns.leftMethod(S.bars.length)
+        lcap:PaneDesigns.caption(r,ctx),lrows:PaneDesigns.left(variant,r,ctx),lnext:PaneDesigns.next(r,ctx),lmethod:PaneDesigns.leftMethod(ctx.barCount)
       }:{
         rcap:`<strong>Next ${P.after} bars</strong><span class="pane-meta">${P.cont ? fmt(P.cont.n) + ' windows with all ' + P.after + ' bars available' : 'Complete continuations below 30'}</span>`,
         rnext:PaneDesigns.next(r,ctx),rbecame:PaneDesigns.right(variant,r),rfan:PaneDesigns.terminal(P),rmethod:PaneDesigns.rightMethod(P.after),
