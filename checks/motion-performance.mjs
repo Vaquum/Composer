@@ -341,7 +341,7 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
     const nestedArrival=await page.evaluate(async()=>{
       const F=__perf.Flow,root=document.createElement('div');root.style.cssText='position:fixed;left:10px;top:10px;width:220px;height:70px;overflow:hidden';document.body.append(root);
       const space='<div data-motion-key="space" style="height:140px"></div>',group='<section class="pane-group" data-motion-key="group"><div class="prow" data-reading="arrival-a" style="height:80px">A</div><div class="prow" data-reading="arrival-b" style="height:80px">B</div></section>';
-      F.patch(root,space+group,false);F.finish();for(let i=0;i<3;i++)await new Promise(requestAnimationFrame);
+      F.patch(root,space+group);F.finish();for(let i=0;i<3;i++)await new Promise(requestAnimationFrame);
       const section=root.lastElementChild,reading=section.firstElementChild;F.patch(root,group+space);
       for(let i=0;i<3&&!F.value(section,'entry');i++)await new Promise(requestAnimationFrame);
       const state={parent:!!F.value(section,'entry'),child:!!F.value(reading,'entry'),childOpacity:+getComputedStyle(reading).opacity};F.finish();root.remove();return state;

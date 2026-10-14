@@ -325,7 +325,10 @@ const TactileFlow = (() => {
       const delta = deltas.get(el);
       if (!delta) {
         let parent=el.parentElement,nested=false;
-        while(parent&&parent!==root){if(actorsAfter.has(parent)&&!before.has(parent)){nested=true;break;}parent=parent.parentElement;}
+        while(parent){
+          if(owners.get(parent)?.has('entry')||actorsAfter.has(parent)&&(!before.has(parent)||entries.has(parent)||arrivals.has(parent))){nested=true;break;}
+          if(parent===root)break;parent=parent.parentElement;
+        }
         if((!before.has(el)||entries.has(el))&&!nested&&presented(el))reveal(el);continue;
       }
       let parent = el.parentElement;
