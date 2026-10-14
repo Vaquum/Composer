@@ -129,6 +129,8 @@ resize observation, after native layout and before paint. This coalesces layout
 with other presentation tasks instead of forcing it inside the result handler.
 Overlapping transactions and lifecycle settlement flush pending observations;
 focus, the first painted position and retained identity remain continuous.
+Deferred positions are relative to the pane's live origin and scroll offset,
+so native scrolling and ancestor movement remain direct before that first paint.
 
 `npm run test:performance` exercises native Chromium, Chromium at 4× CPU and
 WebKit at 390/1600 px, DPR 1/2 and 2/20 bars, with 140 readings and all 729 six-bar

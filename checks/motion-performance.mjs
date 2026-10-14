@@ -378,12 +378,12 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
     });
     assert.deepEqual(unmappedWrapper,{restored:true,copies:1},'unmapped wrapper removal must retire captured readings once and permit restoration within a batch');
     const deferredLayout=await page.evaluate(async()=>{
-      const F=__perf.Flow,root=document.createElement('div');root.style.cssText='position:fixed;left:10px;top:10px;width:220px;display:flex;flex-direction:column';document.body.append(root);
-      const a='<button data-motion-key="a">A</button>',b='<button data-motion-key="b">B</button>';F.patch(root,a+b,false);
+      const F=__perf.Flow,root=document.createElement('div');root.style.cssText='position:fixed;left:10px;top:10px;width:220px;height:60px;overflow:auto;overflow-anchor:none;display:flex;flex-direction:column';document.body.append(root);
+      const a='<button data-motion-key="a" style="height:40px;flex:none">A</button>',b='<button data-motion-key="b" style="height:40px;flex:none">B</button>';F.patch(root,a+b,false);
       const button=root.firstElementChild,top=button.getBoundingClientRect().top;button.focus();let pending=false;
       const firstPaint=await new Promise(resolve=>{
-        const probe=new ResizeObserver(()=>{probe.disconnect();resolve(Math.abs(button.getBoundingClientRect().top-top)<.5&&!!F.value(button,'layout'));});
-        F.batch(root,()=>F.patch(root,b+a),true,true);pending=F.active();probe.observe(root);
+        const probe=new ResizeObserver(()=>{probe.disconnect();resolve(Math.abs(button.getBoundingClientRect().top-(top-root.scrollTop))<.5&&!!F.value(button,'layout'));});
+        F.batch(root,()=>F.patch(root,b+a),true,true);pending=F.active();root.scrollTop=20;probe.observe(root);
       });
       F.finish(root);F.batch(root,()=>F.patch(root,a+b),true,true);F.finish(root);
       const state={pending,firstPaint,retained:root.firstElementChild===button,focused:document.activeElement===button,settled:!F.value(button,'layout')};root.remove();return state;

@@ -302,6 +302,7 @@ const TactileFlow = (() => {
     if(reduced()||!measure){const result=change(new Map());restore();return result;}
     const initial=[...root.querySelectorAll(selector)];observe(initial);
     const clips=new Map(),before = new Map(initial.map(el => [el, capture(el,clips)]));before.retirements=new Map();before.bookends=new Map();
+    if(defer){const box=root.getBoundingClientRect();before.origin={left:box.left-root.scrollLeft,top:box.top-root.scrollTop};}
     const result = change(before);
     // Read departing styles before removals/ghost insertion can force another layout.
     for(const [node,commit]of before.retirements){
@@ -320,6 +321,7 @@ const TactileFlow = (() => {
   }
   function completeLayout(root,before,selector){
     const after = [...root.querySelectorAll(selector)], actorsAfter=new Set(after),deltas = new Map(),entries=new Set(),afterClips=new Map();
+    const origin=before.origin?root.getBoundingClientRect():null,shift=origin?{x:origin.left-root.scrollLeft-before.origin.left,y:origin.top-root.scrollTop-before.origin.top}:{x:0,y:0};
     observe(after);
     const visible=(box,bounds)=>bounds&&box.width&&box.height&&box.right>bounds.left&&box.left<bounds.right&&box.bottom>bounds.top&&box.top<bounds.bottom;
     for (const el of after) if(owners.get(el)?.has('layout')) { el.style.removeProperty('--flow-layout-x'); el.style.removeProperty('--flow-layout-y'); }
@@ -335,13 +337,14 @@ const TactileFlow = (() => {
         continue;
       }
       const box=el.getBoundingClientRect();
-      const wasVisible=visible(old.box,old.clip),isVisible=visible(box,clip(el,afterClips));
+      const bounds=clip(el,afterClips),previous=shift.x||shift.y?{width:old.box.width,height:old.box.height,left:old.box.left+shift.x,right:old.box.right+shift.x,top:old.box.top+shift.y,bottom:old.box.bottom+shift.y}:old.box;
+      const wasVisible=visible(previous,shift.x||shift.y?bounds:old.clip),isVisible=visible(box,bounds);
       if(!wasVisible){
         const channel=owners.get(el)?.get('layout');if(channel)complete(channel);
         if(isVisible)entries.add(el);
         continue;
       }
-      if (box.width && box.height) deltas.set(el, { x: old.box.left - box.left, y: old.box.top - box.top });
+      if (box.width && box.height) deltas.set(el, { x: previous.left - box.left, y: previous.top - box.top });
     }
     for (const el of after) {
       const delta = deltas.get(el);
