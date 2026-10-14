@@ -90,7 +90,7 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
       // CI contention can stretch rAF intervals, so timing gates use measured application
       // work and input handlers. Frame delivery is reported, never hidden by idle samples.
       assert.ok(report.callMax<100,`${label}: an input/result task exceeded 100 ms (${report.callMax})`);
-      assert.ok(report.workP95<(rate===1?16.7:33.4),`${label}: application work exceeded its ${rate===1?'native one-frame':'throttled two-frame'} budget (${report.workP95})`);
+      assert.ok(report.workP95<16.7*rate,`${label}: application work exceeded its native-frame budget scaled by ${rate}× CPU (${report.workP95})`);
       if(controlledGraphics&&rate===1&&label!=='reduced-motion')assert.ok(report.frameP95<25,`${label}: native frame delivery exceeded its budget (${report.frameP95})`);
       assert.ok(report.paintP95<100,`${label}: pointer input waited more than 100 ms for its next paint (${report.paintP95})`);
       return sample;

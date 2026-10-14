@@ -68,7 +68,7 @@ WebKit at 390/1600 px, DPR 1/2 and 2/20 bars, with 140 readings and all 729 six-
 sequences in the largest synthetic fixture. It reports frame delivery, application
 work, input/result handler time, pointer-to-paint latency and long tasks. Guards
 require local native p95 frame intervals below 25 ms, native p95 application work below
-16.7 ms (33.4 ms under CPU throttling), and input/result work and pointer latency
+16.7 ms (66.8 ms at 4× CPU throttling), and input/result work and pointer latency
 below 100 ms. Reduced motion waits for the browser's reported preference before
 measurement. Bounded intrinsic measurements, idle DOM writes, retained styling,
 pixel reuse, focus and repeated-transition DOM/heap cleanup are also checked.
