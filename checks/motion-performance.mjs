@@ -16,7 +16,7 @@ function fixture(n){
   return{mode:'nearest',exact:[0,0,0,0,0],exactF:[0,0,0,0,0],filter:null,stretch:0,base:{n:20000,up:10000},
     counts:[12,0,0,0,0],countsF:[12,0,0,0,0],ms:10,
     results:Array.from({length:12},(_,i)=>({tf:'15m',start:1700000000+i*900,raw,drawn:raw.map(()=>[18,30,56,68]),picks:Array.from({length:n},(_,j)=>j),broken:[],flips:0,off:i*.01,next:null,nextWhy:'end'})),
-    panes:{kind:'closest',n:count,readings:true,after:6,near:[],next:[.43,.38,.48],byTf:[[.43,.38,.48],null],tfN:[count,12],
+    panes:{kind:'closest',n:count,readings:true,after:6,near:[],next:[.43,.38,.48],byTf:Array.from({length:5},()=>[.43,.38,.48]),tfN:Array(5).fill(count),
       rows:Array.from({length:7*n},(_,i)=>({bar:Math.floor(i/7),key:keys[i%7],set:[1.4,1.3,1.5],all:[.5,.48,.52],d:3-i*.01,log:i%7<3})),
       cont:{n:count,sampled:count,aboveHigh:[.82,.78,.86],belowLow:[.27,.23,.31],aboveClose:[.52,.47,.57],
         fan:Array.from({length:6},(_,i)=>[-.2-i*.05,.2,.5+i*.08,1.2,1.6+i*.05]),sequences,examples:{}}}};
@@ -109,13 +109,14 @@ for(const [name,type] of [['Chromium',chromium],['WebKit',webkit]]){
       const A=__perf,summary=document.querySelector('#lnext details summary'),detail=summary.parentElement;
       if(detail.open){summary.click();A.Flow.finish();}summary.click();
       for(let i=0;i<5;i++)await new Promise(requestAnimationFrame);
-      A.S.tfs.fill(true);A.Match.sent=A.Match.query();A.Panes.render(A.Match.result);
-      const body=detail.querySelector('.flow-detail-body');A.Flow.finish(body);
-      // Finish writes the latest target before releasing inline size; both must agree.
-      const natural=body.getBoundingClientRect().height,table=body.querySelector('table');
-      const rows=table.querySelectorAll('tbody tr').length;detail.open=false;A.Flow.finish();return{natural,rows};
+      A.S.tfOn.fill(true);A.Match.sent=A.Match.query();A.Panes.render(A.Match.result);
+      const body=detail.querySelector('.flow-detail-body');let last=body.getBoundingClientRect().height,previous=last;
+      for(let i=0;i<180&&A.Flow.value(body,'disclosure');i++){await new Promise(requestAnimationFrame);previous=last;last=body.getBoundingClientRect().height;}
+      const natural=body.getBoundingClientRect().height,rows=body.querySelectorAll('table tbody tr').length;
+      detail.open=false;A.Flow.finish();return{natural,rows,jump:Math.abs(natural-previous)};
     });
     assert.equal(refreshedDisclosure.rows,5);assert.ok(refreshedDisclosure.natural>100,'refreshed disclosure must include every timeframe');
+    assert.ok(refreshedDisclosure.jump<1,'a refreshed opening disclosure must release height without a final jump');
     const point=await page.evaluate(()=>{
       const A=__perf,G=A.Stage.geom(),b=A.S.bars[0],box=A.Stage.cv.getBoundingClientRect();
       return{x:box.left+b.x,y:box.top+A.Stage.Y((b.dv[1]+b.dv[2])/2,G)};
@@ -167,6 +168,23 @@ for(const [name,type] of [['Chromium',chromium],['WebKit',webkit]]){
       const after=copy&&getComputedStyle(copy).borderTop;A.Flow.finish();return{border,after};
     });
     assert.equal(rowRetirement.after,rowRetirement.border,'a retiring ledger row must retain its sibling separator');
+    await call('pane','bars');await settle(page);
+    const closing=await page.evaluate(async()=>{
+      const A=__perf,detail=document.querySelector('#lrows details'),body=detail.querySelector('.flow-detail-body');detail.querySelector('summary').click();
+      for(let i=0;i<4;i++)await new Promise(requestAnimationFrame);
+      const row=body.querySelector('.prow'),markup=[...body.children].filter(r=>r!==row).map(r=>r.outerHTML).join('');A.Flow.patch(body,markup);
+      const ghost=[...document.querySelectorAll('[data-flow-retiring]')].at(-1),copy=ghost?.querySelector('.prow'),shell=copy?.closest('details');
+      const visible=!!copy&&copy.getBoundingClientRect().height>0&&shell?.hasAttribute('data-flow-details');A.Flow.finish();return visible;
+    });
+    assert.ok(closing,'a reading retired during disclosure close must remain presented');
+    const priority=await page.evaluate(()=>{
+      const F=__perf.Flow,root=document.createElement('div');document.body.append(root);F.patch(root,'<div data-motion-key="priority">Style priority</div>',false);
+      const node=root.firstElementChild,properties={height:'40px',width:'70px',opacity:'0.5',overflow:'hidden',translate:'0 4px','--flow-test':'3px'};
+      F.spring(node,'priority',{from:{x:0},to:{x:1},write:()=>{for(const [key,value]of Object.entries(properties))node.style.setProperty(key,value);}});
+      F.patch(root,`<div data-motion-key="priority" style="${Object.entries(properties).map(([key,value])=>`${key}:${value}!important`).join(';')};color:red!important">Style priority</div>`,false);
+      const preserved=Object.entries(properties).every(([key,value])=>node.style.getPropertyValue(key)===value&&!node.style.getPropertyPriority(key)),ordinary=node.style.getPropertyPriority('color')==='important';F.finish();root.remove();return{preserved,ordinary};
+    });
+    assert.deepEqual(priority,{preserved:true,ordinary:true},'priority-only updates must preserve active temporary styles and update ordinary styles');
     await seed(page,data);await settle(page);
     // Warm allocation pools before the retained-node and heap bounds.
     for(let i=0;i<2;i++){await call('reference',true);await call('reference',false);await settle(page);}
