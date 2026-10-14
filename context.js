@@ -1,13 +1,13 @@
 'use strict';
 // Grid #59/#63: repeat the 500 ms dwell for every hover; focus and touch explain immediately.
 const ForecastContext = (() => {
-  function install(root, box) {
+  function install(root, box, flow) {
     let timer=null, owner=null, pending=null, described=null, description=null, point=null;
     const resolve=node=>node?.closest?.('[data-tip]');
     function hide(){
       clearTimeout(timer);timer=null;pending=null;point=null;
       if(described){if(description===null)described.removeAttribute('aria-describedby');else described.setAttribute('aria-describedby',description);}
-      owner=null;described=null;description=null;box.hidden=true;
+      owner=null;described=null;description=null;flow.visible(box,false);
     }
     function show(target,x,y,control=target){
       clearTimeout(timer);timer=null;pending=null;
@@ -15,7 +15,7 @@ const ForecastContext = (() => {
       const text=target.dataset.tip;
       hide();owner=target;described=control;point={x,y};description=control.getAttribute('aria-describedby');
       control.setAttribute('aria-describedby',[description,box.id].filter(Boolean).join(' '));
-      box.textContent=text;box.hidden=false;
+      box.textContent=text;flow.visible(box,true);
       const r=box.getBoundingClientRect(),vw=window.innerWidth,vh=window.innerHeight;
       const left=Math.max(8,Math.min(x+14,vw-r.width-8));
       const top=Math.max(8,y+16+r.height<=vh-8?y+16:y-r.height-12);

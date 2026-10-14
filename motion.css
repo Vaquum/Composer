@@ -1,0 +1,20 @@
+:root { --flow-feedback: 100ms; }
+button, .hint, .home, .fan-switch input { transition: background-color var(--flow-feedback) ease-out, color var(--flow-feedback) ease-out, box-shadow var(--flow-feedback) ease-out, opacity var(--flow-feedback) ease-out; }
+.seg button, .icon, .bars button, .pinbtn, .chip, .card { transition: background-color var(--flow-feedback) ease-out, color var(--flow-feedback) ease-out, box-shadow var(--flow-feedback) ease-out, opacity var(--flow-feedback) ease-out; }
+.hint { transition: color var(--flow-feedback) ease-out; }
+input[type="range"]::-webkit-slider-thumb { transition: box-shadow var(--flow-feedback) ease-out; }
+input[type="range"]::-moz-range-thumb { transition: box-shadow var(--flow-feedback) ease-out; }
+.prog i { transition: width var(--flow-feedback) ease-out; }
+.card.enter { opacity: 1; transform: none; }
+.fan-switch input::after, .fan-switch input:checked::after { transform: translateX(var(--flow-switch-x, 14px)); transition: none; }
+[data-flow-layout], [data-flow-enter] { --flow-layout-x: 0px; --flow-layout-y: 0px; --flow-enter-y: 0px; translate: var(--flow-layout-x) calc(var(--flow-layout-y) + var(--flow-enter-y)); }
+[data-flow-visible][hidden] { display: var(--flow-display, block) !important; }
+[data-flow-visible][aria-hidden="true"] { pointer-events: none; }
+[data-flow-sizing] > * { flex-shrink: 0; }
+[data-motion-running], [data-flow-retiring], [data-flow-measuring] { transition: none !important; animation: none !important; }
+details[data-flow-details] > .flow-detail-body { display: block !important; }
+details[data-flow-details]::details-content { content-visibility: visible; }
+.flow-detail-body[inert] { pointer-events: none; }
+@media (min-width: 1181px) { .prog[hidden] { display: block !important; visibility: hidden; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; } }
+@media print { *, *::before, *::after { transition: none !important; animation: none !important; } }

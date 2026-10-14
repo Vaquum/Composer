@@ -46,9 +46,9 @@ const nodes=new Map(),styles=new Map();let replacements=0;
 function element(){let markup='';return {dataset:{},style:{},hidden:false,checked:false,textContent:'',listeners:{},addEventListener(t,fn){this.listeners[t]=fn;},setAttribute(){},contains(){return false;},querySelector(){return null;},querySelectorAll(){return [];},get innerHTML(){return markup;},set innerHTML(value){markup=value;replacements++;}};}
 const $=key=>{if(!nodes.has(key))nodes.set(key,element());return nodes.get(key);};
 const match={result:{panes:{cont:fixture}},resultKey:'a',failed:false,fresh:()=>true};
-const stage={wrap:{style:{getPropertyValue:k=>styles.get(k)||'',setProperty:(k,v)=>styles.set(k,v)}},fit(){throw Error('modes cannot refit the camera');}};
+const stage={changeForecast(){},wrap:{style:{getPropertyValue:k=>styles.get(k)||'',setProperty:(k,v)=>styles.set(k,v)}},fit(){throw Error('modes cannot refit the camera');}};
 const doc={querySelectorAll:()=>[],activeElement:null,body:{}};
-const F=new Function('$','ForecastViews','Match','Stage','App','document',html.slice(a,b)+'\nreturn Forecast;')($,V,match,stage,{redraw(){}},doc);
+const F=new Function('$','ForecastViews','Match','Stage','App','document','Flow',html.slice(a,b)+'\nreturn Forecast;')($,V,match,stage,{redraw(){}},doc,{patch(root,html){root.innerHTML=html;},switchControl(){}});
 F.place=()=>{};F.context={hide(){}};
 const G={...V.geometry(1000,2),w:1000,N:2,plotTop:130,plotH:240,plotBottom:370};
 F.choose=()=>{}; // Mode persistence is covered by forecast.mjs; this drives the actual commit/render flow.
@@ -100,7 +100,7 @@ const documentStub={events:{},addEventListener(k,fn){this.events[k]=fn;}};
 const windowStub={innerWidth:400,innerHeight:400,events:{},addEventListener(k,fn){this.events[k]=fn;}};
 const box={id:'forecast-tooltip',hidden:true,style:{},textContent:'',getBoundingClientRect(){return {width:200,height:100};}};
 const Context=new Function('document','window','setTimeout','clearTimeout',fs.readFileSync('context.js','utf8')+'\nreturn ForecastContext;')(documentStub,windowStub,timeout,cancel);
-Context.install(root,box);const T=target(),event={target:T,relatedTarget:null,clientX:10,clientY:20,pointerType:'mouse'};
+Context.install(root,box,{visible(el,open){el.hidden=!open;}});const T=target(),event={target:T,relatedTarget:null,clientX:10,clientY:20,pointerType:'mouse'};
 root.events.pointerover(event);advance(499);assert.equal(box.hidden,true);advance(1);assert.equal(box.hidden,false);assert.equal(T.attrs.get('aria-describedby'),'forecast-tooltip');
 root.events.pointerout(event);assert.equal(box.hidden,true);assert.equal(T.attrs.has('aria-describedby'),false);
 root.events.pointerover(event);advance(499);assert.equal(box.hidden,true,'every hover waits 500 ms');advance(1);assert.equal(box.hidden,false);

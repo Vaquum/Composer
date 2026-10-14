@@ -276,6 +276,7 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
 @media (prefers-reduced-motion: reduce) { .card, .prog i { transition: none; } }
 </style>
 <link rel="stylesheet" href="panes.css">
+<link rel="stylesheet" href="motion.css">
 
 <div class="app">
   <header class="top">
@@ -423,6 +424,7 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
   </div>
 </div>
 
+<script src="motion.js"></script>
 <script src="pane-designs.js"></script>
 <script src="forecast.js"></script>
 <script src="context.js"></script>
@@ -436,19 +438,10 @@ const clamp = (x, a, b) => (x < a ? a : x > b ? b : x);
 const fmt = n => Math.round(n).toLocaleString('en-US');
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const sgn = x => (x > 0 ? 1 : x < 0 ? -1 : 0);
-const motion = matchMedia('(prefers-reduced-motion: reduce)');
-const calm = () => motion.matches;
+const Flow = TactileFlow;
+const calm = () => Flow.reduced();
 function dense(arr) { const s = Array.from(new Set(arr)).sort((a, b) => a - b), m = new Map(); s.forEach((v, i) => m.set(v, i)); return arr.map(v => m.get(v)); }
-function springArr(x, v, t, n, w, dt, eps) {
-  let moving = false; const ex = Math.exp(-w * dt);
-  for (let i = 0; i < n; i++) {
-    const d = x[i] - t[i];
-    if (d < eps && d > -eps && v[i] < eps * 6 && v[i] > -eps * 6) { x[i] = t[i]; v[i] = 0; continue; }
-    const c2 = v[i] + w * d;
-    x[i] = t[i] + (d + c2 * dt) * ex; v[i] = (v[i] - w * c2 * dt) * ex; moving = true;
-  }
-  return moving;
-}
+function springArr(x, v, t, n, w, dt, eps) { return Flow.advance(x, v, t, dt, eps, calm()); }
 /* ---- the feel of a drag: pure functions of the pointer, checked by checks/drag.mjs ---- */
 // A press barely moves what it holds until it is clearly a drag, then the part catches up with the pointer within a few px:
 // continuous, monotonic, and one to one beyond about two slops.
@@ -555,7 +548,7 @@ const TF_LABELS = ['15m', '30m', '1h', '2h', '4h'];
 /* ================= the composition: free prices, exact order ================= */
 // Every bar keeps the actual prices you draw. The g1 identity is derived from them exactly as the
 // engine's encoder does: sort all endpoints, equal prices share a rank, direction from open vs close.
-function newBar(v, d) { return { v: Float64Array.from(v), d, dv: Float64Array.from(v), vv: new Float64Array(4), x: null, vx: 0, a: 0, col: null }; }
+function newBar(v, d) { return { v: Float64Array.from(v), d, dv: Float64Array.from(v), vv: new Float64Array(4), x: null, vx: 0, a: 0, va: 0, col: null }; }
 const S = {
   bars: [newBar([30, 42, 56, 68], 'u'), newBar([18, 36, 62, 80], 'd')], colored: true, sel: 1, space: 0.68,
   pins: [],            // relations you hold: { a: {bar, part}, b: {bar, part} } or { bar, color: true }; parts are L, B, T, H as drawn
@@ -763,7 +756,7 @@ const Forecast = {
       if(typeof saved?.fan==='boolean')this.fan=saved.fan;
     }catch(err){/* preferences remain usable without storage */}
     document.body.appendChild($('#forecast-tooltip'));
-    this.context=ForecastContext.install(Stage.wrap,$('#forecast-tooltip'));
+    this.context=ForecastContext.install(Stage.wrap,$('#forecast-tooltip'),Flow);
     $('#forecast-modes').addEventListener('click',e=>{const b=e.target.closest('[data-view]');if(b)this.choose(b.dataset.view);});
     $('#forecast-modes').addEventListener('keydown',e=>{
       if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;
@@ -788,7 +781,7 @@ const Forecast = {
     $('#forecast-modes').querySelectorAll('[data-view]').forEach(b=>{
       const on=b.dataset.view===this.view;b.setAttribute('aria-checked',String(on));b.tabIndex=on?0:-1;
     });
-    $('#fan-underlay').checked=this.fan;
+    $('#fan-underlay').checked=this.fan;Flow.switchControl($('#fan-underlay'));
   },
   remember(){this.controls();try{localStorage.setItem('ashi.forecast',JSON.stringify({view:this.view,fan:this.fan}));}catch(err){/* optional storage */}},
   choose(view){
@@ -823,11 +816,13 @@ const Forecast = {
     if($('#forecast-status').textContent!==status)$('#forecast-status').textContent=status;
     for(const pane of document.querySelectorAll('.pane')){pane.dataset.updating=String(!!Match.result&&!this.current);pane.setAttribute('aria-busy',String(busy));}
     const key=`${this.view}|${this.prefix}|${this.selected}|${this.phase}`;
+    const sceneKey=`${this.view}|${this.prefix}`;
+    if(changed||sceneKey!==this.sceneKey){Stage.changeForecast();this.sceneKey=sceneKey;}
     if(changed||key!==this.rendered){
       const active=document.activeElement,focused=this.body.contains(active)?active?.dataset.key:null;
       this.rendered=key;this.context?.cancelFor?.(this.body);this.context?.cancelFor?.(this.fanHits);
-      this.body.innerHTML=this.markup();
-      this.fanHits.innerHTML=c?'<button type="button" class="forecast-fan-hit" data-kind="fan" aria-label="Historical closing-price fan"></button>'+c.fan.flatMap((q,j)=>q.map((_,k)=>`<span class="forecast-fan-point" data-step="${j}" data-quantile="${k}"></span>`)).join(''):'';
+      Flow.patch(this.body,this.markup(),false);
+      Flow.patch(this.fanHits,c?'<button type="button" class="forecast-fan-hit" data-kind="fan" aria-label="Historical closing-price fan"></button>'+c.fan.flatMap((q,j)=>q.map((_,k)=>`<span class="forecast-fan-point" data-step="${j}" data-quantile="${k}" data-key="fan-${j}-${k}"></span>`)).join(''):'',false);
       if(focused){const target=[...this.body.querySelectorAll('[data-key]')].find(b=>b.dataset.key===focused);target?.focus({preventScroll:true});}
       App.redraw();
     }
@@ -844,7 +839,7 @@ const Forecast = {
       const leaders=c?.sequences.slice(0,4)||Array.from({length:4},()=>['',0]);
       html+=leaders.map(([key,n],i)=>{
         const text=c?V.pathTip(c,key):note;
-        return `<button type="button" class="forecast-path-row" data-kind="path" data-row="${i}" data-path="${key}" data-key="path-${i}" aria-pressed="${key===this.selected}" aria-disabled="${!this.current||!key}" aria-label="${escape(text)}" ${tip(text)}><span class="forecast-path-rate" ${tip(text)}>${c&&V.rate(n,c.n)?V.percent(V.rate(n,c.n)[0]):'–'}</span>${Array.from({length:6},(_,j)=>`<span class="forecast-path-mark" data-step="${j}" ${tip(key?`Bar +${j+1} closes ${V.names[key[j]].toLowerCase()}. This is one state of the complete sequence shown on this row; the row’s probability applies to all six states together. `+text:note)}></span>`).join('')}</button>`;
+        return `<button type="button" class="forecast-path-row" data-kind="path" data-row="${i}" data-path="${key}" data-key="path-${key||i}" aria-pressed="${key===this.selected}" aria-disabled="${!this.current||!key}" aria-label="${escape(text)}" ${tip(text)}><span class="forecast-path-rate" ${tip(text)}>${c&&V.rate(n,c.n)?V.percent(V.rate(n,c.n)[0]):'–'}</span>${Array.from({length:6},(_,j)=>`<span class="forecast-path-mark" data-step="${j}" ${tip(key?`Bar +${j+1} closes ${V.names[key[j]].toLowerCase()}. This is one state of the complete sequence shown on this row; the row’s probability applies to all six states together. `+text:note)}></span>`).join('')}</button>`;
       }).join('');
       const other=c?c.n-leaders.reduce((n,[,k])=>n+k,0):0;
       html+=`<span class="forecast-note" data-kind="other" ${tip(c?`${c.sequences.length-leaders.length} other complete sequences: ${V.interval(other,c.n)}. Together with the displayed rows these mutually exclusive sequences account for every complete window.`:note)}></span>`;
@@ -856,7 +851,7 @@ const Forecast = {
         const selected=prior&&prefix[j]===s;
         const text=c?(prior?(selected?`Bar +${j+1}, ${V.names[s]} is an earlier chosen closing state. Click to return before this bar and choose again.`:`Bar +${j+1}, ${V.names[s]} is excluded by your earlier choices.`):V.stateTip(c,prefix,j,s)+(this.view==='states'?' This coloured portion occupies that share of a column totaling 100%.':actionable?' Choose this outcome to update the following bars.':' Later columns describe the current cohort; they are not independent path odds.')):note;
         const explanation=text+(c&&prefix.length===6?' '+V.pathTip(c,prefix):'');
-        return `<button type="button" class="forecast-cell-hit" data-kind="${this.view}" data-step="${j}" data-state="${s}" data-state-index="${k}" data-key="cell-${j}-${s}" ${actionable?`data-prefix="${prefix+s}"`:selected?`data-prefix="${prefix.slice(0,j)}"`:''} aria-label="${escape(explanation)}" aria-disabled="${!this.current}" ${this.view==='branches'?`aria-pressed="${!!selected}"`:''} ${tip(explanation)}></button>`;
+        return `<button type="button" class="forecast-cell-hit" data-kind="${this.view}" data-step="${j}" data-state="${s}" data-state-index="${k}" data-key="${this.view}-${j}-${s}" ${actionable?`data-prefix="${prefix+s}"`:selected?`data-prefix="${prefix.slice(0,j)}"`:''} aria-label="${escape(explanation)}" aria-disabled="${!this.current}" ${this.view==='branches'?`aria-pressed="${!!selected}"`:''} ${tip(explanation)}></button>`;
       }).join('')).join('');
       if(this.view==='branches')html+=`<button type="button" class="forecast-reset" data-kind="reset" data-prefix="" data-key="reset" aria-label="Return to the original combo" ${tip('Remove every chosen future state. Return all branch estimates to the original complete matching cohort.')}></button>`;
     }
@@ -897,7 +892,7 @@ const Forecast = {
 const Stage = {
   wrap: $('#cvwrap'), cv: $('#cv'), hint: $('#hint'),
   view: { cur: new Float64Array([0, 100]), vel: new Float64Array(2), tgt: new Float64Array([0, 100]), get lo() { return this.cur[0]; }, get hi() { return this.cur[1]; }, get tlo() { return this.tgt[0]; }, get thi() { return this.tgt[1]; } },
-  ghosts: [], drag: null, hov: null, ptr: null, snapV: null, snapA: 0, fanA: 0, ready: false,
+  traces: [], scalarVelocity: {}, scene: 1, sceneVelocity: 0, ghosts: [], drag: null, hov: null, ptr: null, snapV: null, snapA: 0, fanA: 0, ready: false,
   fanWeight: 1, exampleWeight: 0, futureBars: null,
   plot: { cur: new Float64Array(2), vel: new Float64Array(2), tgt: new Float64Array(2), ready: false },
   pinFrom: null, pinHov: null, pinPress: null, trace: null,
@@ -933,56 +928,78 @@ const Stage = {
     if (force || !this.ready || mn < inLo || mx > inHi || span < cur * 0.4) { this.view.tgt[0] = lo; this.view.tgt[1] = hi; }
     if (!this.ready || calm()) { this.view.cur.set(this.view.tgt); this.view.vel.fill(0); this.ready = true; }
   },
-  retire(b) { this.ghosts.push({ dv: Float64Array.from(b.dv), x: b.x, col: b.col ? b.col.slice() : COL.rgb.z.slice(), a: b.a }); },
+  retire(b) {
+    if (!calm()) this.ghosts.push({ dv: Float64Array.from(b.dv), x: b.x, col: b.col.slice(), a: b.a, va: b.va, startX: b.x, vx: b.vx });
+  },
+  scalar(key, target, dt, epsilon = .0008) {
+    const values = [this[key]], velocities = [this.scalarVelocity[key] || 0];
+    const busy = Flow.advance(values, velocities, [target], dt, epsilon, calm());
+    this[key] = clamp(values[0], 0, 1); this.scalarVelocity[key] = velocities[0];
+    return busy;
+  },
+  changeForecast() {
+    if (this.forecastSurface && !calm()) {
+      this.departingForecast = document.createElement('canvas');
+      this.departingForecast.width = this.forecastSurface.width; this.departingForecast.height = this.forecastSurface.height;
+      this.departingForecast.getContext('2d').drawImage(this.forecastSurface, 0, 0);
+      this.scene = 0;
+    } else { this.scene = 1; this.sceneVelocity = 0; this.departingForecast = null; }
+  },
+  settle() {
+    const G = this.geom(); this.view.cur.set(this.view.tgt); this.view.vel.fill(0); this.plot.cur.set(this.plot.tgt); this.plot.vel.fill(0);
+    S.bars.forEach((b,i) => { b.x = G.xs[i]; b.vx = 0; b.dv.set(b.v); b.vv.fill(0); b.a = 1; b.va = 0; });
+    this.ghosts = []; this.traces = []; this.scene = 1; this.sceneVelocity = 0; this.departingForecast = null;
+    this.modeMix = Forecast.view === 'paths' ? 1 : 0; this.fanWeight = Forecast.fan ? 1 : 0;
+    this.fanA = Match.fresh() && !Match.failed ? 1 : Forecast.source ? .35 : 0;
+    this.tracePresence = this.trace ? 1 : 0;
+    if (this.trace) { this.trace.a = 1; this.trace.va = 0; }
+    this.scalarVelocity = {}; this.draw();
+  },
   step(dt) {
     let busy = false;
     Forecast.sync(this.geom());
-    const fast = calm(), span = this.view.thi - this.view.tlo;
-    if (!this.drag && springArr(this.view.cur, this.view.vel, this.view.tgt, 2, fast ? 40 : 7, dt, span * 1e-4)) busy = true;
+    const span = this.view.thi - this.view.tlo;
+    if (!this.drag && springArr(this.view.cur, this.view.vel, this.view.tgt, 2, 0, dt, span * 1e-4)) busy = true;
     this.geom();
-    if (!this.drag && springArr(this.plot.cur, this.plot.vel, this.plot.tgt, 2, fast ? 40 : 9, dt, 0.05)) busy = true;
-    const G = this.geom(), id = identity(), kc = 1 - Math.exp(-(fast ? 40 : 6) * dt);
-    const targetMix=Forecast.view==='paths'?1:0;
-    this.modeMix??=targetMix;
-    if(fast)this.modeMix=targetMix;
-    else if(Math.abs(this.modeMix-targetMix)>.001){this.modeMix+=(targetMix-this.modeMix)*(1-Math.exp(-14*dt));busy=true;}else this.modeMix=targetMix;
-    S.bars.forEach((b, i) => {
-      const tx = G.xs[i];
-      if (b.x == null) { b.x = tx; b.vx = 0; }
-      const xs = [b.x], vx = [b.vx];
-      if (springArr(xs, vx, [tx], 1, fast ? 40 : 8, dt, 0.05)) busy = true;
-      b.x = xs[0]; b.vx = vx[0];
-      if (!(this.drag && this.drag.bar === i) && springArr(b.dv, b.vv, b.v, 4, fast ? 40 : 8, dt, span * 1e-4)) busy = true;
-      if (b.a < 1) { b.a = Math.min(1, b.a + dt * (fast ? 40 : 3.2)); busy = true; }
-      const tc = S.colored ? COL.rgb[id.d[i]] : COL.rgb.z;
-      if (!b.col) b.col = tc.slice();
-      for (let c = 0; c < 3; c++) { const d = tc[c] - b.col[c]; if (Math.abs(d) > 0.4) { b.col[c] += d * kc; busy = true; } else b.col[c] = tc[c]; }
+    if (!this.drag && springArr(this.plot.cur, this.plot.vel, this.plot.tgt, 2, 0, dt, .05)) busy = true;
+    const G = this.geom(), id = identity();
+    this.modeMix ??= Forecast.view === 'paths' ? 1 : 0;
+    this.tracePresence ??= this.trace ? 1 : 0;
+    for (const [key,target] of [['modeMix',Forecast.view === 'paths' ? 1 : 0],['fanWeight',Forecast.fan ? 1 : 0],['tracePresence',this.trace ? 1 : 0],['fanA',Match.fresh() && !Match.failed ? 1 : Forecast.source ? .35 : 0]]) if (this.scalar(key,target,dt)) busy = true;
+    if (this.departingForecast) {
+      const x=[this.scene],v=[this.sceneVelocity];
+      if (Flow.advance(x,v,[1],dt,.0008,calm())) busy=true;
+      else this.departingForecast=null;
+      this.scene=clamp(x[0],0,1);this.sceneVelocity=v[0];
+    }
+    S.bars.forEach((b,i) => {
+      const tx = G.xs[i]; if (b.x == null) { b.x = calm() ? tx : tx + Flow.model.travel; b.vx = 0; }
+      const x = [b.x], v = [b.vx];
+      if (Flow.advance(x,v,[tx],dt,.05,calm())) busy=true;
+      b.x=x[0];b.vx=v[0];
+      if (!(this.drag && this.drag.bar === i) && Flow.advance(b.dv,b.vv,b.v,dt,span*1e-4,calm())) busy=true;
+      // A spring may overshoot a collapsed shadow; the visual must still be a candle.
+      for(let k=1;k<4;k++)if(b.dv[k]<b.dv[k-1]){b.dv[k]=b.dv[k-1];b.vv[k]=0;}
+      const alpha=[b.a],av=[b.va];if(Flow.advance(alpha,av,[1],dt,.0008,calm()))busy=true;
+      b.a=clamp(alpha[0],0,1);b.va=av[0];b.col=(S.colored?COL.rgb[id.d[i]]:COL.rgb.z).slice();
     });
-    for (const g of this.ghosts) { g.a -= dt * (fast ? 40 : 3.4); g.x += dt * 60; }
-    this.ghosts = this.ghosts.filter(g => g.a > 0.01);
-    if (this.ghosts.length) busy = true;
-    if (this.trace && this.trace.a < 1) { this.trace.a = Math.min(1, this.trace.a + dt * (fast ? 40 : 4)); busy = true; }
-    // the fan leaves quickly when a drag begins and returns slowly once the history answers the drawing as it stands
-    const fanT = Match.fresh() && !Match.failed ? 1 : Forecast.source ? .35 : 0;
-    if (Math.abs(fanT - this.fanA) > 0.004) { this.fanA += (fanT - this.fanA) * (1 - Math.exp(-(fast ? 60 : fanT > this.fanA ? 6 : 16) * dt)); busy = true; } else this.fanA = fanT;
-    const example = Forecast.example(Forecast.source), mix = 1 - Math.exp(-(fast ? 60 : 14) * dt);
-    for (const [key, target] of [['fanWeight', Forecast.fan ? 1 : 0], ['exampleWeight', example ? 1 : 0]]) {
-      if (Math.abs(target - this[key]) > .004) { this[key] += (target - this[key]) * mix; busy = true; } else this[key] = target;
+    for(const g of this.ghosts){
+      const x=[g.x],v=[g.vx],a=[g.a],av=[g.va];
+      Flow.advance(x,v,[g.startX+Flow.model.travel],dt,.05,calm());Flow.advance(a,av,[0],dt,.0008,calm());
+      g.x=x[0];g.vx=v[0];g.a=clamp(a[0],0,1);g.va=av[0];
     }
-    if (example) {
-      const target = example.bars.flat();
-      if (!this.futureBars || this.futureBars.length !== target.length) this.futureBars = Float64Array.from(target);
-      for (let j = 0; j < target.length; j++) {
-        if (Math.abs(target[j] - this.futureBars[j]) > .0001) { this.futureBars[j] += (target[j] - this.futureBars[j]) * mix; busy = true; }
-        else this.futureBars[j] = target[j];
-      }
+    this.ghosts=this.ghosts.filter(g=>g.a>.001);if(this.ghosts.length)busy=true;
+    for(const trace of [...this.traces,...(this.trace?[this.trace]:[])]){
+      const a=[trace.a],v=[trace.va||0];if(Flow.advance(a,v,[trace.retiring?0:1],dt,.0008,calm()))busy=true;
+      trace.a=clamp(a[0],0,1);trace.va=v[0];
     }
+    this.traces=this.traces.filter(t=>t.a>.001);
     return busy;
   },
   hit(px, py) {
     const G = this.geom();
     for (let i = 0; i < G.N; i++) {
-      const b = S.bars[i], cx = G.xs[i];
+      const b = S.bars[i], cx = b.x == null ? G.xs[i] : b.x;
       if (Math.abs(px - cx) > G.spacing / 2) continue;
       if (py < G.plotTop - 40) return null;
       if (py > G.plotBottom + 12) return { kind: 'grip', bar: i };
@@ -1101,7 +1118,9 @@ const Stage = {
     if (S.sel !== h.bar) Ops.select(h.bar);
     // the drawing stays exactly where it is under the pointer: a frame still easing stops where it is, not where it was going
     this.view.tgt.set(this.view.cur); this.view.vel.fill(0);
-    this.drag = { ...h, y0: p.y, base: S.bars.map(b => Float64Array.from(b.v)), P: chainParams(S.bars), start: snap(), moved: false };
+    this.plot.tgt.set(this.plot.cur);this.plot.vel.fill(0);
+    const presented=S.bars.map(b=>({v:Array.from(b.dv),d:b.d}));
+    this.drag = { ...h, y0:p.y, base:presented.map(b=>Float64Array.from(b.v)), P:chainParams(presented),start:snap(),moved:false };
     this.ptr = p; App.kick();
   },
   move(e) {
@@ -1191,7 +1210,7 @@ const Stage = {
     this.drag = null; this.snapV = null; this.snapA = 0; this.cv.style.cursor = '';
     if (!d.moved) {
       // a tap: whatever the press moved by a hair, on the bar or its neighbours, goes back exactly
-      S.bars.forEach((b, q) => { if (b.d !== d.P.d[q] || b.v.some((x, k) => x !== d.base[q][k])) { b.v.set(d.base[q]); b.d = d.P.d[q]; b.dv.set(b.v); b.vv.fill(0); } });
+      S.bars.forEach((b,q)=>{b.v.set(d.start.bars[q].v);b.d=d.start.bars[q].d;});
       if (d.kind === 'move') Ops.flip(d.bar);
       refresh(); return;
     }
@@ -1235,11 +1254,12 @@ const Stage = {
       const y = Math.round(Y(this.snapV)) + 0.5;
       ctx.strokeStyle = COL.ai; ctx.lineWidth = 1.2; ctx.globalAlpha = this.snapA * this.snapA; ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke(); ctx.globalAlpha = 1;
     }
-    this.drawFan(ctx,G);
+    this.drawForecast(ctx,G);
     for (const g of this.ghosts) this.drawCandle(ctx, G, g.x, g.dv, g.col, g.a);
     S.bars.forEach((b, i) => this.drawBar(ctx, G, i));
-    if(Forecast.source){this.drawStates(ctx,G);this.drawPaths(ctx,G);this.drawBranches(ctx,G);}else this.drawForecastEmpty(ctx,G);
+
     this.drawFutureLabels(ctx, G);
+    for(const trace of this.traces)this.drawTrace(ctx,G,trace);
     this.drawTrace(ctx, G);
     this.drawSkeleton(ctx, G);
     this.drawPins(ctx, G);
@@ -1301,6 +1321,17 @@ const Stage = {
   },
   // 続: the bars after the windows that match, each scaled so its own low and high sit on the drawing's, as a fan of
   // their closes (10 to 90%, 25 to 75% and the median) from the last bar's close, with the shape's high and low carried on
+  drawForecast(ctx,G) {
+    if(!this.forecastSurface)this.forecastSurface=document.createElement('canvas');
+    const layer=fitCanvas(this.forecastSurface,G.w,G.h);layer.clearRect(0,0,G.w,G.h);
+    this.drawFan(layer,G);
+    if(Forecast.source){this.drawStates(layer,G);this.drawPaths(layer,G);this.drawBranches(layer,G);}else this.drawForecastEmpty(layer,G);
+    if(this.departingForecast){
+      layer.save();layer.globalCompositeOperation='destination-in';layer.globalAlpha=this.scene;layer.fillRect(0,0,G.w,G.h);layer.restore();
+      layer.save();layer.globalCompositeOperation='destination-over';layer.globalAlpha=1-this.scene;layer.drawImage(this.departingForecast,0,0,G.w,G.h);layer.restore();
+    }
+    ctx.drawImage(this.forecastSurface,0,0,G.w,G.h);
+  },
   drawFan(ctx, G) {
     const c=Forecast.source;
     if(!c||this.fanA<.01||this.fanWeight<.01||G.w<1||G.h<1||G.fanStep<4)return;
@@ -1312,7 +1343,7 @@ const Stage = {
     const Y=u=>this.Y(lo+u*(hi-lo),G),y0=this.Y(closeOf(last.dv,last.d),G);
     const neutral=rgbOf(COL['ink-2']),indigo=rgbOf(COL.ai);
     const pigment=neutral.map((v,j)=>Math.round(v*.78+indigo[j]*.22));
-    const paint=rgbStr(pigment),weight=this.fanA*this.fanWeight*FAN_OPTIONS.strength*(this.trace?.3:1);
+    const paint=rgbStr(pigment),weight=this.fanA*this.fanWeight*FAN_OPTIONS.strength*(1-(this.tracePresence||0)*.7);
     if(!this.fanSurface)this.fanSurface=document.createElement('canvas');
     const wash=fitCanvas(this.fanSurface,G.w,G.h);
     wash.clearRect(0,0,G.w,G.h);wash.fillStyle=paint;
@@ -1466,8 +1497,8 @@ const Stage = {
     ctx.restore();
   },
   // 写し: an instance from the history traced over the drawing, scaled to the drawing's height, one BTCUSDT bar per drawn bar
-  drawTrace(ctx, G) {
-    const t = this.trace; if (!t || t.bars.length !== S.bars.length) return;
+  drawTrace(ctx, G, t = this.trace) {
+     if (!t || t.bars.length !== S.bars.length) return;
     let cmin = Infinity, cmax = -Infinity, imin = Infinity, imax = -Infinity;
     for (const b of S.bars) { cmin = Math.min(cmin, b.v[0]); cmax = Math.max(cmax, b.v[3]); }
     for (const [, h, l] of t.bars) { imin = Math.min(imin, l); imax = Math.max(imax, h); }
@@ -1553,8 +1584,7 @@ Stage.cv.addEventListener('keydown', e => {
 // a pinch on the paper spreads the bars apart or draws them together
 Stage.cv.addEventListener('wheel', e => { if (!e.ctrlKey) return; e.preventDefault(); setSpace(S.space - e.deltaY * 0.006); }, { passive: false });
 new ResizeObserver(() => {
-  Stage.plot.ready=false;
-  if(!Stage.drag)S.bars.forEach(b=>{b.x=null;b.vx=0;});
+  if(!Flow.value($('#ref'),'reference')){Flow.finish();Stage.plot.ready=false;if(!Stage.drag)Stage.settle();}
   App.redraw();
 }).observe(Stage.wrap);
 
@@ -1652,12 +1682,14 @@ const Match = {
     else msg = `<b>No window holds ${relations}</b>${r.stretch ? ' even with bars skipped' : ''}. The nearest windows${F ? ` whose next bar ${words}` : ''} are shown with the relations each one breaks.`;
     $('#mmsg').innerHTML = msg + ` <span style="color: var(--ink-3)">· ${r.ms < 1000 ? r.ms + ' ms' : (r.ms / 1000).toFixed(1) + ' s'}${this.until ? ` · BTCUSDT to ${day(this.until)}` : ''}</span>`;
     const em = $('#emaki'); em.classList.remove('stale');
-    if (!r.results.length) { em.innerHTML = `<p class="empty">${r.mode === 'held' ? 'Every window that holds is on a timeframe you left out. Include it above to see them.' : 'Nothing to show on the selected timeframes.'}</p>`; this.setTrace(-1); return; }
-    em.innerHTML = r.results.map((x, i) => this.card(x, i, held)).join('');
-    this.sticky = -1; this.setTrace(-1);
-    if (!calm()) requestAnimationFrame(() => requestAnimationFrame(() => em.querySelectorAll('.card.enter').forEach((c, i) => setTimeout(() => c.classList.remove('enter'), Math.min(i, 12) * 28))));
-    else em.querySelectorAll('.card.enter').forEach(c => c.classList.remove('enter'));
+    if (!r.results.length) { Flow.patch(em,`<p class="empty">${r.mode === 'held' ? 'Every window that holds is on a timeframe you left out. Include it above to see them.' : 'Nothing to show on the selected timeframes.'}</p>`); this.setTrace(-1); return; }
+    const selected=em.querySelector('[aria-pressed="true"]')?.dataset.motionKey;
+    Flow.patch(em,r.results.map((x,i)=>this.card(x,i,held)).join(''));
+    this.sticky=r.results.findIndex(x=>this.resultKeyOf(x)===selected);
+    em.querySelectorAll('.card').forEach((c,i)=>c.setAttribute('aria-pressed',String(i===this.sticky)));
+    this.setTrace(this.sticky);
   },
+  resultKeyOf(r){return `${r.tf}:${r.start}:${r.picks.join(',')}`;},
   card(r, i, held) {
     const d = new Date(r.start * 1000), when = `${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })} ${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
     const broken = r.broken.map(i2 => held[i2].label);
@@ -1670,7 +1702,7 @@ const Match = {
       const tip = nx.dir ? `The next bar closed ${nx.atrx === nx.atrx ? Math.abs(nx.atrx).toFixed(2) + ' ATR, ' : ''}${Math.abs(nx.bps).toFixed(1)} bps ${nx.dir > 0 ? 'above' : 'below'} this window's last close` : 'The next bar closed exactly at this window\'s last close';
       next = `<span class="nx ${nx.dir > 0 ? 'nu' : nx.dir < 0 ? 'nd' : ''}" title="${tip}">次 ${nx.dir > 0 ? '▲' : nx.dir < 0 ? '▼' : '—'} ${nx.dir ? mag : 'flat'}</span>`;
     }
-    return `<button type="button" class="card${calm() ? '' : ' enter'}" data-i="${i}" aria-pressed="false" title="Trace this instance over your drawing">${this.thumb(r, held)}
+    return `<button type="button" class="card" data-motion-key="${this.resultKeyOf(r)}" data-i="${i}" aria-pressed="false" title="Trace this instance over your drawing">${this.thumb(r, held)}
       <span class="when">${r.tf} · ${esc(when)}</span><span class="fl" title="Scaled to the same height, its bar ends sit on average ${off.replace(' off', '')} of that height from yours. Exact means every comparison matches your drawing.">${off} · ${flips}${r.extra ? ` · ${r.extra} skipped` : ''}</span>${broken.length ? `<span class="br" title="Breaks ${esc(broken.join(', '))}">breaks ${esc(broken.join(', '))}</span>` : ''}${next}</button>`;
   },
   thumb(r, held) {
@@ -1696,9 +1728,11 @@ const Match = {
   },
   setTrace(i) {
     const r = this.result && i >= 0 ? this.result.results[i] : null;
-    if (!r) { Stage.trace = null; App.redraw(); return; }
+    const key=r?this.resultKeyOf(r):null;if(key&&Stage.trace?.key===key)return;
+    if(Stage.trace){Stage.trace.retiring=true;Stage.traces.push(Stage.trace);Stage.trace=null;}
+    if (!r) { App.redraw(); return; }
     const d = new Date(r.start * 1000);
-    Stage.trace = { bars: r.drawn, next: r.next ? r.next.bar : null, a: Stage.trace ? Stage.trace.a : 0, caption: `${r.tf} · ${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })} · ${(r.off * 100).toFixed(1)}% off · ${r.flips === 0 ? 'exact' : r.flips + ' flips'}` };
+    Stage.trace = { key, bars: r.drawn, next: r.next ? r.next.bar : null, a: calm()?1:0, va: 0, caption: `${r.tf} · ${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })} · ${(r.off * 100).toFixed(1)}% off · ${r.flips === 0 ? 'exact' : r.flips + ' flips'}` };
     App.redraw();
   },
 };
@@ -1738,7 +1772,7 @@ const Panes = {
         } else if (button.dataset.design) {
           this.choose(side, button.dataset.design); pill.focus();
         } else if (button === pill) {
-          const open = menu.hidden; this.closeMenus(); menu.hidden = !open; pill.setAttribute('aria-expanded', String(open));
+          const open = menu.hidden; this.closeMenus(menu); Flow.visible(menu,open); pill.setAttribute('aria-expanded', String(open));
           if (open) menu.querySelector('[aria-checked="true"]').focus();
         }
       });
@@ -1765,8 +1799,8 @@ const Panes = {
     pill.querySelector('span').textContent = v.name; pill.setAttribute('aria-label', `${side === 'left' ? 'Left' : 'Right'} pane design: ${v.name}`);
     for (const b of pane.querySelectorAll('[data-design]')) b.setAttribute('aria-checked', String(b.dataset.design === v.id));
   },
-  closeMenus() {
-    for (const menu of document.querySelectorAll('.pane-menu')) { menu.hidden = true; $('.pane-current', menu.parentElement).setAttribute('aria-expanded','false'); }
+  closeMenus(except = null) {
+    for (const menu of document.querySelectorAll('.pane-menu')) { if(menu===except)continue;Flow.visible(menu,false); $('.pane-current', menu.parentElement).setAttribute('aria-expanded','false'); }
   },
   remember(side) {
     const pane = $(`.pane[data-side="${side}"]`);
@@ -1787,21 +1821,23 @@ const Panes = {
     for (const side of onlySide ? [onlySide] : ['left','right']) {
       this.remember(side);
       const pane = $(`.pane[data-side="${side}"]`), variant = this.views[side];
+      Flow.resize($('.pane-body',pane),()=>{
       if (side === 'left') {
-        $('#lcap').innerHTML = PaneDesigns.caption(r,ctx);
-        $('#lrows').innerHTML = PaneDesigns.left(variant,r,ctx);
-        $('#lnext').innerHTML = PaneDesigns.next(r,ctx);
-        $('#lmethod').innerHTML = PaneDesigns.leftMethod(S.bars.length);
+        Flow.patch($('#lcap'), PaneDesigns.caption(r,ctx));
+        Flow.patch($('#lrows'), PaneDesigns.left(variant,r,ctx));
+        Flow.patch($('#lnext'), PaneDesigns.next(r,ctx));
+        Flow.patch($('#lmethod'), PaneDesigns.leftMethod(S.bars.length));
       } else {
-        $('#rcap').innerHTML = `<strong>Next ${P.after} bars</strong><span class="pane-meta">${P.cont ? fmt(P.cont.n) + ' windows with all ' + P.after + ' bars available' : 'Complete continuations below 30'}</span>`;
-        $('#rnextsec').hidden = variant !== 'bars';
-        $('#rnext').innerHTML = PaneDesigns.next(r,ctx);
-        $('#rbecame').innerHTML = PaneDesigns.right(variant,r);
-        $('#rfan').innerHTML = PaneDesigns.terminal(P);
-        $('#rmethod').innerHTML = PaneDesigns.rightMethod(P.after);
+        Flow.patch($('#rcap'), `<strong>Next ${P.after} bars</strong><span class="pane-meta">${P.cont ? fmt(P.cont.n) + ' windows with all ' + P.after + ' bars available' : 'Complete continuations below 30'}</span>`);
+        Flow.disclosure($('#rnextsec'),variant==='bars');
+        Flow.patch($('#rnext'), PaneDesigns.next(r,ctx));
+        Flow.patch($('#rbecame'), PaneDesigns.right(variant,r));
+        Flow.patch($('#rfan'), PaneDesigns.terminal(P));
+        Flow.patch($('#rmethod'), PaneDesigns.rightMethod(P.after));
         $('#ncap').textContent = 'One changed bar-end comparison · selected timeframes';
-        $('#rnear').innerHTML = P.near.length ? P.near.map((nb,i) => `<div class="pnear"><span>${esc(this.nearWord(nb))}<small>${fmt(nb.n)} windows${nb.up ? ` · next rose ${pct(nb.up[0])} · 95% interval ${pct(nb.up[1])}–${pct(nb.up[2])}` : ' · next-bar estimate unavailable'}</small></span><button type="button" data-i="${i}" title="Put its closest instance on the canvas">Try it</button></div>`).join('') : '<p class="pcap">No neighboring patterns found on these timeframes.</p>';
+        Flow.patch($('#rnear'), P.near.length ? P.near.map((nb,i) => `<div class="pnear"><span>${esc(this.nearWord(nb))}<small>${fmt(nb.n)} windows${nb.up ? ` · next rose ${pct(nb.up[0])} · 95% interval ${pct(nb.up[1])}–${pct(nb.up[2])}` : ' · next-bar estimate unavailable'}</small></span><button type="button" data-i="${i}" title="Put its closest instance on the canvas">Try it</button></div>`).join('') : '<p class="pcap">No neighboring patterns found on these timeframes.</p>');
       }
+      });
       pane.dataset.view = variant;
       const remembered = this.details.get(side + '-' + variant);
       for (const d of pane.querySelectorAll('details[data-detail]')) if (remembered?.has(d.dataset.detail)) d.open = remembered.get(d.dataset.detail);
@@ -1890,7 +1926,7 @@ const Ref = {
       const o = document.createElement('option'); o.value = t.id; o.textContent = t.title; group.append(o);
     }
     const ns = 'http://www.w3.org/2000/svg';
-    this.spot = document.createElementNS(ns, 'svg'); this.spot.id = 'ref-spot'; this.spot.setAttribute('aria-hidden', 'true'); this.spot.style.display = 'none';
+    this.spot = document.createElementNS(ns, 'svg'); this.spot.id = 'ref-spot'; this.spot.setAttribute('aria-hidden', 'true'); this.spot.hidden=true;this.spot.setAttribute('hidden','');
     this.shade = document.createElementNS(ns, 'path'); this.shade.setAttribute('class', 'shade'); this.shade.setAttribute('fill-rule', 'evenodd');
     this.frame = document.createElementNS(ns, 'rect'); this.frame.setAttribute('class', 'frame'); this.frame.setAttribute('rx', '6');
     this.spot.append(this.shade, this.frame); document.body.append(this.spot);
@@ -1917,31 +1953,55 @@ const Ref = {
     new ResizeObserver(() => this.schedule()).observe(document.body);
     this.render(0);
   },
+  transition(open) {
+    const wasHidden=this.pane.hidden;
+    if(wasHidden&&!open&&!Flow.value(this.pane,'reference'))return;
+    if(open&&!Flow.value(this.pane,'reference')){
+      this.work.style.gridTemplateColumns='';this.pane.hidden=false;this.work.dataset.reference='open';
+      const columns=getComputedStyle(this.work).gridTemplateColumns.split(' ').map(parseFloat);
+      this.columns=columns;
+    }
+    this.pane.hidden=!open;this.pane.inert=!open;this.pane.setAttribute('aria-hidden',String(!open));
+    this.pane.dataset.flowVisible='';this.pane.style.setProperty('--flow-display','flex');
+    this.work.dataset.reference='open';this.pane.style.overflow='hidden';
+    const mobile=innerWidth<=700;
+    Flow.spring(this.pane,'reference',{from:{progress:wasHidden?0:1},to:{progress:open?1:0},
+      write:({progress})=>{
+        const p=clamp(progress,0,1);this.pane.style.opacity=String(p);
+        if(mobile)this.pane.style.translate=`${(p-1)*Flow.model.travel}px 0`;
+        else if(innerWidth>1180)this.work.style.gridTemplateColumns=`${this.columns[0]*p}px ${330+(this.columns[1]-330)*p}px minmax(340px,1fr) ${340+(this.columns[3]-340)*p}px`;
+        else this.work.style.gridTemplateColumns=`${this.columns[0]*p}px minmax(320px,1fr)`;
+        App.redraw();this.schedule();
+      },done:()=>{
+        this.work.style.gridTemplateColumns='';this.pane.style.opacity='';this.pane.style.translate='';this.pane.style.overflow='';
+        this.pane.style.removeProperty('--flow-display');delete this.pane.dataset.flowVisible;
+        if(!open)delete this.work.dataset.reference;App.redraw();this.schedule();
+      }});
+  },
   open() {
-    this.back = document.activeElement;
-    this.pane.hidden = false; this.work.dataset.reference = 'open';
-    $('#reftoggle').setAttribute('aria-expanded', 'true'); $('#reftoggle').setAttribute('aria-pressed', 'true');
-    $('#ref-topic').focus({ preventScroll: true }); App.redraw();
+    this.back = document.activeElement;this.transition(true);
+    $('#reftoggle').setAttribute('aria-expanded','true');$('#reftoggle').setAttribute('aria-pressed','true');
+    $('#ref-topic').focus({preventScroll:true});
   },
   close() {
-    this.clear(); this.pane.hidden = true; delete this.work.dataset.reference;
-    $('#reftoggle').setAttribute('aria-expanded', 'false'); $('#reftoggle').setAttribute('aria-pressed', 'false');
-    const to = this.back && this.back.isConnected && this.back.getClientRects().length && !this.back.closest('[hidden]') ? this.back : $('#reftoggle');
-    to.focus({ preventScroll: true }); App.redraw();
+    this.clear();this.transition(false);
+    $('#reftoggle').setAttribute('aria-expanded','false');$('#reftoggle').setAttribute('aria-pressed','false');
+    const to=this.back&&this.back.isConnected&&this.back.getClientRects().length&&!this.back.closest('[hidden]')?this.back:$('#reftoggle');
+    to.focus({preventScroll:true});
   },
   render(i) {
     this.cur = clamp(i, 0, REF_TOPICS.length - 1);
     const t = REF_TOPICS[this.cur];
     this.clear();
     $('#ref-topic').value = t.id;
-    $('#ref-article').innerHTML = `<p class="ref-group">${esc(t.group)}</p><h3>${esc(t.title)}</h3><dl><dt>Purpose</dt><dd>${esc(t.purpose)}</dd><dt>Read</dt><dd>${esc(t.read)}</dd><dt>Use</dt><dd>${esc(t.use)}</dd></dl>`;
-    $('#ref-targets').innerHTML = t.targets.map((x, k) => `<button type="button" data-t="${k}" aria-pressed="false">${esc(x.label)}</button>`).join('');
+    Flow.resize($('#ref-article'),()=>Flow.patch($('#ref-article'),`<p class="ref-group">${esc(t.group)}</p><h3>${esc(t.title)}</h3><dl><dt>Purpose</dt><dd>${esc(t.purpose)}</dd><dt>Read</dt><dd>${esc(t.read)}</dd><dt>Use</dt><dd>${esc(t.use)}</dd></dl>`));
+    Flow.patch($('#ref-targets'),t.targets.map((x,k)=>`<button type="button" data-motion-key="${t.id}-${k}" data-t="${k}" aria-pressed="false">${esc(x.label)}</button>`).join(''));
     $('#ref-pos').textContent = `${this.cur + 1} / ${REF_TOPICS.length}`;
     $('#ref-prev').disabled = this.cur === 0; $('#ref-next').disabled = this.cur === REF_TOPICS.length - 1;
     $('#ref-body').scrollTop = 0;
   },
   clear() {
-    this.active = null; this.lastShape = ''; this.spot.style.display = 'none';
+    this.active = null; this.lastShape = ''; Flow.visible(this.spot,false);
     for (const b of document.querySelectorAll('#ref-targets button')) b.setAttribute('aria-pressed', 'false');
     $('#ref-status').textContent = '';
   },
@@ -1966,25 +2026,25 @@ const Ref = {
   paint() {
     if (!this.active || this.pane.hidden) return;
     const raw = this.bounds(this.active), doc = this.pane.getBoundingClientRect(), W = innerWidth, H = innerHeight;
-    if (!raw) { this.spot.style.display = 'none'; $('#ref-status').textContent = 'This part is not on the page right now: it appears once there are results to show.'; return; }
+    if (!raw) { Flow.visible(this.spot,false); $('#ref-status').textContent = 'This part is not on the page right now: it appears once there are results to show.'; return; }
     let l = Math.max(0, raw.left - 4), t = Math.max(0, raw.top - 4), r = Math.min(W, raw.right + 4), b = Math.min(H, raw.bottom + 4);
     // keep the reference itself undimmed and unframed
     if (l < doc.right && r > doc.left && t < doc.bottom && b > doc.top) { if (doc.width >= W - 16) b = Math.min(b, doc.top); else l = Math.max(l, doc.right); }
-    if (r <= l || b <= t) { this.spot.style.display = 'none'; $('#ref-status').textContent = 'This part is outside the visible area: scroll it into view to highlight it.'; return; }
+    if (r <= l || b <= t) { Flow.visible(this.spot,false); $('#ref-status').textContent = 'This part is outside the visible area: scroll it into view to highlight it.'; return; }
     const hole = (x, y, w, h) => `M${x},${y}h${w}v${h}h${-w}Z`;
     const shape = `M0,0H${W}V${H}H0Z${hole(doc.left, doc.top, doc.width, doc.height)}${hole(l, t, r - l, b - t)}`;
     if (shape !== this.lastShape) {
       this.lastShape = shape; this.spot.setAttribute('viewBox', `0 0 ${W} ${H}`); this.shade.setAttribute('d', shape);
       for (const [k, v] of Object.entries({ x: l, y: t, width: r - l, height: b - t })) this.frame.setAttribute(k, v);
     }
-    this.spot.style.display = 'block';
+    Flow.visible(this.spot,true);
     $('#ref-status').textContent = `Highlighted: ${this.active.label.replace(/^Show /, '')}. Escape or a click on the dimmed area stops it.`;
   },
 };
 Ref.init();
 // timeframe chips: how many windows hold (or, with nothing held, how many exact twins), and whether each timeframe is included
 function renderChips(counts) {
-  $('#tfs').innerHTML = TF_LABELS.map((tf, k) => `<button type="button" class="chip" data-k="${k}" aria-pressed="${S.tfOn[k]}" title="${S.tfOn[k] ? 'Leave out' : 'Include'} ${tf}">${tf}${counts ? `<b>${fmt(counts[k])}</b>` : ''}</button>`).join('');
+  Flow.patch($('#tfs'),TF_LABELS.map((tf, k) => `<button type="button" class="chip" data-k="${k}" aria-pressed="${S.tfOn[k]}" title="${S.tfOn[k] ? 'Leave out' : 'Include'} ${tf}">${tf}${counts ? `<b>${fmt(counts[k])}</b>` : ''}</button>`).join(''),false);
 }
 renderChips(null);
 const emaki = $('#emaki');
@@ -2026,13 +2086,13 @@ function setPinMode(on) {
 function updateFooter() {
   const id = identity(), n = id.n;
   const names = namesOf(id);
-  $('#names').innerHTML = names.length
+  Flow.patch($('#names'),names.length
     ? names.map(([who, ja, en, note]) => `<span class="nm"><span class="who">${who}</span><span lang="ja">${ja}</span>${en}${note ? ` <span class="note">· ${note}</span>` : ''}</span>`).join('')
-    : '<span class="nm none">No classical name fits these bars</span>';
+    : '<span class="nm none">No classical name fits these bars</span>',false);
   const lines = [];
   if (S.sel > 0) lines.push(pairSentence(id, S.sel - 1, S.sel));
   if (S.sel < n - 1) lines.push(pairSentence(id, S.sel, S.sel + 1));
-  $('#desc').innerHTML = lines.map(l => `<span>${l}</span>`).join('');
+  Flow.patch($('#desc'),lines.map(l=>`<span>${l}</span>`).join(''),false);
   $('#code').textContent = codeOf(id);
   $('#dom').textContent = n <= 10 ? `one of ${DOMAIN[S.colored ? 'o' : 'u'][n]} ${NWORD[n]}-bar patterns${S.colored ? '' : ' (shape only)'}` : `a ${NWORD[n]}-bar pattern, longer than the ten bars the engine counts`;
 }
@@ -2071,7 +2131,7 @@ function refresh() {
   const sk = $('#skel'); sk.max = String(lv.length); sk.value = String(S.skel);
   const marks = skelMarks().length + (S.skel && S.colored ? 2 : 0);
   $('#skelv').textContent = !S.skel ? 'off' : S.skel === 1 ? `bones · ${marks} points` : S.skel === lv.length ? `every swing · ${marks}` : `${marks} points`;
-  $('#pins').setAttribute('aria-pressed', String(S.pinMode)); $('#pinv').textContent = String(S.pins.length); $('#clearpins').hidden = !S.pins.length;
+  $('#pins').setAttribute('aria-pressed', String(S.pinMode)); $('#pinv').textContent = String(S.pins.length); Flow.disclosure($('#clearpins'),!!S.pins.length,'width');
   const anyHeld = S.pins.length > 0 || S.skel > 0;
   $('#stv').textContent = `+${S.stretch} bar${S.stretch === 1 ? '' : 's'}`; $('#stv').style.color = anyHeld || !S.stretch ? '' : 'var(--ink-3)';
   $('#stless').disabled = S.stretch <= 0; $('#stmore').disabled = S.stretch >= 4;
@@ -2081,7 +2141,7 @@ function refresh() {
   $('#nextctl').dataset.any = String(!nx.dir);
   $('#ndir').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.v === nx.dir)));
   $('#nmeas').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.v === nx.measure)));
-  const nv = $('#nval'); $('#nvalw').hidden = !nx.dir || nx.measure === 'any';
+  const nv = $('#nval'); Flow.disclosure($('#nvalw'),!!nx.dir&&nx.measure!=='any','width');
   if (nx.measure !== 'any') { nv.step = nx.measure === 'bps' ? '1' : '0.1'; nv.setAttribute('aria-label', `At least how many ${nx.measure === 'bps' ? 'basis points' : 'ATR'}`); if (document.activeElement !== nv) nv.value = String(nx[nx.measure]); }
   updateFooter();
   Match.schedule();
@@ -2106,7 +2166,7 @@ function setSpace(u) {
 }
 $('#space').value = String(S.space);
 $('#space').addEventListener('input', e => setSpace(+e.target.value));
-function onTheme() { readTheme(); App.redraw(); }
+function onTheme() { Flow.finish();readTheme();Stage.departingForecast=null;App.redraw(); }
 $('#theme').addEventListener('click', () => {
   const root = document.documentElement, cur = root.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
   root.dataset.theme = cur === 'dark' ? 'light' : 'dark'; onTheme();
@@ -2121,7 +2181,9 @@ $('#space').dataset.tip='Width of the drawn root candle bodies only. Their cente
 Stage.fit(true);
 refresh();
 Match.start();
-if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => App.redraw());
+Flow.onSettle(()=>{Stage.settle();App.redraw();});
+Flow.reveal($('.top'),0);Flow.reveal($('.stage'),0);Flow.reveal($('.lpane'));Flow.reveal($('.rpane'));
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => {Flow.finish();App.redraw();});
 })();
 </script>
 
