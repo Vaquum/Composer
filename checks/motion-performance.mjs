@@ -216,6 +216,15 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
       const state={retained:button.isConnected,focused:document.activeElement===button,reordered:root.firstElementChild.dataset.motionKey==='b'};root.remove();return state;
     });
     assert.deepEqual(focus,{retained:true,focused:true,reordered:true},'reduced-motion reorders must retain live keyboard focus');
+    const nested=await page.evaluate(()=>{
+      const F=__perf.Flow,root=document.createElement('div');document.body.append(root);
+      const inside='<strong>Original</strong><p>Foot</p>',outer=`<section data-motion-key="child">${inside}</section>`;F.patch(root,outer);
+      const child=root.firstElementChild;F.patch(child,'<strong>Nested update</strong><p>Foot</p>');F.patch(root,outer);
+      const ancestorRestored=child===root.firstElementChild&&child.innerHTML===inside;
+      F.patch(child,inside);F.patch(root,'<section data-motion-key="child"><strong>Parent update</strong><p>Foot</p></section>');F.patch(child,inside);
+      const descendantRestored=child.innerHTML===inside;root.remove();return{ancestorRestored,descendantRestored};
+    });
+    assert.deepEqual(nested,{ancestorRestored:true,descendantRestored:true},'nested patches must invalidate enclosing and retained descendant markup caches');
     assert.deepEqual(errors,[]);
     }finally{await context.close();}
   }

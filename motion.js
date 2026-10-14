@@ -301,6 +301,7 @@ const TactileFlow = (() => {
     for (const name of incoming.style) if (!temporary(name)&&(current.style.getPropertyValue(name)!==incoming.style.getPropertyValue(name)||current.style.getPropertyPriority(name)!==incoming.style.getPropertyPriority(name))) current.style.setProperty(name, incoming.style.getPropertyValue(name), incoming.style.getPropertyPriority(name));
   }
   function reconcile(root, incoming, geometries, animate) {
+    markups.delete(root);
     // A retained disclosure inside this patch may have new children or text.
     const measurement=measurements.get(root);if(measurement)measurement.dirty=true;
     const old = [...root.childNodes], desired = [...incoming.childNodes], used = new Set(), keyed = new Map(old.map((node, i) => [key(node, i), node]));
@@ -329,6 +330,7 @@ const TactileFlow = (() => {
   function patch(root, markup, animate = true) {
     const previous=markups.get(root);
     if(previous?.markup===markup&&previous.first===root.firstChild&&previous.last===root.lastChild){details(root);return;}
+    for(let parent=root.parentElement;parent;parent=parent.parentElement)markups.delete(parent);
     const template = document.createElement('template'); template.innerHTML = markup; details(template.content);
     const result=animate?(transaction?.root.contains(root)?reconcile(root,template.content,transaction.geometries,true):layout(root,geometries=>reconcile(root,template.content,geometries,true))):reconcile(root,template.content,new Map(),false);
     details(root);invalidate(root);markups.set(root,{markup,first:root.firstChild,last:root.lastChild});return result;
