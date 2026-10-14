@@ -30,7 +30,7 @@ const server=http.createServer((req,res)=>{
 });
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const base=`http://127.0.0.1:${server.address().port}`;
-const settle=page=>page.waitForFunction(()=>!__perf.App.running&&!__perf.Flow.active()&&!document.getAnimations().some(a=>a.playState==='running'));
+const settle=page=>page.waitForFunction(()=>!__perf.Match.presentation&&!__perf.App.running&&!__perf.Flow.active()&&!document.getAnimations().some(a=>a.playState==='running'));
 const seed=(page,result)=>page.evaluate(r=>{
   const A=__perf;A.Match.ready=true;A.Match.failed=false;A.Match.sent=A.Match.query();A.Match.sentKey=A.Match.key();
   A.Match.onmsg({...r,type:'result',id:A.Match.id});
@@ -72,9 +72,9 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
       const step=A.Stage.step,draw=A.Stage.draw;let work=0;
       A.Stage.step=function(...args){const t=performance.now();try{return step.apply(this,args);}finally{work+=performance.now()-t;}};
       A.Stage.draw=function(...args){const t=performance.now();try{return draw.apply(this,args);}finally{if(__samples.active)__samples.work.push(work+performance.now()-t);work=0;}};
-      for(const name of ['move','down','up']){
-        const handler=A.Stage[name];
-        A.Stage[name]=function(...args){const t=performance.now();try{return handler.apply(this,args);}finally{if(__samples.active)__samples.calls.push(performance.now()-t);}};
+      for(const [owner,names]of [[A.Stage,['move','down','up']],[A.Match,['presentResult']]])for(const name of names){
+        const handler=owner[name];
+        owner[name]=function(...args){const t=performance.now();try{return handler.apply(this,args);}finally{if(__samples.active)__samples.calls.push(performance.now()-t);}};
       }
       let previous=0;
       const frame=now=>{if(__samples.active&&previous)__samples.frames.push(now-previous);previous=__samples.active?now:0;requestAnimationFrame(frame);};requestAnimationFrame(frame);
@@ -129,6 +129,19 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
       return JSON.stringify(fields(document.querySelector('#lrows')))===JSON.stringify(fields(expected));
     });
     assert.ok(reorderedParity,'retained reordered reading updates must match the full renderer in text, order, semantics and chart geometry');
+    if(n===20){
+      const queued=await page.evaluate(()=>{
+        const A=__perf,r=A.Match.result,shown=document.querySelector('#emaki .card').dataset.motionKey,send=offset=>A.Match.onmsg({...r,type:'result',id:A.Match.id,results:r.results.map(x=>({...x,start:x.start+offset}))});
+        send(1e6);send(2e6);A.Match.setTrace(0);return{keys:A.Match.result.results.map(x=>A.Match.resultKeyOf(x)),shown,trace:A.Stage.trace.key};
+      });
+      assert.equal(queued.trace,queued.shown,'input during queued presentation must address the displayed historical card');
+      await settle(page);
+      assert.deepEqual(await page.locator('#emaki .card').evaluateAll(nodes=>nodes.map(n=>n.dataset.motionKey)),queued.keys,'queued presentation must apply only the latest result');
+      const before=await page.locator('#emaki .card').evaluateAll(nodes=>nodes.map(n=>n.dataset.motionKey));
+      await page.evaluate(()=>{const A=__perf,r=A.Match.result;A.Match.onmsg({...r,type:'result',id:A.Match.id,results:r.results.slice(1)});A.Match.id++;});
+      await settle(page);
+      assert.deepEqual(await page.locator('#emaki .card').evaluateAll(nodes=>nodes.map(n=>n.dataset.motionKey)),before,'a new search must cancel obsolete queued presentation');
+    }
     for(const variant of ['bars','ledger']){
       await seed(page,data);await settle(page);await call('pane',variant);await settle(page);
       await page.evaluate(()=>{for(const detail of document.querySelectorAll('#lrows details'))detail.open=true;__perf.Flow.details(document.querySelector('#lrows'));});

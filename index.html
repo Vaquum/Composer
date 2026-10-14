@@ -911,11 +911,12 @@ const Stage = {
   fanWeight: 1, exampleWeight: 0, futureBars: null,
   plot: { cur: new Float64Array(2), vel: new Float64Array(2), tgt: new Float64Array(2), ready: false },
   pinFrom: null, pinHov: null, pinPress: null, trace: null,
+  measureBox(){return{w:this.wrap.clientWidth,h:this.wrap.clientHeight,hintTop:this.hint.offsetTop,hintHeight:this.hint.offsetHeight};},
   geom() {
-    const w = this.wrap.clientWidth, h = this.wrap.clientHeight, N = S.bars.length;
+    const {w,h,hintTop,hintHeight}=this.frameBox||this.measureBox(),N=S.bars.length;
     // the plot starts below the hint, which wraps onto several lines on a phone. Where it starts and ends follows the
     // canvas, but eases there and holds still while you drag, so a change of layout around the paper never jumps the drawing
-    const top = Math.max(70, this.hint.offsetTop + this.hint.offsetHeight + 24), P = this.plot;
+    const top = Math.max(70, hintTop + hintHeight + 24), P = this.plot;
     const fixed=ForecastViews.geometry(w,N),bw=fixed.baseBw*(.55+S.space*.65);
     const {spacing,xs}=fixed,extra=Forecast.reserve(w,fixed.forecastLeft,top);
     P.tgt[0] = top; P.tgt[1] = Math.max(top + 160, h - 84 - extra);
@@ -1673,8 +1674,24 @@ const Match = {
     if (m.type === 'progress') { if (m.id === this.id) { $('#prog').hidden = false; $('#prog i').style.width = `${(m.f * 100).toFixed(1)}%`; } return; }
     if (m.type === 'readings') { Panes.readings = 'ready'; if (this.result) { this.sentKey = ''; this.send(); } return; }
     if (m.type === 'readings-error') { Panes.readings = 'failed'; Panes.note = m.message; if (this.result) Panes.render(this.result); return; }
-    if (m.type === 'result' && m.id === this.id) { this.result = m; this.resultKey = this.sentKey; Panes.render(m); this.render(); Stage.fit(); App.redraw(); }
+    if (m.type === 'result' && m.id === this.id) {
+      this.result = m; this.resultKey = this.sentKey;
+      const cards=()=>{this.render();Stage.fit();App.redraw();};
+      if((m.panes?.rows.length||0)>70){
+        this.presentation={result:m,tasks:[()=>Panes.render(m,'left'),()=>Panes.render(m,'right'),cards]};
+        setTimeout(()=>this.presentResult(),0);
+      }else{this.presentation=null;Panes.render(m);cards();}
+    }
   },
+  presentResult(schedule=true){
+    const pending=this.presentation;if(!pending)return;
+    if(pending.result!==this.result||pending.result.id!==this.id){this.presentation=null;return;}
+    pending.tasks.shift()();
+    if(this.presentation!==pending)return;
+    if(!pending.tasks.length)this.presentation=null;
+    else if(schedule)setTimeout(()=>this.presentResult(),0);
+  },
+  flushPresentation(){while(this.presentation)this.presentResult(false);},
   query() {
     const held = heldNow();
     const nx = S.next, next = nx.dir ? { dir: nx.dir, measure: nx.measure, value: nx.measure === 'bps' ? nx.bps : nx.measure === 'atr' ? nx.atr : 0 } : null;
@@ -1697,6 +1714,7 @@ const Match = {
   },
   render() {
     const r = this.result, held = this.sent.held, n = this.sent.q.bars.length;
+    this.presentedResults=r.results;
     $('#prog').hidden = true;
     // every count in the sentence covers the timeframes shown, like the rates it is compared with; the chips keep all five
     const F = r.filter, on = this.sent.q.tfs, sum = a => a.reduce((x, y, k) => x + (on[k] ? y : 0), 0);
@@ -1769,7 +1787,7 @@ const Match = {
     return s + '</svg>';
   },
   setTrace(i) {
-    const r=this.result&&i>=0?this.result.results[i]:null;
+    const r=i>=0?(this.presentedResults||this.result?.results)?.[i]:null;
     if(!r){if(Stage.trace){Stage.trace.retiring=true;Stage.traces.push(Stage.trace);Stage.trace=null;}App.redraw();return;}
     const d=new Date(r.start*1000),key=this.resultKeyOf(r);
     const content={key,bars:r.drawn,next:r.next?r.next.bar:null,caption:`${r.tf} · ${calendarDay.format(d)} · ${(r.off*100).toFixed(1)}% off · ${r.flips===0?'exact':r.flips+' flips'}`};
@@ -2169,7 +2187,8 @@ const App = {
     const dt = Math.min(0.032, Math.max(0, (now - this.lastT) / 1000)); this.lastT = now; this.dirty = false;
     let busy = false;
     // one bad frame must never stop the paper for good
-    try { busy = Stage.step(dt); Stage.draw(); } catch (err) { console.error(err); }
+    try { Stage.frameBox=Stage.measureBox();busy = Stage.step(dt); Stage.draw(); } catch (err) { console.error(err); }
+    finally{Stage.frameBox=null;}
     if (busy || this.dirty) requestAnimationFrame(t => this.tick(t)); else this.running = false;
   },
 };
@@ -2238,7 +2257,7 @@ $('#space').dataset.tip='Width of the drawn root candle bodies only. Their cente
 Stage.fit(true);
 refresh();
 Match.start();
-Flow.onSettle(()=>{Stage.settle();App.redraw();});
+Flow.onSettle(()=>{if(Match.presentation){Match.flushPresentation();Flow.finish();}Stage.settle();App.redraw();});
 Flow.reveal($('.top'),0);Flow.reveal($('.stage'),0);Flow.reveal($('.lpane'));Flow.reveal($('.rpane'));
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => {Flow.finish();App.redraw();});
 })();

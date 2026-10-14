@@ -454,7 +454,7 @@ const TactileFlow = (() => {
     if(previous?.markup===markup&&previous.first===root.firstChild&&previous.last===root.lastChild){details(root);return;}
     for(let parent=root.parentElement;parent;parent=parent.parentElement)markups.delete(parent);
     const template = document.createElement('template'); template.innerHTML = markup; details(template.content);
-    let result=stable&&previous&&previous.first===root.firstChild&&previous.last===root.lastChild?stableUpdate(root,template.content):null;
+    let result=stable&&!retain&&previous&&previous.first===root.firstChild&&previous.last===root.lastChild?stableUpdate(root,template.content):null;
     if(result===null)result=animate?(transaction?.root.contains(root)?reconcile(root,template.content,transaction.geometries,true,retain):layout(root,geometries=>reconcile(root,template.content,geometries,true,retain))):reconcile(root,template.content,new Map(),false,retain);
     details(root);invalidate(root);
     // A spring owns temporary presentation styles until it settles. Do not

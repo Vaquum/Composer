@@ -22,7 +22,7 @@ const server=http.createServer((request,response)=>{
 });
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const base=`http://127.0.0.1:${server.address().port}`;
-const settled=page=>page.waitForFunction(()=>!window.__motionProbe.App.running&&!window.__motionProbe.Flow.active()&&!document.getAnimations().some(a=>a.playState==='running'));
+const settled=page=>page.waitForFunction(()=>!window.__motionProbe.Match.presentation&&!window.__motionProbe.App.running&&!window.__motionProbe.Flow.active()&&!document.getAnimations().some(a=>a.playState==='running'));
 const seed=page=>page.evaluate(r=>{
   const M=window.__motionProbe.Match;M.ready=true;M.failed=false;M.sent=M.query();M.sentKey=M.key();
   M.onmsg({...r,type:'result',id:M.id});
