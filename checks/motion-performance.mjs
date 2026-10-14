@@ -123,6 +123,12 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
     await measure('refresh',async()=>{for(let i=0;i<3;i++){await call('refresh');await settle(page);}});
     await measure('refresh-replace',async()=>{await call('refresh','replace');});
     await measure('refresh-layout',async()=>{await call('refresh','layout');});
+    const reorderedParity=await page.evaluate(()=>{
+      const A=__perf,expected=document.createElement('div');expected.innerHTML=A.PaneDesigns.left('signal',A.Match.result,{barCount:A.S.bars.length});
+      const fields=root=>[...root.querySelectorAll('[data-reading]')].map(node=>({key:node.dataset.reading,text:node.textContent,aria:node.querySelector('.trk')?.getAttribute('aria-label'),styles:[...node.querySelectorAll('.trk i')].map(i=>i.getAttribute('style'))}));
+      return JSON.stringify(fields(document.querySelector('#lrows')))===JSON.stringify(fields(expected));
+    });
+    assert.ok(reorderedParity,'retained reordered reading updates must match the full renderer in text, order, semantics and chart geometry');
     await seed(page,data);await settle(page);
     const refreshedDisclosure=await page.evaluate(async()=>{
       const A=__perf;A.S.tfOn.fill(false);A.S.tfOn[0]=true;A.Match.sent=A.Match.query();A.Panes.render(A.Match.result);A.Flow.finish();
@@ -292,10 +298,12 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
       F.finish();root.remove();return copies;
     });
     assert.equal(hierarchy,1,'nested removals must paint a reading once when its ancestor also retires');
-    const viewport=await page.evaluate(()=>{
+    const viewport=await page.evaluate(async()=>{
       const F=__perf.Flow,root=document.createElement('div');Object.assign(root.style,{position:'fixed',left:'10px',top:'10px',width:'200px',height:'60px',overflow:'hidden'});document.body.append(root);
       const row=k=>`<div data-motion-key="${k}" style="height:80px">${k}</div>`;F.patch(root,row('a')+row('b')+row('c'));F.finish(root);
+      for(let i=0;i<3;i++)await new Promise(requestAnimationFrame);
       F.patch(root,row('b')+row('a')+row('c'));
+      for(let i=0;i<3&&!F.value(root.firstElementChild,'entry');i++)await new Promise(requestAnimationFrame);
       const b=root.firstElementChild,c=root.lastElementChild,state={visibleEntry:!!F.value(b,'entry'),visibleLayout:!!F.value(b,'layout'),hiddenLayout:!!F.value(c,'layout')};
       F.finish(root);root.remove();return state;
     });

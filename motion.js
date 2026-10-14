@@ -36,9 +36,18 @@ const TactileFlow = (() => {
   if (typeof window === 'undefined') return { model, integrate, advance, bounds };
   const preference = matchMedia('(prefers-reduced-motion: reduce)');
   const owners = new WeakMap(), moving = new Set(), settlers = new Set();
-  let visibility=new WeakMap();const observed=new Set();
-  const viewport=typeof IntersectionObserver==='function'?new IntersectionObserver(entries=>{for(const entry of entries)visibility.set(entry.target,entry.isIntersecting);},{rootMargin:'160px'}):null;
-  function releaseObservers(){for(const node of observed)if(!node.isConnected){viewport.unobserve(node);observed.delete(node);}}
+  let visibility=new WeakMap();const observed=new Set(),arrivals=new Map();
+  const viewport=typeof IntersectionObserver==='function'?new IntersectionObserver(entries=>{
+    for(const entry of entries){
+      visibility.set(entry.target,entry.isIntersecting);
+      const requested=arrivals.get(entry.target);
+      if(requested!==undefined&&entry.time>=requested){
+        arrivals.delete(entry.target);
+        if(entry.isIntersecting&&entry.target.isConnected&&presented(entry.target)&&!reduced())reveal(entry.target);
+      }
+    }
+  },{rootMargin:'160px'}):null;
+  function releaseObservers(){for(const node of observed)if(!node.isConnected){viewport.unobserve(node);observed.delete(node);arrivals.delete(node);}}
   function observe(nodes){if(viewport)for(const node of nodes)if(!observed.has(node)){observed.add(node);viewport.observe(node);}}
   function resetVisibility(){
     visibility=new WeakMap();if(!viewport)return;
@@ -99,6 +108,7 @@ const TactileFlow = (() => {
   }
   function value(owner, name) { const c = owners.get(owner)?.get(name); return c ? { ...c.value } : null; }
   function finish(root) {
+    for(const node of arrivals.keys())if(!root||node===root||root.contains(node))arrivals.delete(node);
     for (const channel of [...moving]) if (moving.has(channel) && (!root || channel.owner === root || root.contains(channel.owner))) complete(channel);
     if (!root) for (const settle of settlers) settle();
   }
@@ -290,7 +300,11 @@ const TactileFlow = (() => {
       const old = before.get(el);
       // Entry only needs opacity/translation. Measuring a newly inserted tree
       // forces its entire SVG/readings layout inside the input/result task.
-      if(!old?.box.width||!old.box.height){const channel=old?.unseen&&owners.get(el)?.get('layout');if(channel)complete(channel);continue;}
+      if(!old?.box.width||!old.box.height){
+        const channel=old?.unseen&&owners.get(el)?.get('layout');if(channel)complete(channel);
+        if(old?.unseen&&viewport){arrivals.set(el,performance.now());viewport.unobserve(el);viewport.observe(el);}
+        continue;
+      }
       const box=el.getBoundingClientRect();
       const wasVisible=visible(old.box,old.clip),isVisible=visible(box,clip(el,afterClips));
       if(!wasVisible){
@@ -348,7 +362,7 @@ const TactileFlow = (() => {
     for (const name of incoming.style) if (!temporary(name)&&(current.style.getPropertyValue(name)!==incoming.style.getPropertyValue(name)||current.style.getPropertyPriority(name)!==incoming.style.getPropertyPriority(name))) current.style.setProperty(name, incoming.style.getPropertyValue(name), incoming.style.getPropertyPriority(name));
     return deferred;
   }
-  function planReconcile(root, incoming, geometries, animate) {
+  function planReconcile(root, incoming, geometries, animate, retain) {
     markups.delete(root);
     // A retained disclosure inside this patch may have new children or text.
     const measurement=measurements.get(root);if(measurement)measurement.dirty=true;
@@ -371,7 +385,10 @@ const TactileFlow = (() => {
     for(const item of plan){
       const {node,next}=item;
       if(node!==next){
-        if(node.nodeType===1&&!node.isEqualNode(next))item.children=planReconcile(node,next,geometries,animate);
+        if(node.nodeType===1&&!node.isEqualNode(next)){
+          item.retain=retain?.(node,next);
+          if(!item.retain)item.children=planReconcile(node,next,geometries,animate,retain);
+        }
         else {
           // An equal restored subtree implicitly restores queued descendants.
           if(node.nodeType===1&&geometries.retirements?.size)for(const pending of geometries.retirements.keys())if(node.contains(pending)){
@@ -386,8 +403,13 @@ const TactileFlow = (() => {
   function applyReconcile({root,plan,remove},geometries){
     for(const node of remove){if(node.nodeType===1)finish(node);node.remove();}
     let cursor=root.firstChild,deferred=false;
-    for(const {node,next,children}of plan){
+    for(const {node,next,children,retain}of plan){
       if(children){deferred=attributes(node,next)||deferred;deferred=applyReconcile(children,geometries)||deferred;}
+      else if(retain){
+        deferred=attributes(node,next)||deferred;retain();markups.delete(node);
+        const walker=document.createTreeWalker(node,NodeFilter.SHOW_ALL);let child;
+        while((child=walker.nextNode())){markups.delete(child);const measurement=measurements.get(child);if(measurement)measurement.dirty=true;}
+      }
       else if(node!==next&&node.nodeType!==1&&node.nodeValue!==next.nodeValue)node.nodeValue=next.nodeValue;
       if(node!==cursor)root.insertBefore(node,cursor);
       cursor=node.nextSibling;
@@ -395,8 +417,8 @@ const TactileFlow = (() => {
     geometries.bookends?.set(root,{first:plan[0]?.node??null,last:plan.at(-1)?.node??null});
     return deferred;
   }
-  function reconcile(root,incoming,geometries,animate){
-    return applyReconcile(planReconcile(root,incoming,geometries,animate),geometries);
+  function reconcile(root,incoming,geometries,animate,retain){
+    return applyReconcile(planReconcile(root,incoming,geometries,animate,retain),geometries);
   }
   const markups=new WeakMap();let transaction=null;
   function update(root,markup,change){
@@ -429,13 +451,13 @@ const TactileFlow = (() => {
       try{return change();}finally{transaction=previous;}
     },actors,measure);
   }
-  function patch(root, markup, animate = true, stable = false) {
+  function patch(root, markup, animate = true, stable = false, retain = null) {
     const previous=markups.get(root);
     if(previous?.markup===markup&&previous.first===root.firstChild&&previous.last===root.lastChild){details(root);return;}
     for(let parent=root.parentElement;parent;parent=parent.parentElement)markups.delete(parent);
     const template = document.createElement('template'); template.innerHTML = markup; details(template.content);
     let result=stable&&previous&&previous.first===root.firstChild&&previous.last===root.lastChild?stableUpdate(root,template.content):null;
-    if(result===null)result=animate?(transaction?.root.contains(root)?reconcile(root,template.content,transaction.geometries,true):layout(root,geometries=>reconcile(root,template.content,geometries,true))):reconcile(root,template.content,new Map(),false);
+    if(result===null)result=animate?(transaction?.root.contains(root)?reconcile(root,template.content,transaction.geometries,true,retain):layout(root,geometries=>reconcile(root,template.content,geometries,true,retain))):reconcile(root,template.content,new Map(),false,retain);
     details(root);invalidate(root);
     // A spring owns temporary presentation styles until it settles. Do not
     // memoize an incoming style request that reconciliation had to defer.
@@ -461,5 +483,5 @@ const TactileFlow = (() => {
   addEventListener('pageshow', () => { suspended = document.hidden; });
   document.addEventListener('visibilitychange', () => { suspended = document.hidden; if (suspended) finish(); });
   details(document);
-  return { model, integrate, advance, bounds, reduced, spring, value, cancel, finish, reveal, visible, disclosure, resize, layout, batch, patch, update, details, switchControl, onSettle: fn => settlers.add(fn), active: () => moving.size > 0 };
+  return { model, integrate, advance, bounds, reduced, spring, value, cancel, finish, reveal, visible, disclosure, resize, layout, batch, patch, update, details, switchControl, onSettle: fn => settlers.add(fn), active: () => moving.size > 0 || arrivals.size > 0 };
 })();

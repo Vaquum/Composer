@@ -89,6 +89,10 @@ and disconnected targets are released. Active scenes retain live measurements.
 Reconciliation prepares all nested retirements before retained DOM writes, so
 later sibling snapshots do not repeatedly force layout. Desktop grid columns
 contain their layout and paint during the reference track's resize.
+Retained Signal rows reuse their verified bindings inside structural
+reconciliation; headers and changed row shapes still use the general path.
+Previously unseen actors receive a fresh observer sample after layout changes,
+so arrivals retain their entry spring without synchronous offscreen reads.
 
 `npm run test:performance` exercises native Chromium, Chromium at 4× CPU and
 WebKit at 390/1600 px, DPR 1/2 and 2/20 bars, with 140 readings and all 729 six-bar

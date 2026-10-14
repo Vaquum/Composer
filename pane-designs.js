@@ -67,9 +67,11 @@ const PaneDesigns = (() => {
       if(nodes.length!==rows.size||!nodes.length)return false;
       memo=nodes.map(node=>{
         const hero=node.classList.contains('pane-hero'),track=node.querySelector('.trk');
-        return {node,key:node.dataset.reading,hero,value:hero?node.querySelector('.pane-hero-value')?.firstChild:node.querySelector('.pl b')?.firstChild,
+        const binding={node,key:node.dataset.reading,hero,value:hero?node.querySelector('.pane-hero-value')?.firstChild:node.querySelector('.pl b')?.firstChild,
           baseline:hero?node.querySelector('.pane-hero-compare')?.firstChild:node.querySelector('.pane-baseline')?.firstChild,
           delta:hero?node.querySelector('.pane-hero-compare strong'):null,track,band:track?.querySelector('.bd'),dot:track?.querySelector('.dt'),reference:track?.querySelector('.tk')};
+        if(!hero)retainedReadings.set(node,{value:binding.value,baseline:binding.baseline,track,band:binding.band,dot:binding.dot,reference:binding.reference});
+        return binding;
       });
     }
     if(memo.length!==rows.size||memo.some(b=>!rows.has(b.key)||b.node.dataset.reading!==b.key||![b.node,b.value,b.baseline,b.track,b.band,b.dot,b.reference,...(b.delta?[b.delta]:[])].every(n=>n&&root.contains(n))))return false;
@@ -82,6 +84,27 @@ const PaneDesigns = (() => {
       attribute(b.track,'aria-label',f.aria);attribute(b.band,'style',f.band);attribute(b.dot,'style',f.dot);attribute(b.reference,'style',f.reference);
     }
     return memo;
+  }
+  const retainedReadings=new WeakMap();
+  function readingUpdater(r){
+    const rows=new Map((r.panes.rows||[]).map(w=>[`${w.bar}-${w.key}`,w]));
+    return (node,next)=>{
+      if(node.nodeName!=='DIV'||node.className!=='prow'||next.className!=='prow'||node.dataset.reading!==next.dataset.reading)return null;
+      const w=rows.get(node.dataset.reading);if(!w)return null;
+      let b=retainedReadings.get(node);
+      if(!b){
+        const track=node.querySelector('.trk');b={value:node.querySelector('.pl b')?.firstChild,baseline:node.querySelector('.pane-baseline')?.firstChild,
+          track,band:track?.querySelector('.bd'),dot:track?.querySelector('.dt'),reference:track?.querySelector('.tk')};
+        retainedReadings.set(node,b);
+      }
+      if(!Object.values(b).every(n=>n&&node.contains(n))||b.value.nodeType!==3||b.baseline.nodeType!==3)return null;
+      const f=trackFields(w);
+      return ()=>{
+        const text=(n,v)=>{if(n.nodeValue!==v)n.nodeValue=v;},attr=(n,k,v)=>{if(n.getAttribute(k)!==v)n.setAttribute(k,v);};
+        text(b.value,displayed(w,w.set[0]));text(b.baseline,`All ${displayed(w,w.all[0])}`);
+        attr(b.track,'aria-label',f.aria);attr(b.band,'style',f.band);attr(b.dot,'style',f.dot);attr(b.reference,'style',f.reference);
+      };
+    };
   }
   function meter(w, direction = 'selected', reference = null) {
     if (!w) return '';
@@ -118,5 +141,5 @@ const PaneDesigns = (() => {
   }
   const leftMethod = barCount => `<ul class="pane-method"><li>All means every ${barCount}-bar window on the selected timeframes. Rows compare selected-window and all-window means.</li><li>Volume, trades and mean trade size: relative to the median of the prior 11 bars; geometric means.</li><li>Body and range: prior-bar Wilder ATR(14). Maker share: share of volume. Last close: position in the prior UTC day's range.</li><li>Every reading track has its own scale. Differences are ranked in standard deviations of all windows.</li><li>95% intervals: t for means, Wilson for rates. No estimate below 30 windows.</li></ul>`;
   const rightMethod = after => `<ul class="pane-method"><li>Each window is scaled from its own low and high to your drawing. The canvas fan shows the median and middle 50% and 80% of closes.</li><li>Breaks count any crossing during the next ${after} bars. Final close compares bar ${after} with the window's last close.</li><li>The terminal band is the middle 50% of closes, not a confidence interval. Outcome rates use all complete continuations, with Wilson 95% intervals.</li></ul>`;
-  return { variants, left, updateSignal, right, next, terminal, caption, leftMethod, rightMethod };
+  return { variants, left, updateSignal, readingUpdater, right, next, terminal, caption, leftMethod, rightMethod };
 })();

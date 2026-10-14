@@ -1876,6 +1876,7 @@ const Panes = {
       // substitutions keep text width; all other markup/layout changes still FLIP.
       const layoutKey=variant+'|'+Object.values(markup).join('|').replace(/\s(?:style|aria-label|title)="[^"]*"/g,'').replace(/>([^<]*)</g,(_,text)=>'>'+text.replace(/[0-9]/g,'#')+'<');
       const measure=this.layoutKeys.get(side)!==layoutKey;this.layoutKeys.set(side,layoutKey);
+      const retainReading=side==='left'&&variant==='signal'&&pane.dataset.view==='signal'?PaneDesigns.readingUpdater(r):null;
       const update=()=>Flow.batch(pane,()=>{
       if(side==='right'){
         Flow.disclosure($('#rnextsec'),variant==='bars');
@@ -1884,7 +1885,7 @@ const Panes = {
       for(const [id,html]of Object.entries(markup)){
         const root=$('#'+id);
         if(id==='lrows'&&!measure&&variant==='signal'&&Flow.update(root,html,memo=>PaneDesigns.updateSignal(root,r,memo)))continue;
-        Flow.patch(root,html,true,!measure);
+        Flow.patch(root,html,true,!measure,id==='lrows'?retainReading:null);
       }
       },measure);
       // The pane itself scrolls; its body has no painted size boundary. Keep its
