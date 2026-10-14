@@ -70,14 +70,15 @@ for(const [name,type] of [['Chromium',chromium],['WebKit',webkit]]){
   });
   assert.deepEqual(retainedDetails,{open:true,detailRetained:true,bodyRetained:true,available:true},`${name}: an open disclosure stays accessible on data refresh`);
   const reference=await page.evaluate(async()=>{
-    const A=window.__motionProbe,width=A.Stage.wrap.clientWidth;document.querySelector('#reftoggle').focus();A.Ref.open();const initial=A.Stage.wrap.clientWidth;
+    const A=window.__motionProbe,width=A.Stage.wrap.clientWidth;document.querySelector('#reftoggle').focus();A.Ref.open();const initial=A.Stage.wrap.clientWidth,textInitial=document.querySelector('#ref-body').clientWidth;
     for(let i=0;i<6;i++)await new Promise(requestAnimationFrame);
-    const before=A.Stage.wrap.clientWidth;A.Ref.close();const after=A.Stage.wrap.clientWidth,closed={hidden:A.Ref.pane.hidden,inert:A.Ref.pane.inert,focus:document.activeElement.id};
-    A.Ref.open();const reopened=A.Stage.wrap.clientWidth;A.Flow.finish();return{width,initial,before,after,reopened,closed};
+    const before=A.Stage.wrap.clientWidth,textBefore=document.querySelector('#ref-body').clientWidth;A.Ref.close();const after=A.Stage.wrap.clientWidth,textAfter=document.querySelector('#ref-body').clientWidth,closed={hidden:A.Ref.pane.hidden,inert:A.Ref.pane.inert,focus:document.activeElement.id};
+    A.Ref.open();const reopened=A.Stage.wrap.clientWidth;A.Flow.finish();return{width,initial,before,after,reopened,closed,textInitial,textBefore,textAfter};
   });
   assert.ok(Math.abs(reference.initial-reference.width)<=1,`${name}: opening preserves presented geometry`);
   assert.ok(reference.before<reference.width);assert.ok(Math.abs(reference.before-reference.after)<=1);assert.ok(Math.abs(reference.after-reference.reopened)<=1);
   assert.deepEqual(reference.closed,{hidden:true,inert:true,focus:'reftoggle'});
+  assert.ok(Math.abs(reference.textBefore-reference.textInitial)<=1&&Math.abs(reference.textAfter-reference.textBefore)<=1,`${name}: reference text width stays stable through opening and reversal`);
   await page.evaluate(()=>window.__motionProbe.Ref.close());await settled(page);
   const spotlight=await page.evaluate(()=>{
     const A=window.__motionProbe;A.Ref.open();A.Flow.finish();document.querySelector('#ref-targets button').click();A.Ref.paint();A.Flow.finish();

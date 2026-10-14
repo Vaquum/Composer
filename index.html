@@ -2002,7 +2002,7 @@ const Ref = {
   transition(open) {
     const wasHidden=this.pane.hidden;
     if(wasHidden&&!open&&!Flow.value(this.pane,'reference'))return;
-    if(open&&!Flow.value(this.pane,'reference')){
+    if((open||!wasHidden)&&!Flow.value(this.pane,'reference')){
       this.work.style.gridTemplateColumns='';this.pane.hidden=false;this.work.dataset.reference='open';
       const columns=getComputedStyle(this.work).gridTemplateColumns.split(' ').map(parseFloat);
       this.columns=columns;
