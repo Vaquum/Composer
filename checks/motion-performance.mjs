@@ -148,6 +148,19 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
     }
     for(const variant of ['bars','ledger']){
       await seed(page,data);await settle(page);await call('pane',variant);await settle(page);
+      if(variant==='ledger'){
+        await page.locator('#lrows tbody tr').first().scrollIntoViewIfNeeded();
+        const crossing=await page.evaluate(()=>{
+          const A=__perf,root=document.querySelector('#lrows'),row=root.querySelector('tbody tr'),key=row.dataset.reading,text=row.textContent,r=A.Match.result;
+          const next={...r,panes:{...r.panes,rows:r.panes.rows.map((w,i)=>({...w,d:(i+1)/r.panes.rows.length,set:w.set.map(v=>v+1)}))}};
+          A.Panes.render(next,'left');
+          const copy=[...document.querySelectorAll('[data-flow-retiring] tr')].find(node=>node.dataset.reading===key),newTop=root.querySelector('tbody tr');
+          const state={retained:row.isConnected&&root.querySelector('details[data-detail="more"]').contains(row),snapshot:copy?.textContent===text,arrival:!!A.Flow.value(newTop,'entry')};
+          A.Flow.finish();return state;
+        });
+        assert.deepEqual(crossing,{retained:true,snapshot:true,arrival:true},'ledger crossings preserve node identity and motion at a closed disclosure boundary');
+        await seed(page,data);await settle(page);
+      }
       await page.evaluate(()=>{for(const detail of document.querySelectorAll('#lrows details'))detail.open=true;__perf.Flow.details(document.querySelector('#lrows'));});
       await settle(page);
       await measure(`refresh-${variant}`,async()=>{await call('refresh');await settle(page);await call('refresh','layout');});

@@ -107,13 +107,18 @@ const PaneDesigns = (() => {
       };
     };
   }
-  function updateLedger(root,r){
+  function updateLedger(root,r,move){
     const all=sorted(r.panes),tables=[...root.querySelectorAll('.pane-ledger tbody')],intervals=root.querySelector('details[data-detail="intervals"] .flow-detail-content'),note=root.querySelector(':scope > .pane-note');
     if(r.panes.n<30||!r.panes.readings||!all.length||tables.length!==(all.length>10?2:1)||!intervals||!note)return false;
     const rows=tables.flatMap(body=>[...body.children]),charts=[...intervals.querySelectorAll(':scope > [data-reading]')],keys=all.map(w=>`${w.bar}-${w.key}`);
     const byKey=nodes=>new Map(nodes.map(node=>[node.dataset.reading,node])),tableRows=byKey(rows),chartRows=byKey(charts);
     if(rows.length!==all.length||charts.length!==all.length||tableRows.size!==all.length||chartRows.size!==all.length||keys.some(key=>!tableRows.has(key)||!chartRows.has(key)))return false;
     const updater=readingUpdater(r),changes=[...rows,...charts].map(node=>updater(node,node));if(changes.some(change=>!change))return false;
+    const more=root.querySelector('details[data-detail="more"]'),leading=new Set(keys.slice(0,10));
+    if(more&&!more.open&&!more.hasAttribute('data-flow-details')){
+      for(const node of tables[0].children)if(!leading.has(node.dataset.reading))move?.depart(node);
+      for(const key of leading){const node=tableRows.get(key);if(more.contains(node))move?.arrive(node);}
+    }
     for(const change of changes)change();
     const order=(parent,nodes,start=parent.firstChild)=>{let cursor=start;for(const node of nodes){if(node!==cursor)parent.insertBefore(node,cursor);cursor=node.nextSibling;}};
     order(tables[0],keys.slice(0,10).map(key=>tableRows.get(key)));

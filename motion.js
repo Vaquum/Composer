@@ -238,10 +238,11 @@ const TactileFlow = (() => {
     if(!moving.size&&visibility.get(element)===false)return{box:{width:0,height:0},clip:null,unseen:true};
     const box=element.getBoundingClientRect();return { box, clip: box.width&&box.height?clip(element,cache):null };
   }
-  function retire(element, geometry = capture(element), contexts=new Map()) {
+  function retire(element, geometry = capture(element), contexts=new Map(), remove=true) {
     const { box, clip: bounds } = geometry;
-    if(reduced()||!box.width||!box.height)return()=>{finish(element);element.remove();};
-    if(box.right<=bounds.left||box.left>=bounds.right||box.bottom<=bounds.top||box.top>=bounds.bottom)return()=>{finish(element);element.remove();};
+    const settle=()=>{finish(element);if(remove)element.remove();};
+    if(reduced()||!box.width||!box.height)return settle;
+    if(box.right<=bounds.left||box.left>=bounds.right||box.bottom<=bounds.top||box.top>=bounds.bottom)return settle;
     const style=getComputedStyle(element);let path=contexts.get(element.parentElement);
     if(!path){
       const template=document.createElement('div');let context=template,opacity=1;
@@ -256,7 +257,7 @@ const TactileFlow = (() => {
       path={template,opacity};contexts.set(element.parentElement,path);
     }
     const opacity=Number(style.opacity)*path.opacity;
-    if (!opacity)return()=>{finish(element);element.remove();};
+    if (!opacity)return settle;
     // Preserve selector/inheritance context with shallow shells. Copying every computed
     // property of every descendant made a pane switch a hundreds-of-ms blocking task.
     const ghost=path.template.cloneNode(true),snapshot=element.cloneNode(true);let context=ghost;
@@ -273,7 +274,7 @@ const TactileFlow = (() => {
     ghost.inert = true; ghost.setAttribute('aria-hidden', 'true'); ghost.dataset.flowRetiring = '';
     ghost.style.cssText=`position:fixed;left:${box.left}px;top:${box.top}px;width:${box.width}px;height:${box.height}px;margin:0;translate:none;transform:none;pointer-events:none;z-index:90`;
     const commit=()=>{
-    finish(element); element.remove(); document.body.append(ghost);
+    settle(); document.body.append(ghost);
     spring(ghost, 'retirement', { from: { opacity, y: 0 }, to: { opacity: 0, y: -model.information },
       write: ({ opacity, y }) => {
         ghost.style.opacity = String(bounded(opacity)); ghost.style.translate = `0 ${y}px`;
@@ -310,6 +311,7 @@ const TactileFlow = (() => {
       if(!old?.box.width||!old.box.height){
         const channel=old?.unseen&&owners.get(el)?.get('layout');if(channel)complete(channel);
         if(old?.unseen&&arrivalSampler){arrivals.add(el);arrivalSampler.observe(el);}
+        else if(before.entrances?.has(el))entries.add(el);
         continue;
       }
       const box=el.getBoundingClientRect();
@@ -434,7 +436,9 @@ const TactileFlow = (() => {
   function update(root,markup,change,intrinsic=false){
     const previous=markups.get(root);
     if(!previous||previous.first!==root.firstChild||previous.last!==root.lastChild)return false;
-    const memo=change(previous.memo);if(!memo)return false;
+    const geometries=transaction?.root.contains(root)?transaction.geometries:null,contexts=new Map();
+    const move={depart:node=>{const geometry=geometries?.get(node);if(geometry)geometries.retirements?.set(node,retire(node,geometry,contexts,false));},arrive:node=>{if(geometries)(geometries.entrances??=new Set()).add(node);}};
+    const memo=change(previous.memo,move);if(!memo)return false;
     for(let parent=root.parentElement;parent;parent=parent.parentElement)markups.delete(parent);
     const walker=document.createTreeWalker(root,NodeFilter.SHOW_ALL);let node;
     while((node=walker.nextNode())){markups.delete(node);if(intrinsic){const measurement=measurements.get(node);if(measurement)measurement.dirty=true;}}

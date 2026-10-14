@@ -1906,7 +1906,7 @@ const Panes = {
       for(const [id,html]of Object.entries(markup)){
         const root=$('#'+id);
         if(id==='lrows'&&!measure&&variant==='signal'&&Flow.update(root,html,memo=>PaneDesigns.updateSignal(root,r,memo)))continue;
-        if(id==='lrows'&&variant==='ledger'&&pane.dataset.view==='ledger'&&Flow.update(root,html,()=>PaneDesigns.updateLedger(root,r),true))continue;
+        if(id==='lrows'&&variant==='ledger'&&pane.dataset.view==='ledger'&&Flow.update(root,html,(_,move)=>PaneDesigns.updateLedger(root,r,move),true))continue;
         Flow.patch(root,html,true,!measure,id==='lrows'?retainReading:null);
       }
       },measure);
