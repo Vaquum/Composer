@@ -53,6 +53,14 @@ explorer's System reference: a full-height pane on the left that pushes the work
 Purpose, Read and Use per topic, and Show, which highlights the part a topic is about and dims the
 rest.
 
+## Motion
+
+Composer follows the Tactile flow used in Poise and eightchord-com. The shared
+spring, interaction coverage and lifecycle policy are recorded in
+[docs/Natural-Flow.md](docs/Natural-Flow.md). Drawing and native scrolling remain
+direct; retained results, disclosures, panels and forecast transitions share
+the motion model.
+
 ## Data
 
 The bars are the Vaquum HuggingFace kline datasets `vaquum/binance_btcusdt_{15m,30m,1h,2h,4h}_klines`,
@@ -90,6 +98,9 @@ it answers.
 ## Checks
 
 ```sh
+npm ci
+npx playwright install chromium webkit
+npm run test:motion
 python3 -m unittest discover -s tests -v
 node checks/page.mjs
 node checks/pane-designs.mjs

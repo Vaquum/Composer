@@ -4,3 +4,6 @@ tests
 checks
 *.md
 .env
+
+node_modules
+package*.json

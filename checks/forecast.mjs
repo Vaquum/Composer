@@ -94,7 +94,7 @@ const elements=new Map(), saved=[];
 const buttons=['paths','branches','states'].map(view=>({dataset:{view},setAttribute(){}}));
 const $=id=>{if(!elements.has(id))elements.set(id,{hidden:true,offsetHeight:160,querySelectorAll:()=>buttons,setAttribute(){}});return elements.get(id);};
 let fits=0,draws=0;
-const F=new Function('$','ForecastViews','localStorage','Stage','App',html.slice(start,end)+'\nreturn Forecast;')($,V,{setItem:(key,value)=>saved.push(JSON.parse(value))},{fit:()=>fits++},{redraw:()=>draws++});
+const F=new Function('$','ForecastViews','localStorage','Stage','App','Flow',html.slice(start,end)+'\nreturn Forecast;')($,V,{setItem:(key,value)=>saved.push(JSON.parse(value))},{fit:()=>fits++},{redraw:()=>draws++},{switchControl(){}});
 F.fan=false; F.choose('paths'); assert.equal(F.view,'paths'); assert.equal(F.fan,false);
 F.choose('branches'); assert.equal(F.fan,false); F.choose('bad'); assert.equal(F.view,'branches');
 F.source=C; F.select('U'); assert.equal(F.prefix,'U'); assert.equal(F.selected,'UDIIII');

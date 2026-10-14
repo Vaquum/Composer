@@ -63,6 +63,9 @@ class Server(unittest.TestCase):
         self.assertEqual(self.get('/pane-designs.js').headers['Content-Type'], 'text/javascript; charset=utf-8')
         self.assertEqual(self.get('/panes.css').headers['Content-Type'], 'text/css; charset=utf-8')
         self.assertEqual(self.get('/forecast.js').headers['Content-Type'], 'text/javascript; charset=utf-8')
+        self.assertEqual(self.get('/motion.js').headers['Content-Type'], 'text/javascript; charset=utf-8')
+        self.assertIn(b'TactileFlow', self.get('/motion.js').read())
+        self.assertEqual(self.get('/motion.css').headers['Content-Type'], 'text/css; charset=utf-8')
         got = self.get('/bars')
         etag = got.headers['ETag']
         self.assertEqual((got.status, got.read(), got.headers['Cache-Control']), (200, b'CBAR11', 'private, no-cache'))

@@ -48,7 +48,7 @@ for (const [,n] of terminal.matchAll(/(?:left|width):([\d.]+)%/g)) assert.ok(Num
 // matcher. DOM rendering has its own browser verification.
 const html=fs.readFileSync('index.html','utf8'),start=html.indexOf('const Panes = {'),end=html.indexOf("$('#rnear').addEventListener",start);
 const stored=[],rendered=[];
-const P=new Function('PaneDesigns','localStorage','Match',html.slice(start,end)+'\nreturn Panes;')(D,{setItem:(key,value)=>stored.push(JSON.parse(value))},{result:r});
+const P=new Function('PaneDesigns','localStorage','Match','Flow',html.slice(start,end)+'\nreturn Panes;')(D,{setItem:(key,value)=>stored.push(JSON.parse(value))},{result:r},{});
 P.remember=()=>{}; P.controls=()=>{}; P.closeMenus=()=>{}; P.render=(result,side)=>rendered.push(side);
 P.choose('left','bars'); assert.deepEqual(P.views,{left:'bars',right:'signal'});
 P.choose('right','ledger'); assert.deepEqual(P.views,{left:'bars',right:'ledger'});
