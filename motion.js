@@ -348,7 +348,7 @@ const TactileFlow = (() => {
     for (const name of incoming.style) if (!temporary(name)&&(current.style.getPropertyValue(name)!==incoming.style.getPropertyValue(name)||current.style.getPropertyPriority(name)!==incoming.style.getPropertyPriority(name))) current.style.setProperty(name, incoming.style.getPropertyValue(name), incoming.style.getPropertyPriority(name));
     return deferred;
   }
-  function reconcile(root, incoming, geometries, animate) {
+  function planReconcile(root, incoming, geometries, animate) {
     markups.delete(root);
     // A retained disclosure inside this patch may have new children or text.
     const measurement=measurements.get(root);if(measurement)measurement.dirty=true;
@@ -361,29 +361,42 @@ const TactileFlow = (() => {
       geometries.retirements?.delete(node);
       return {node,next};
     });
-    // Snapshot departing actors before incoming DOM can invalidate style/layout.
+    // Prepare the entire subtree before any retained DOM writes. Preparing a
+    // later sibling after an earlier insertion otherwise forces repeated layout.
+    const remove=[];
     for (const node of old) if (!used.has(node)) {
       if (node.nodeType === 1 && animate && geometries.has(node)) geometries.retirements.set(node,retire(node,geometries.get(node)));
-      else { if (node.nodeType === 1) finish(node); node.remove(); }
+      else remove.push(node);
     }
-    let cursor=root.firstChild,deferred=false;
-    for(const {node,next}of plan){
+    for(const item of plan){
+      const {node,next}=item;
       if(node!==next){
-        if(node.nodeType===1&&!node.isEqualNode(next)){deferred=attributes(node,next)||deferred;deferred=reconcile(node,next,geometries,animate)||deferred;}
+        if(node.nodeType===1&&!node.isEqualNode(next))item.children=planReconcile(node,next,geometries,animate);
         else {
           // An equal restored subtree implicitly restores queued descendants.
           if(node.nodeType===1&&geometries.retirements?.size)for(const pending of geometries.retirements.keys())if(node.contains(pending)){
             geometries.retirements.delete(pending);
             for(let ancestor=pending;ancestor;ancestor=ancestor.parentElement){markups.delete(ancestor);if(ancestor===node)break;}
           }
-          if(node.nodeType!==1&&node.nodeValue!==next.nodeValue)node.nodeValue=next.nodeValue;
         }
       }
+    }
+    return {root,plan,remove};
+  }
+  function applyReconcile({root,plan,remove},geometries){
+    for(const node of remove){if(node.nodeType===1)finish(node);node.remove();}
+    let cursor=root.firstChild,deferred=false;
+    for(const {node,next,children}of plan){
+      if(children){deferred=attributes(node,next)||deferred;deferred=applyReconcile(children,geometries)||deferred;}
+      else if(node!==next&&node.nodeType!==1&&node.nodeValue!==next.nodeValue)node.nodeValue=next.nodeValue;
       if(node!==cursor)root.insertBefore(node,cursor);
       cursor=node.nextSibling;
     }
     geometries.bookends?.set(root,{first:plan[0]?.node??null,last:plan.at(-1)?.node??null});
     return deferred;
+  }
+  function reconcile(root,incoming,geometries,animate){
+    return applyReconcile(planReconcile(root,incoming,geometries,animate),geometries);
   }
   const markups=new WeakMap();let transaction=null;
   function update(root,markup,change){

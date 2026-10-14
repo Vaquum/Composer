@@ -239,6 +239,18 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
       return reads;
     });
     assert.equal(entryReads,0,'new result actors must not force synchronous post-insertion geometry during their entry');
+    const lateRetirementReads=await page.evaluate(()=>{
+      const F=__perf.Flow,root=document.createElement('div');root.style.cssText='position:fixed;top:20px;left:20px;width:220px';document.body.append(root);
+      const markup=suffix=>[1,2].map(i=>`<section data-motion-key="section-${i}"><div class="prow" data-reading="${i}-${suffix}">Reading ${i}</div></section>`).join('');
+      F.patch(root,markup('old'),false);
+      const computed=window.getComputedStyle,insert=Node.prototype.insertBefore;let wrote=false,reads=0;
+      window.getComputedStyle=function(node,...args){if(wrote&&root.contains(node)&&node.dataset?.reading?.endsWith('-old'))reads++;return computed.call(this,node,...args);};
+      Node.prototype.insertBefore=function(...args){if(root.contains(this))wrote=true;return insert.apply(this,args);};
+      try{F.patch(root,markup('new'));}
+      finally{window.getComputedStyle=computed;Node.prototype.insertBefore=insert;F.finish(root);F.finish();root.remove();}
+      return reads;
+    });
+    assert.equal(lateRetirementReads,0,'nested retirement styles must be captured before the first retained DOM insertion');
     const restoredBatch=await page.evaluate(()=>{
       const F=__perf.Flow,root=document.createElement('div');document.body.append(root);
       const full='<button data-motion-key="a">A</button><button data-motion-key="b">B</button>';F.patch(root,full);F.finish(root);

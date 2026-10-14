@@ -86,6 +86,9 @@ Scrolling pane bodies keep natural height: their rows/sections carry motion,
 avoiding a second size animation and duplicated geometry work. Cached viewport
 visibility skips offscreen geometry in settled scenes; scroll/resize resets it,
 and disconnected targets are released. Active scenes retain live measurements.
+Reconciliation prepares all nested retirements before retained DOM writes, so
+later sibling snapshots do not repeatedly force layout. Desktop grid columns
+contain their layout and paint during the reference track's resize.
 
 `npm run test:performance` exercises native Chromium, Chromium at 4× CPU and
 WebKit at 390/1600 px, DPR 1/2 and 2/20 bars, with 140 readings and all 729 six-bar
