@@ -321,21 +321,27 @@ const TactileFlow = (() => {
     // A retained disclosure inside this patch may have new children or text.
     const measurement=measurements.get(root);if(measurement)measurement.dirty=true;
     const old = [...root.childNodes], desired = [...incoming.childNodes], used = new Set(), keyed = new Map(old.map((node, i) => [key(node, i), node]));
-    let cursor = root.firstChild,deferred=false;
-    desired.forEach((next, index) => {
+    const plan=desired.map((next,index)=>{
       let node = keyed.get(key(next, index));
       if (!node || used.has(node) || node.nodeType !== next.nodeType || node.nodeName !== next.nodeName) node = next;
-      else if (node.nodeType === 1&&!node.isEqualNode(next)) { deferred=attributes(node,next)||deferred;deferred=reconcile(node,next,geometries,animate)||deferred; }
-      else if (node.textContent !== next.textContent) node.textContent = next.textContent;
       used.add(node);
       // Another patch in this transaction may have restored a queued actor.
       geometries.retirements?.delete(node);
-      if (node !== cursor) root.insertBefore(node, cursor);
-      cursor = node.nextSibling;
+      return {node,next};
     });
+    // Snapshot departing actors before incoming DOM can invalidate style/layout.
     for (const node of old) if (!used.has(node)) {
       if (node.nodeType === 1 && animate && geometries.has(node)) geometries.retirements.set(node,retire(node,geometries.get(node)));
       else { if (node.nodeType === 1) finish(node); node.remove(); }
+    }
+    let cursor=root.firstChild,deferred=false;
+    for(const {node,next}of plan){
+      if(node!==next){
+        if(node.nodeType===1&&!node.isEqualNode(next)){deferred=attributes(node,next)||deferred;deferred=reconcile(node,next,geometries,animate)||deferred;}
+        else if(node.textContent!==next.textContent)node.textContent=next.textContent;
+      }
+      if(node!==cursor)root.insertBefore(node,cursor);
+      cursor=node.nextSibling;
     }
     return deferred;
   }

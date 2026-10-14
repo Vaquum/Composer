@@ -1673,7 +1673,7 @@ const Match = {
     if (m.type === 'progress') { if (m.id === this.id) { $('#prog').hidden = false; $('#prog i').style.width = `${(m.f * 100).toFixed(1)}%`; } return; }
     if (m.type === 'readings') { Panes.readings = 'ready'; if (this.result) { this.sentKey = ''; this.send(); } return; }
     if (m.type === 'readings-error') { Panes.readings = 'failed'; Panes.note = m.message; if (this.result) Panes.render(this.result); return; }
-    if (m.type === 'result' && m.id === this.id) { this.result = m; this.resultKey = this.sentKey; this.render(); Panes.render(m); Stage.fit(); App.redraw(); }
+    if (m.type === 'result' && m.id === this.id) { this.result = m; this.resultKey = this.sentKey; Panes.render(m); this.render(); Stage.fit(); App.redraw(); }
   },
   query() {
     const held = heldNow();
