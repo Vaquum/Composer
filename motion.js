@@ -36,6 +36,13 @@ const TactileFlow = (() => {
   if (typeof window === 'undefined') return { model, integrate, advance, bounds };
   const preference = matchMedia('(prefers-reduced-motion: reduce)');
   const owners = new WeakMap(), moving = new Set(), settlers = new Set();
+  const pendingLayouts=new Map();
+  const layoutObserver=typeof ResizeObserver==='function'?new ResizeObserver(entries=>{for(const {target}of entries)flushLayouts(target);}):null;
+  function flushLayouts(root){
+    for(const [node,complete]of [...pendingLayouts])if(!root||node===root||node.contains(root)||root.contains(node)){
+      pendingLayouts.delete(node);layoutObserver.unobserve(node);complete();
+    }
+  }
   let visibility=new WeakMap();const observed=new Set(),arrivals=new Set();
   let viewportScroll=[scrollX,scrollY];
   const viewport=typeof IntersectionObserver==='function'?new IntersectionObserver(entries=>{for(const entry of entries)visibility.set(entry.target,entry.isIntersecting);},{rootMargin:'160px'}):null;
@@ -111,6 +118,7 @@ const TactileFlow = (() => {
   }
   function value(owner, name) { const c = owners.get(owner)?.get(name); return c ? { ...c.value } : null; }
   function finish(root) {
+    flushLayouts(root);
     for(const node of arrivals)if(!root||node===root||root.contains(node)){arrivalSampler.unobserve(node);arrivals.delete(node);}
     for (const channel of [...moving]) if (moving.has(channel) && (!root || channel.owner === root || root.contains(channel.owner))) complete(channel);
     if (!root) for (const settle of settlers) settle();
@@ -285,7 +293,8 @@ const TactileFlow = (() => {
     };commit.snapshot=ghost;return commit;
   }
   const actors = ':scope > *, [data-reading], [data-detail], .pane-group, .prow, .pnear';
-  function layout(root, change, selector = actors, measure = true) {
+  function layout(root, change, selector = actors, measure = true, defer=false) {
+    flushLayouts(root);
     if(viewportScroll[0]!==scrollX||viewportScroll[1]!==scrollY)resetVisibility();
     releaseObservers();
     const active = document.activeElement;
@@ -302,6 +311,14 @@ const TactileFlow = (() => {
     }
     releaseObservers();
     restore();
+    const complete=()=>completeLayout(root,before,selector);
+    // A fresh observation runs after native layout and before paint, even when
+    // only row order changed. Translate writes do not resize the observed pane.
+    if(defer&&layoutObserver&&root.isConnected){pendingLayouts.set(root,complete);layoutObserver.observe(root);}
+    else complete();
+    return result;
+  }
+  function completeLayout(root,before,selector){
     const after = [...root.querySelectorAll(selector)], actorsAfter=new Set(after),deltas = new Map(),entries=new Set(),afterClips=new Map();
     observe(after);
     const visible=(box,bounds)=>bounds&&box.width&&box.height&&box.right>bounds.left&&box.left<bounds.right&&box.bottom>bounds.top&&box.top<bounds.bottom;
@@ -345,7 +362,6 @@ const TactileFlow = (() => {
         write: ({ x, y }) => { el.style.setProperty('--flow-layout-x', `${x}px`); el.style.setProperty('--flow-layout-y', `${y}px`); },
         done: () => { el.style.removeProperty('--flow-layout-x'); el.style.removeProperty('--flow-layout-y'); delete el.dataset.flowLayout; } });
     }
-    return result;
   }
   const keyPriority=Object.assign(Object.create(null),{'data-motion-key':0,id:1,'data-reading':2,'data-detail':3,'data-key':4,'data-design':5,'data-k':6});
   function key(node, index) {
@@ -473,11 +489,11 @@ const TactileFlow = (() => {
     }
     return deferred;
   }
-  function batch(root,change,measure=true){
+  function batch(root,change,measure=true,defer=false){
     return layout(root,geometries=>{
       const previous=transaction;transaction={root,geometries};
       try{return change();}finally{transaction=previous;}
-    },actors,measure);
+    },actors,measure,defer);
   }
   function patch(root, markup, animate = true, stable = false, retain = null) {
     const previous=markups.get(root);
@@ -511,5 +527,5 @@ const TactileFlow = (() => {
   addEventListener('pageshow', () => { suspended = document.hidden; });
   document.addEventListener('visibilitychange', () => { suspended = document.hidden; if (suspended) finish(); });
   details(document);
-  return { model, integrate, advance, bounds, reduced, spring, value, cancel, finish, reveal, visible, disclosure, resize, layout, batch, patch, update, details, switchControl, onSettle: fn => settlers.add(fn), active: () => moving.size > 0 || arrivals.size > 0 };
+  return { model, integrate, advance, bounds, reduced, spring, value, cancel, finish, reveal, visible, disclosure, resize, layout, batch, patch, update, details, switchControl, onSettle: fn => settlers.add(fn), active: () => moving.size > 0 || arrivals.size > 0 || pendingLayouts.size > 0 };
 })();

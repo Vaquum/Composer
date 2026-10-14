@@ -124,11 +124,18 @@ Unmapped wrapper removal defers its cleanup and retires captured descendant
 actors; restoration within the same batch cancels both operations.
 Reading values and track fields are formatted once per unchanged input set and
 shared by HTML and retained updates. In-place input changes invalidate that reuse.
+Large reading-pane transactions read their destination positions in a one-shot
+resize observation, after native layout and before paint. This coalesces layout
+with other presentation tasks instead of forcing it inside the result handler.
+Overlapping transactions and lifecycle settlement flush pending observations;
+focus, the first painted position and retained identity remain continuous.
 
 `npm run test:performance` exercises native Chromium, Chromium at 4× CPU and
 WebKit at 390/1600 px, DPR 1/2 and 2/20 bars, with 140 readings and all 729 six-bar
 sequences in the largest synthetic fixture. It reports frame delivery, application
-work, input/result handler time, pointer-to-paint latency and long tasks. Guards
+work across all animation-frame and resize-observer callbacks, input/result
+handler time, pointer-to-paint latency and long tasks. Observer tasks also obey
+the input/result task budget. Guards
 require local native p95 frame intervals below 25 ms, native p95 application work below
 16.7 ms (66.8 ms at 4× CPU throttling), and input/result work and pointer latency
 below 100 ms. Reduced motion waits for the browser's reported preference before

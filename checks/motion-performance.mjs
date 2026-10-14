@@ -50,7 +50,16 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
     page.on('pageerror',e=>errors.push(e.message));
     await page.addInitScript(()=>{
       window.Worker=class{postMessage(){} terminate(){}};
-      window.__samples={frames:[],work:[],tasks:[],calls:[],paints:[],presentation:{},mutations:0,clones:0,measures:0};
+      window.__samples={frames:[],work:[],tasks:[],calls:[],paints:[],observers:[],presentation:{},frameTime:0,frameWork:0,mutations:0,clones:0,measures:0};
+      const raf=window.requestAnimationFrame;
+      window.requestAnimationFrame=callback=>raf.call(window,now=>{
+        if(__samples.active&&now!==__samples.frameTime){if(__samples.frameTime){__samples.work.push(__samples.frameWork);__samples.frameWork=0;}__samples.frameTime=now;}
+        const t=performance.now();try{return callback(now);}finally{if(__samples.active)__samples.frameWork+=performance.now()-t;}
+      });
+      const Observer=window.ResizeObserver;
+      window.ResizeObserver=class extends Observer{constructor(callback){super((...args)=>{
+        const t=performance.now();try{return callback(...args);}finally{if(__samples.active){const ms=performance.now()-t;__samples.observers.push(ms);__samples.calls.push(ms);__samples.frameWork+=ms;}}
+      });}};
       if(PerformanceObserver.supportedEntryTypes.includes('longtask'))new PerformanceObserver(list=>__samples.tasks.push(...list.getEntries().map(e=>e.duration))).observe({type:'longtask'});
       const clone=Node.prototype.cloneNode;
       Node.prototype.cloneNode=function(...args){__samples.clones++;return clone.apply(this,args);};
@@ -69,9 +78,6 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
     if(type===chromium){cdp=await context.newCDPSession(page);await cdp.send('Performance.enable');await cdp.send('Emulation.setCPUThrottlingRate',{rate});}
     await page.evaluate(()=>{
       const A=__perf;__samples.active=false;
-      const tick=A.App.tick,box=A.Stage.measureBox;let geometryWork=0,inFrame=false;
-      A.Stage.measureBox=function(...args){const t=performance.now();try{return box.apply(this,args);}finally{if(__samples.active&&!inFrame)geometryWork+=performance.now()-t;}};
-      A.App.tick=function(...args){const t=performance.now();inFrame=true;try{return tick.apply(this,args);}finally{if(__samples.active)__samples.work.push(performance.now()-t+geometryWork);geometryWork=0;inFrame=false;}};
       for(const [owner,names]of [[A.Stage,['move','down','up']],[A.Match,['presentResult']]])for(const name of names){
         const handler=owner[name];
         owner[name]=function(...args){const t=performance.now(),part=name==='presentResult'?['cards','right','left'][this.presentation?.tasks.length-1]:null;
@@ -84,13 +90,13 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
     });
     const measure=async(label,action)=>{
       await settle(page);
-      await page.evaluate(()=>{for(const key of ['frames','work','tasks','calls','paints'])__samples[key]=[];for(const key of ['mutations','clones','measures'])__samples[key]=0;__samples.presentation={};__samples.active=true;});
+      await page.evaluate(()=>{for(const key of ['frames','work','tasks','calls','paints','observers'])__samples[key]=[];for(const key of ['mutations','clones','measures','frameTime','frameWork'])__samples[key]=0;__samples.presentation={};__samples.active=true;});
       await action();await settle(page);
-      const sample=await page.evaluate(()=>{__samples.active=false;return{...__samples};});
+      const sample=await page.evaluate(()=>{__samples.active=false;if(__samples.frameTime)__samples.work.push(__samples.frameWork);return{...__samples};});
       const p95=a=>a.length?a.slice().sort((a,b)=>a-b)[Math.floor((a.length-1)*.95)]:0;
       const report={browser:name,graphics,frameGate:controlledGraphics,bars:n,width,dpr,scenario:label,frames:sample.frames.length,
         frameP95:+p95(sample.frames).toFixed(1),workP95:+p95(sample.work).toFixed(1),callMax:+Math.max(0,...sample.calls).toFixed(1),
-        paintP95:+p95(sample.paints).toFixed(1),taskMax:Math.max(0,...sample.tasks),presentationMax:Object.fromEntries(Object.entries(sample.presentation).map(([k,v])=>[k,+v.toFixed(1)])),measurements:sample.measures,mutations:sample.mutations};
+        paintP95:+p95(sample.paints).toFixed(1),observerMax:+Math.max(0,...sample.observers).toFixed(1),taskMax:Math.max(0,...sample.tasks),presentationMax:Object.fromEntries(Object.entries(sample.presentation).map(([k,v])=>[k,+v.toFixed(1)])),measurements:sample.measures,mutations:sample.mutations};
       reports.push(report);console.log(JSON.stringify(report));
       // CI contention can stretch rAF intervals, so timing gates use measured application
       // work and input handlers. Frame delivery is reported, never hidden by idle samples.
@@ -371,6 +377,18 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
       F.finish();root.remove();return{restored,copies};
     });
     assert.deepEqual(unmappedWrapper,{restored:true,copies:1},'unmapped wrapper removal must retire captured readings once and permit restoration within a batch');
+    const deferredLayout=await page.evaluate(async()=>{
+      const F=__perf.Flow,root=document.createElement('div');root.style.cssText='position:fixed;left:10px;top:10px;width:220px;display:flex;flex-direction:column';document.body.append(root);
+      const a='<button data-motion-key="a">A</button>',b='<button data-motion-key="b">B</button>';F.patch(root,a+b,false);
+      const button=root.firstElementChild,top=button.getBoundingClientRect().top;button.focus();let pending=false;
+      const firstPaint=await new Promise(resolve=>{
+        const probe=new ResizeObserver(()=>{probe.disconnect();resolve(Math.abs(button.getBoundingClientRect().top-top)<.5&&!!F.value(button,'layout'));});
+        F.batch(root,()=>F.patch(root,b+a),true,true);pending=F.active();probe.observe(root);
+      });
+      F.finish(root);F.batch(root,()=>F.patch(root,a+b),true,true);F.finish(root);
+      const state={pending,firstPaint,retained:root.firstElementChild===button,focused:document.activeElement===button,settled:!F.value(button,'layout')};root.remove();return state;
+    });
+    assert.deepEqual(deferredLayout,{pending:true,firstPaint:true,retained:true,focused:true,settled:true},'deferred layout must preserve the first painted position, focus, identity and immediate lifecycle settlement');
     const viewport=await page.evaluate(async()=>{
       const F=__perf.Flow,root=document.createElement('div');Object.assign(root.style,{position:'fixed',left:'10px',top:'10px',width:'200px',height:'60px',overflow:'hidden'});document.body.append(root);
       const row=k=>`<div data-motion-key="${k}" style="height:80px">${k}</div>`;F.patch(root,row('a')+row('b')+row('c'));F.finish(root);
