@@ -93,6 +93,9 @@ Retained Signal rows reuse their verified bindings inside structural
 reconciliation; headers and changed row shapes still use the general path.
 Previously unseen actors receive a fresh observer sample after layout changes,
 so arrivals retain their entry spring without synchronous offscreen reads.
+Arrival samples use a separate one-shot observer rather than comparing browser
+timestamps with cached samples. Retirement shells apply their frozen styles in
+one declaration rather than repeated CSS property setters.
 
 `npm run test:performance` exercises native Chromium, Chromium at 4× CPU and
 WebKit at 390/1600 px, DPR 1/2 and 2/20 bars, with 140 readings and all 729 six-bar

@@ -36,18 +36,17 @@ const TactileFlow = (() => {
   if (typeof window === 'undefined') return { model, integrate, advance, bounds };
   const preference = matchMedia('(prefers-reduced-motion: reduce)');
   const owners = new WeakMap(), moving = new Set(), settlers = new Set();
-  let visibility=new WeakMap();const observed=new Set(),arrivals=new Map();
-  const viewport=typeof IntersectionObserver==='function'?new IntersectionObserver(entries=>{
+  let visibility=new WeakMap();const observed=new Set(),arrivals=new Set();
+  const viewport=typeof IntersectionObserver==='function'?new IntersectionObserver(entries=>{for(const entry of entries)visibility.set(entry.target,entry.isIntersecting);},{rootMargin:'160px'}):null;
+  // A separate one-shot sample cannot mistake a queued cache observation for
+  // this layout's arrival, and does not depend on browser timestamp precision.
+  const arrivalSampler=viewport?new IntersectionObserver(entries=>{
     for(const entry of entries){
-      visibility.set(entry.target,entry.isIntersecting);
-      const requested=arrivals.get(entry.target);
-      if(requested!==undefined&&entry.time>=requested){
-        arrivals.delete(entry.target);
-        if(entry.isIntersecting&&entry.target.isConnected&&presented(entry.target)&&!reduced())reveal(entry.target);
-      }
+      arrivalSampler.unobserve(entry.target);
+      if(arrivals.delete(entry.target)&&entry.isIntersecting&&entry.target.isConnected&&presented(entry.target)&&!reduced())reveal(entry.target);
     }
   },{rootMargin:'160px'}):null;
-  function releaseObservers(){for(const node of observed)if(!node.isConnected){viewport.unobserve(node);observed.delete(node);arrivals.delete(node);}}
+  function releaseObservers(){for(const node of observed)if(!node.isConnected){viewport.unobserve(node);observed.delete(node);arrivalSampler.unobserve(node);arrivals.delete(node);}}
   function observe(nodes){if(viewport)for(const node of nodes)if(!observed.has(node)){observed.add(node);viewport.observe(node);}}
   function resetVisibility(){
     visibility=new WeakMap();if(!viewport)return;
@@ -108,7 +107,7 @@ const TactileFlow = (() => {
   }
   function value(owner, name) { const c = owners.get(owner)?.get(name); return c ? { ...c.value } : null; }
   function finish(root) {
-    for(const node of arrivals.keys())if(!root||node===root||root.contains(node))arrivals.delete(node);
+    for(const node of arrivals)if(!root||node===root||root.contains(node)){arrivalSampler.unobserve(node);arrivals.delete(node);}
     for (const channel of [...moving]) if (moving.has(channel) && (!root || channel.owner === root || root.contains(channel.owner))) complete(channel);
     if (!root) for (const settle of settlers) settle();
   }
@@ -249,22 +248,21 @@ const TactileFlow = (() => {
     for(const parent of ancestors){
       const shell=parent.cloneNode(false);shell.removeAttribute('id');shell.removeAttribute('hidden');
       for(const attribute of [...shell.attributes])if(attribute.name.startsWith('data-flow-')&&attribute.name!=='data-flow-details'||attribute.name==='data-motion-running')shell.removeAttribute(attribute.name);
-      Object.assign(shell.style,{display:'contents',opacity:'1',translate:'none',transform:'none',filter:'none',contain:'none',containerType:'normal'});
-      shell.style.setProperty('display','contents','important');
+      shell.style.cssText+=';display:contents!important;opacity:1!important;translate:none!important;transform:none!important;filter:none!important;contain:none!important;container-type:normal!important';
       context.append(shell);context=shell;
     }
     for(const node of [snapshot,...snapshot.querySelectorAll('*')])node.removeAttribute('id');
     const style=getComputedStyle(element);
-    for(const property of ['display','box-sizing','font','color','text-align','padding','border','border-radius','background','gap','flex-direction','align-items','justify-content'])snapshot.style.setProperty(property,style.getPropertyValue(property));
+    const frozen=['display','box-sizing','font','color','text-align','padding','border','border-radius','background','gap','flex-direction','align-items','justify-content'].map(property=>`${property}:${style.getPropertyValue(property)}!important`).join(';');
     if(element.tagName==='TR')for(let i=0;i<element.children.length;i++){
       const cell=element.children[i],copy=snapshot.children[i],style=getComputedStyle(cell);
       for(const property of ['border-top','border-bottom','padding'])copy.style.setProperty(property,style.getPropertyValue(property));
       copy.style.width=`${cell.getBoundingClientRect().width}px`;
     }
-    Object.assign(snapshot.style,{position:'absolute',left:'0',top:'0',width:`${box.width}px`,height:`${box.height}px`,margin:'0',opacity:'1',translate:'none',transform:'none'});
+    snapshot.style.cssText+=`;${frozen};position:absolute!important;left:0!important;top:0!important;width:${box.width}px!important;height:${box.height}px!important;margin:0!important;opacity:1!important;translate:none!important;transform:none!important`;
     context.append(snapshot);
     ghost.inert = true; ghost.setAttribute('aria-hidden', 'true'); ghost.dataset.flowRetiring = '';
-    Object.assign(ghost.style, { position: 'fixed', left: `${box.left}px`, top: `${box.top}px`, width: `${box.width}px`, height: `${box.height}px`, margin: '0', translate: 'none', transform: 'none', pointerEvents: 'none', zIndex: '90' });
+    ghost.style.cssText=`position:fixed;left:${box.left}px;top:${box.top}px;width:${box.width}px;height:${box.height}px;margin:0;translate:none;transform:none;pointer-events:none;z-index:90`;
     const commit=()=>{
     finish(element); element.remove(); document.body.append(ghost);
     spring(ghost, 'retirement', { from: { opacity, y: 0 }, to: { opacity: 0, y: -model.information },
@@ -302,7 +300,7 @@ const TactileFlow = (() => {
       // forces its entire SVG/readings layout inside the input/result task.
       if(!old?.box.width||!old.box.height){
         const channel=old?.unseen&&owners.get(el)?.get('layout');if(channel)complete(channel);
-        if(old?.unseen&&viewport){arrivals.set(el,performance.now());viewport.unobserve(el);viewport.observe(el);}
+        if(old?.unseen&&arrivalSampler){arrivals.add(el);arrivalSampler.observe(el);}
         continue;
       }
       const box=el.getBoundingClientRect();
