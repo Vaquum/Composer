@@ -250,10 +250,10 @@ const TactileFlow = (() => {
     };
   }
   const actors = ':scope > *, [data-reading], [data-detail], .pane-group, .prow, .pnear';
-  function layout(root, change, selector = actors) {
+  function layout(root, change, selector = actors, measure = true) {
     const active = document.activeElement;
     const restore=()=>{if(active?.isConnected&&root.contains(active)&&document.activeElement!==active)active.focus({preventScroll:true});};
-    if(reduced()){const result=change(new Map());restore();return result;}
+    if(reduced()||!measure){const result=change(new Map());restore();return result;}
     const clips=new Map(),before = new Map([...root.querySelectorAll(selector)].map(el => [el, capture(el,clips)]));before.retirements=[];
     const result = change(before);
     // Read departing styles before removals/ghost insertion can force another layout.
@@ -325,11 +325,11 @@ const TactileFlow = (() => {
     }
   }
   const markups=new WeakMap();let transaction=null;
-  function batch(root,change){
+  function batch(root,change,measure=true){
     return layout(root,geometries=>{
       const previous=transaction;transaction={root,geometries};
       try{return change();}finally{transaction=previous;}
-    });
+    },actors,measure);
   }
   function patch(root, markup, animate = true) {
     const previous=markups.get(root);

@@ -1797,7 +1797,7 @@ async function loadBars() {
 /* ================= the panes: what sets the matching windows apart, and what the shape became ================= */
 const pct = (x, d = 1) => `${(x * 100).toFixed(d)}%`;
 const Panes = {
-  readings: 'loading', note: '', views: { left: 'signal', right: 'signal' }, details: new Map(),
+  readings: 'loading', note: '', views: { left: 'signal', right: 'signal' }, details: new Map(), layoutKeys: new Map(),
   init() {
     try {
       const saved = JSON.parse(localStorage.getItem('ashi.pane-designs'));
@@ -1854,6 +1854,7 @@ const Panes = {
     if (Match.result) this.render(Match.result, side);
   },
   clear() {
+    this.layoutKeys.clear();
     for (const id of ['lrows','lnext','rnext','rbecame','rfan','ncap','rnear']) $('#' + id).replaceChildren();
     $('#lcap').textContent = 'Matching data unavailable.'; $('#rcap').textContent = 'Continuation unavailable.';
   },
@@ -1863,23 +1864,24 @@ const Panes = {
     for (const side of onlySide ? [onlySide] : ['left','right']) {
       this.remember(side);
       const pane = $(`.pane[data-side="${side}"]`), variant = this.views[side];
+      const markup=side==='left'?{
+        lcap:PaneDesigns.caption(r,ctx),lrows:PaneDesigns.left(variant,r,ctx),lnext:PaneDesigns.next(r,ctx),lmethod:PaneDesigns.leftMethod(S.bars.length)
+      }:{
+        rcap:`<strong>Next ${P.after} bars</strong><span class="pane-meta">${P.cont ? fmt(P.cont.n) + ' windows with all ' + P.after + ' bars available' : 'Complete continuations below 30'}</span>`,
+        rnext:PaneDesigns.next(r,ctx),rbecame:PaneDesigns.right(variant,r),rfan:PaneDesigns.terminal(P),rmethod:PaneDesigns.rightMethod(P.after),
+        rnear:P.near.length ? P.near.map((nb,i) => `<div class="pnear" data-motion-key="${nb.a}-${nb.b}-${nb.rel}"><span>${esc(this.nearWord(nb))}<small>${fmt(nb.n)} windows${nb.up ? ` · next rose ${pct(nb.up[0])} · 95% interval ${pct(nb.up[1])}–${pct(nb.up[2])}` : ' · next-bar estimate unavailable'}</small></span><button type="button" data-i="${i}" title="Put its closest instance on the canvas">Try it</button></div>`).join('') : '<p class="pcap">No neighboring patterns found on these timeframes.</p>'
+      };
+      // Generated pane styles only position absolute chart marks. Tabular figure
+      // substitutions keep text width; all other markup/layout changes still FLIP.
+      const layoutKey=variant+'|'+Object.values(markup).join('|').replace(/\s(?:style|aria-label|title)="[^"]*"/g,'').replace(/>([^<]*)</g,(_,text)=>'>'+text.replace(/[0-9]/g,'#')+'<');
+      const measure=this.layoutKeys.get(side)!==layoutKey;this.layoutKeys.set(side,layoutKey);
       Flow.resize($('.pane-body',pane),()=>Flow.batch(pane,()=>{
-      if (side === 'left') {
-        Flow.patch($('#lcap'), PaneDesigns.caption(r,ctx));
-        Flow.patch($('#lrows'), PaneDesigns.left(variant,r,ctx));
-        Flow.patch($('#lnext'), PaneDesigns.next(r,ctx));
-        Flow.patch($('#lmethod'), PaneDesigns.leftMethod(S.bars.length));
-      } else {
-        Flow.patch($('#rcap'), `<strong>Next ${P.after} bars</strong><span class="pane-meta">${P.cont ? fmt(P.cont.n) + ' windows with all ' + P.after + ' bars available' : 'Complete continuations below 30'}</span>`);
+      if(side==='right'){
         Flow.disclosure($('#rnextsec'),variant==='bars');
-        Flow.patch($('#rnext'), PaneDesigns.next(r,ctx));
-        Flow.patch($('#rbecame'), PaneDesigns.right(variant,r));
-        Flow.patch($('#rfan'), PaneDesigns.terminal(P));
-        Flow.patch($('#rmethod'), PaneDesigns.rightMethod(P.after));
         $('#ncap').textContent = 'One changed bar-end comparison · selected timeframes';
-        Flow.patch($('#rnear'), P.near.length ? P.near.map((nb,i) => `<div class="pnear" data-motion-key="${nb.a}-${nb.b}-${nb.rel}"><span>${esc(this.nearWord(nb))}<small>${fmt(nb.n)} windows${nb.up ? ` · next rose ${pct(nb.up[0])} · 95% interval ${pct(nb.up[1])}–${pct(nb.up[2])}` : ' · next-bar estimate unavailable'}</small></span><button type="button" data-i="${i}" title="Put its closest instance on the canvas">Try it</button></div>`).join('') : '<p class="pcap">No neighboring patterns found on these timeframes.</p>');
       }
-      }));
+      for(const [id,html]of Object.entries(markup))Flow.patch($('#'+id),html);
+      },measure));
       pane.dataset.view = variant;
       const remembered = this.details.get(side + '-' + variant);
       for (const d of pane.querySelectorAll('details[data-detail]')) if (remembered?.has(d.dataset.detail)) d.open = remembered.get(d.dataset.detail);

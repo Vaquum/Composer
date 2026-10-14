@@ -1,6 +1,6 @@
 /* Shared pane hierarchy: one header rule, section rules at their beginnings,
    16px section spacing, 8px row spacing, and the same type roles in every view. */
-.pane { --pane-font: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; --pane-title: 20px; --pane-heading: 14px; --pane-label: 13px; --pane-small: 12px; --pane-value: 16px; --pane-headline: 32px; --pane-space: 16px; --pane-row: 8px; --pane-selected: var(--ai); font-family: var(--pane-font); font-size: var(--pane-heading); line-height: 1.45; gap: var(--pane-space); background: var(--paper); }
+.pane { --pane-font: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; --pane-title: 20px; --pane-heading: 14px; --pane-label: 13px; --pane-small: 12px; --pane-value: 16px; --pane-headline: 32px; --pane-space: 16px; --pane-row: 8px; --pane-selected: var(--ai); font-family: var(--pane-font); font-size: var(--pane-heading); font-variant-numeric: tabular-nums; line-height: 1.45; gap: var(--pane-space); background: var(--paper); }
 .pane h2 { font: 600 var(--pane-title)/1.25 var(--pane-font); letter-spacing: -.025em; margin: 0; }
 .pane h3 { font: 600 var(--pane-heading)/1.4 var(--pane-font); margin: 0 0 var(--pane-row); }
 .pane p { margin: 0; }
