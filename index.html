@@ -1367,8 +1367,8 @@ const Stage = {
     const box={x:Math.max(0,Math.floor(lx-24)),y:Math.max(0,Math.floor(G.plotTop-24))};
     box.w=Math.max(1,G.w-box.x);box.h=Math.max(1,Math.min(G.h,Math.ceil(G.plotBottom+24))-box.y);
     if(!this.fanSurface)this.fanSurface=document.createElement('canvas');
-    const wash=fitCanvas(this.fanSurface,box.w,box.h);
-    wash.clearRect(0,0,box.w,box.h);wash.translate(-box.x,-box.y);wash.fillStyle=paint;
+    const density=.5, wash=fitCanvas(this.fanSurface,box.w*density,box.h*density);
+    wash.clearRect(0,0,box.w*density,box.h*density);wash.scale(density,density);wash.translate(-box.x,-box.y);wash.fillStyle=paint;
     const hull=(lower,upper)=>{
       wash.beginPath();wash.moveTo(lx,y0);
       c.fan.forEach((q,j)=>wash.lineTo(xs[j],Y(upper(q))));
@@ -1387,10 +1387,12 @@ const Stage = {
     fade.addColorStop(0,'rgba(0,0,0,0)');fade.addColorStop(.08,'rgba(0,0,0,1)');
     fade.addColorStop(.94,'rgba(0,0,0,1)');fade.addColorStop(1,'rgba(0,0,0,0)');
     wash.fillStyle=fade;wash.fillRect(box.x,box.y,box.w,box.h);wash.globalCompositeOperation='source-over';
+    if(!this.fanBlurSurface)this.fanBlurSurface=document.createElement('canvas');
+    const blur=fitCanvas(this.fanBlurSurface,box.w*density,box.h*density);blur.clearRect(0,0,box.w*density,box.h*density);
+    blur.filter=`blur(${6*FAN_OPTIONS.softness*density}px)`;blur.drawImage(this.fanSurface,0,0,box.w*density,box.h*density);blur.filter='none';
     if(!this.fanInkSurface)this.fanInkSurface=document.createElement('canvas');
     const ink=fitCanvas(this.fanInkSurface,box.w,box.h);ink.clearRect(0,0,box.w,box.h);ink.translate(-box.x,-box.y);
-    ink.filter=`blur(${6*FAN_OPTIONS.softness}px)`;
-    ink.drawImage(this.fanSurface,box.x,box.y,box.w,box.h);ink.filter='none';
+    ink.drawImage(this.fanBlurSurface,box.x,box.y,box.w,box.h);
     const line=ink.createLinearGradient(lx,0,end,0);
     line.addColorStop(0,rgbStr(pigment,0));line.addColorStop(.08,paint);
     line.addColorStop(.94,paint);line.addColorStop(1,rgbStr(pigment,0));
@@ -1458,7 +1460,7 @@ const Stage = {
   },
   drawBranches(ctx,G){
     if(Forecast.view!=='branches')return;
-    const c=Forecast.source,F=Forecast.field(G),set=ForecastViews.outcomes(c,Forecast.prefix),j=Forecast.prefix.length;
+    const c=Forecast.source,F=Forecast.field(G),set=Forecast.outcomes(Forecast.prefix),j=Forecast.prefix.length;
     const glyphs={U:'↑',I:'•',D:'↓'},colors=[COL.up,COL.flat,COL.down],paper=rgbOf(COL.paper);
     const fresh=Forecast.current?1:.4,showRates=F.width>=30,cellHeight=F.branchHeight-4;
     ctx.save();ctx.beginPath();ctx.rect(F.left,F.top,F.right-F.left,F.height);ctx.clip();
