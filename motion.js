@@ -139,24 +139,28 @@ const TactileFlow = (() => {
         for (const child of [...detail.childNodes]) if (!(child instanceof Element && child.tagName === 'SUMMARY')) body.append(child);
         detail.append(body);
       }
-      if (!value(body, 'disclosure')) { body.hidden = false; body.inert = !detail.open; }
+      if(value(body,'disclosure')){if(body.dataset.flowOpen!==String(detail.open))detailVisibility(detail,detail.open);}
+      else { body.hidden=false;body.inert=!detail.open; }
     }
   }
-  document.addEventListener('click', event => {
-    const summary = event.target.closest('summary'), detail = summary?.parentElement;
-    if (detail?.tagName !== 'DETAILS') return;
-    event.preventDefault(); details(detail.parentElement);
-    const body = detail.querySelector(':scope > .flow-detail-body'), height = body.getBoundingClientRect().height;
-    const open = !detail.open; detail.dataset.flowDetails = ''; detail.open = open;
-    body.hidden = !open; body.inert = !open; body.dataset.flowVisible = ''; body.dataset.flowDisclosure = '';
-    body.style.setProperty('--flow-display', 'block'); body.style.overflow = 'hidden';
-    spring(body, 'disclosure', { from: { size: height, opacity: open && !height ? 0 : Number(getComputedStyle(body).opacity) }, to: () => ({ size: open ? intrinsic(body) : 0, opacity: open ? 1 : 0 }),
-      write: ({ size, opacity }) => { body.style.height = `${Math.max(0, size)}px`; body.style.opacity = String(bounded(opacity)); },
-      done: () => { body.hidden = false; body.style.height = ''; body.style.opacity = ''; body.style.overflow = ''; body.style.removeProperty('--flow-display'); delete body.dataset.flowVisible; delete body.dataset.flowDisclosure; delete detail.dataset.flowDetails; } });
+  function detailVisibility(detail,open) {
+    const body=detail.querySelector(':scope > .flow-detail-body'),height=body.getBoundingClientRect().height;
+    body.dataset.flowOpen=String(open);detail.dataset.flowDetails='';detail.open=open;
+    body.hidden=!open;body.inert=!open;body.dataset.flowVisible='';body.dataset.flowDisclosure='';
+    body.style.setProperty('--flow-display','block');body.style.overflow='hidden';
+    spring(body,'disclosure',{from:{size:height,opacity:open&&!height?0:Number(getComputedStyle(body).opacity)},to:()=>({size:open?intrinsic(body):0,opacity:open?1:0}),
+      write:({size,opacity})=>{body.style.height=`${Math.max(0,size)}px`;body.style.opacity=String(bounded(opacity));},
+      done:()=>{
+        body.hidden=false;body.inert=!detail.open;body.style.height='';body.style.opacity='';body.style.overflow='';body.style.removeProperty('--flow-display');
+        delete body.dataset.flowVisible;delete body.dataset.flowDisclosure;delete body.dataset.flowOpen;delete detail.dataset.flowDetails;
+      }});
+  }
+  document.addEventListener('click',event=>{
+    const summary=event.target.closest('summary'),detail=summary?.parentElement;
+    if(detail?.tagName!=='DETAILS')return;
+    event.preventDefault();details(detail.parentElement);detailVisibility(detail,!detail.open);
   });
-  document.addEventListener('toggle', event => {
-    if (event.target.tagName === 'DETAILS' && !event.target.hasAttribute('data-flow-details')) details(event.target.parentElement);
-  }, true);
+  document.addEventListener('toggle',event=>{if(event.target.tagName==='DETAILS')details(event.target.parentElement);},true);
   function clip(element) {
     const bounds = { left: 0, top: 0, right: innerWidth, bottom: innerHeight };
     for (let parent = element.parentElement; parent && parent !== document.body; parent = parent.parentElement) {
@@ -175,8 +179,6 @@ const TactileFlow = (() => {
     const ghost = element.cloneNode(true), source = [element, ...element.querySelectorAll('*')], copies = [ghost, ...ghost.querySelectorAll('*')];
     source.forEach((node, i) => {
       const style = getComputedStyle(node);
-      copies[i].style.cssText = style.cssText;
-      // Computed CSSStyleDeclaration.cssText is empty in some engines; copy the resolved properties.
       for (const property of style) copies[i].style.setProperty(property, style.getPropertyValue(property));
       copies[i].removeAttribute('id');
       for (const attribute of [...copies[i].attributes]) if (attribute.name.startsWith('data-flow-') || attribute.name === 'data-motion-running') copies[i].removeAttribute(attribute.name);
@@ -222,7 +224,7 @@ const TactileFlow = (() => {
     return `${node.tagName}:${node.classList[0] || ''}:${index}`;
   }
   function attributes(current, incoming) {
-    const preserve = name => name.startsWith('data-flow-') || name === 'data-motion-running' || current.tagName === 'DETAILS' && name === 'open';
+    const preserve = name => name.startsWith('data-flow-') || name === 'data-motion-running' || current.tagName === 'DETAILS' && name === 'open' || name==='inert'&&current.classList.contains('flow-detail-body');
     for (const attr of [...current.attributes]) if (!preserve(attr.name) && attr.name !== 'style' && !incoming.hasAttribute(attr.name)) current.removeAttribute(attr.name);
     for (const attr of incoming.attributes) if (!preserve(attr.name) && attr.name !== 'style' && current.getAttribute(attr.name) !== attr.value) current.setAttribute(attr.name, attr.value);
     const temporary = name => name.startsWith('--flow-') || Boolean(owners.get(current)?.size) && ['height', 'width', 'opacity', 'overflow', 'translate'].includes(name);
@@ -248,8 +250,8 @@ const TactileFlow = (() => {
   }
   function patch(root, markup, animate = true) {
     const template = document.createElement('template'); template.innerHTML = markup; details(template.content);
-    if (animate) return layout(root, geometries => reconcile(root, template.content, geometries, true));
-    reconcile(root, template.content, new Map(), false);
+    const result=animate?layout(root,geometries=>reconcile(root,template.content,geometries,true)):reconcile(root,template.content,new Map(),false);
+    details(root);return result;
   }
   function switchControl(input) {
     const target = input.checked ? 13 : 0;
@@ -269,5 +271,5 @@ const TactileFlow = (() => {
   addEventListener('pageshow', () => { suspended = document.hidden; });
   document.addEventListener('visibilitychange', () => { suspended = document.hidden; if (suspended) finish(); });
   details(document);
-  return { model, integrate, advance, reduced, spring, value, cancel, finish, reveal, visible, disclosure, resize, layout, patch, switchControl, onSettle: fn => settlers.add(fn), active: () => moving.size > 0 };
+  return { model, integrate, advance, reduced, spring, value, cancel, finish, reveal, visible, disclosure, resize, layout, patch, details, switchControl, onSettle: fn => settlers.add(fn), active: () => moving.size > 0 };
 })();

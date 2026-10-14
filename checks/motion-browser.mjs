@@ -1,6 +1,8 @@
 // Real UI and runtime, offline synthetic presentation fixtures; statistics have separate current-data checks.
 import fs from 'node:fs';
 import http from 'node:http';
+import os from 'node:os';
+import path from 'node:path';
 import assert from 'node:assert/strict';
 import { chromium, webkit } from 'playwright';
 const html=fs.readFileSync('index.html','utf8').replace('Panes.init();','window.__motionProbe={S,Stage,Match,Panes,Ref,Forecast,Ops,App,Flow};\nPanes.init();');
@@ -9,6 +11,7 @@ const result=new Function(fixture.slice(fixture.indexOf('const row ='),fixture.i
 Object.assign(result.panes.cont,{fan:Array.from({length:6},(_,i)=>[-.2-i*.05,.2,.5+i*.08,1.2,1.6+i*.05]),sequences:[['UUUUUU',260],['IIIIII',100],['DDDDDD',39]],examples:{}});
 Object.assign(result,{mode:'nearest',counts:[12,0,0,0,0],countsF:[12,0,0,0,0],ms:10,
   results:Array.from({length:12},(_,i)=>({tf:'15m',start:1700000000+i*900,raw:[[30,68,18,56],[56,80,18,36]],drawn:[[30,68,18,56],[56,80,18,36]],picks:[0,1],broken:[],flips:0,off:i*.01,next:null,nextWhy:'end'}))});
+const screenshots=fs.mkdtempSync(path.join(os.tmpdir(),'composer-motion-'));
 const assets=new Set(['motion.js','motion.css','panes.css','pane-designs.js','forecast.js','context.js']);
 const server=http.createServer((request,response)=>{
   const path=new URL(request.url,'http://localhost').pathname.slice(1);
@@ -33,6 +36,8 @@ for(const [name,type] of [['Chromium',chromium],['WebKit',webkit]]){
   await page.addInitScript(()=>{window.Worker=class{postMessage(){} terminate(){}};});
   await page.route('https://fonts.**/**',route=>route.abort());
   await page.goto(base);await settled(page);await seed(page);await settled(page);
+  await page.screenshot({path:path.join(screenshots,name+'.png')});
+  console.log(`${name} resting scene: ${path.join(screenshots,name+'.png')}`);
   const feedback=await page.evaluate(()=>['.seg button','.icon','.chip','.pane-step','.prog i'].map(s=>getComputedStyle(document.querySelector(s)).transitionDuration));
   assert.ok(feedback.every(d=>d.split(',').every(n=>parseFloat(n)===.1)),`${name}: common 100 ms feedback`);
   const channels=await page.evaluate(async()=>{
@@ -56,6 +61,13 @@ for(const [name,type] of [['Chromium',chromium],['WebKit',webkit]]){
     A.Match.render();return{chip:chip.isConnected,card:card.isConnected,focus:document.activeElement===chip};
   });
   assert.deepEqual(retained,{chip:true,card:true,focus:true},`${name}: refresh retains semantic actors and focus`);
+  const retainedDetails=await page.evaluate(async()=>{
+    const A=window.__motionProbe,detail=document.querySelector('#lnext details');detail.open=true;
+    await new Promise(requestAnimationFrame);const body=detail.querySelector('.flow-detail-body');
+    A.Panes.render(A.Match.result);const state={open:detail.open,bodyRetained:body===detail.querySelector('.flow-detail-body'),available:!body.inert};
+    detail.open=false;A.Flow.finish();return state;
+  });
+  assert.deepEqual(retainedDetails,{open:true,bodyRetained:true,available:true},`${name}: an open disclosure stays accessible on data refresh`);
   const reference=await page.evaluate(async()=>{
     const A=window.__motionProbe,width=A.Stage.wrap.clientWidth;document.querySelector('#reftoggle').focus();A.Ref.open();const initial=A.Stage.wrap.clientWidth;
     for(let i=0;i<6;i++)await new Promise(requestAnimationFrame);
