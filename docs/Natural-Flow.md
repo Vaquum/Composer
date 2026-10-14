@@ -98,6 +98,8 @@ measurement. Bounded intrinsic measurements, idle DOM writes, retained styling,
 pixel reuse, focus and repeated-transition DOM/heap cleanup are also checked.
 These budgets characterize the tested environment; current-data checks validate
 the actual statistics independently of the presentation fixtures.
-Shared GitHub runners report frame cadence and their graphics renderer, while
-enforcing application-work, input, semantic, allocation and cleanup budgets.
+Shared GitHub runners report frame cadence, pointer-to-next-frame wait and their
+graphics renderer, while enforcing application-work, actual pointer-handler,
+input/result, semantic, allocation and cleanup budgets. Both frame delivery and
+pointer-to-next-frame wait remain enforced on the local native graphics host.
 Their uncontrolled virtual display/GPU cadence is not a native frame-delivery gate.

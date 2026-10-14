@@ -72,6 +72,10 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
       const step=A.Stage.step,draw=A.Stage.draw;let work=0;
       A.Stage.step=function(...args){const t=performance.now();try{return step.apply(this,args);}finally{work+=performance.now()-t;}};
       A.Stage.draw=function(...args){const t=performance.now();try{return draw.apply(this,args);}finally{if(__samples.active)__samples.work.push(work+performance.now()-t);work=0;}};
+      for(const name of ['move','down','up']){
+        const handler=A.Stage[name];
+        A.Stage[name]=function(...args){const t=performance.now();try{return handler.apply(this,args);}finally{if(__samples.active)__samples.calls.push(performance.now()-t);}};
+      }
       let previous=0;
       const frame=now=>{if(__samples.active&&previous)__samples.frames.push(now-previous);previous=__samples.active?now:0;requestAnimationFrame(frame);};requestAnimationFrame(frame);
       document.querySelector('#cv').addEventListener('pointermove',()=>{const t=performance.now();requestAnimationFrame(()=>{if(__samples.active)__samples.paints.push(performance.now()-t);});});
@@ -92,7 +96,7 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
       assert.ok(report.callMax<100,`${label}: an input/result task exceeded 100 ms (${report.callMax})`);
       assert.ok(report.workP95<16.7*rate,`${label}: application work exceeded its native-frame budget scaled by ${rate}× CPU (${report.workP95})`);
       if(controlledGraphics&&rate===1&&label!=='reduced-motion')assert.ok(report.frameP95<25,`${label}: native frame delivery exceeded its budget (${report.frameP95})`);
-      assert.ok(report.paintP95<100,`${label}: pointer input waited more than 100 ms for its next paint (${report.paintP95})`);
+      if(controlledGraphics)assert.ok(report.paintP95<100,`${label}: pointer input waited more than 100 ms for its next paint (${report.paintP95})`);
       return sample;
     };
     const call=async(kind,value)=>page.evaluate(({kind,value})=>{
