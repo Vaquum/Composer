@@ -129,6 +129,14 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
     });
     assert.equal(refreshedDisclosure.rows,5);assert.ok(refreshedDisclosure.natural>100,'refreshed disclosure must include every timeframe');
     assert.ok(refreshedDisclosure.jump<1,'a refreshed opening disclosure must release height without a final jump');
+    const readout=await page.evaluate(()=>{
+      const A=__perf,mark=document.querySelector('#lrows .trk .bd'),before=mark.style.left,rect=Element.prototype.getBoundingClientRect;let reads=0;
+      Element.prototype.getBoundingClientRect=function(...args){if(this.classList.contains('pane-body'))reads++;return rect.apply(this,args);};
+      try{const r=A.Match.result;A.Panes.render({...r,panes:{...r.panes,rows:r.panes.rows.map(w=>({...w,set:w.set.map(v=>v+.001)}))}});}
+      finally{Element.prototype.getBoundingClientRect=rect;}
+      return {reads,updated:mark.style.left!==before};
+    });
+    assert.deepEqual(readout,{reads:0,updated:true},'equal-width readout updates must change chart marks without remeasuring pane bodies');
     await page.locator('#cv').scrollIntoViewIfNeeded();
     const point=await page.evaluate(()=>{
       const A=__perf,G=A.Stage.geom(),b=A.S.bars[0],box=A.Stage.cv.getBoundingClientRect();

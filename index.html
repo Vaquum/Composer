@@ -1875,13 +1875,14 @@ const Panes = {
       // substitutions keep text width; all other markup/layout changes still FLIP.
       const layoutKey=variant+'|'+Object.values(markup).join('|').replace(/\s(?:style|aria-label|title)="[^"]*"/g,'').replace(/>([^<]*)</g,(_,text)=>'>'+text.replace(/[0-9]/g,'#')+'<');
       const measure=this.layoutKeys.get(side)!==layoutKey;this.layoutKeys.set(side,layoutKey);
-      Flow.resize($('.pane-body',pane),()=>Flow.batch(pane,()=>{
+      const update=()=>Flow.batch(pane,()=>{
       if(side==='right'){
         Flow.disclosure($('#rnextsec'),variant==='bars');
         $('#ncap').textContent = 'One changed bar-end comparison · selected timeframes';
       }
       for(const [id,html]of Object.entries(markup))Flow.patch($('#'+id),html);
-      },measure));
+      },measure);
+      if(measure)Flow.resize($('.pane-body',pane),update);else update();
       pane.dataset.view = variant;
       const remembered = this.details.get(side + '-' + variant);
       for (const d of pane.querySelectorAll('details[data-detail]')) if (remembered?.has(d.dataset.detail)) d.open = remembered.get(d.dataset.detail);
@@ -2005,11 +2006,14 @@ const Ref = {
       this.work.style.gridTemplateColumns='';this.pane.hidden=false;this.work.dataset.reference='open';
       const columns=getComputedStyle(this.work).gridTemplateColumns.split(' ').map(parseFloat);
       this.columns=columns;
+      const style=getComputedStyle(this.pane);
+      this.contentWidth=columns[0]-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight)-parseFloat(style.borderLeftWidth)-parseFloat(style.borderRightWidth);
     }
     this.pane.hidden=!open;this.pane.inert=!open;this.pane.setAttribute('aria-hidden',String(!open));
     this.pane.dataset.flowVisible='';this.pane.style.setProperty('--flow-display','flex');
     this.work.dataset.reference='open';this.pane.style.overflow='hidden';
     const mobile=innerWidth<=700;
+    if(!mobile)this.pane.style.setProperty('--flow-reference-content-width',`${this.contentWidth}px`);
     Flow.spring(this.pane,'reference',{from:{progress:wasHidden?0:1},to:{progress:open?1:0},
       write:({progress})=>{
         const p=clamp(progress,0,1);this.pane.style.opacity=String(p);
@@ -2019,7 +2023,7 @@ const Ref = {
         App.redraw();this.schedule();
       },done:()=>{
         this.work.style.gridTemplateColumns='';this.pane.style.opacity='';this.pane.style.translate='';this.pane.style.overflow='';
-        this.pane.style.removeProperty('--flow-display');delete this.pane.dataset.flowVisible;
+        this.pane.style.removeProperty('--flow-display');this.pane.style.removeProperty('--flow-reference-content-width');delete this.pane.dataset.flowVisible;
         if(!open)delete this.work.dataset.reference;App.redraw();this.schedule();
       }});
   },

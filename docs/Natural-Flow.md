@@ -69,6 +69,10 @@ geometry read. First disclosures seed natural size from their live open body.
 Disclosure contents use a stable composited inner layer so the height clip does
 not repaint the full reading list each frame. Restored actors cancel queued
 retirement inside a geometry transaction.
+Equal-geometry pane updates also skip container size reads. Ordinary styles apply
+as one declaration; spring-owned styles retain their protected-property path.
+Reference contents hold their destination width while their outer track opens
+or closes, avoiding repeated paragraph wrapping and text repainting.
 
 `npm run test:performance` exercises native Chromium, Chromium at 4× CPU and
 WebKit at 390/1600 px, DPR 1/2 and 2/20 bars, with 140 readings and all 729 six-bar

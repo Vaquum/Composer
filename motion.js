@@ -309,7 +309,14 @@ const TactileFlow = (() => {
     for (const attr of [...current.attributes]) if (!preserve(attr.name) && attr.name !== 'style' && !incoming.hasAttribute(attr.name)) current.removeAttribute(attr.name);
     for (const attr of incoming.attributes) if (!preserve(attr.name) && attr.name !== 'style' && current.getAttribute(attr.name) !== attr.value) current.setAttribute(attr.name, attr.value);
     if(current.getAttribute('style')===incoming.getAttribute('style'))return false;
-    const temporary = name => name.startsWith('--flow-') || Boolean(owners.get(current)?.size) && ['height', 'width', 'opacity', 'overflow', 'overflow-x', 'overflow-y', 'translate'].includes(name);
+    const running=Boolean(owners.get(current)?.size),style=incoming.getAttribute('style');
+    // Ordinary chart marks have no spring-owned styles. Apply their declaration
+    // once rather than iterating CSSOM properties and invalidating each one.
+    if(!running&&!(current.getAttribute('style')||'').includes('--flow-')&&!(style||'').includes('--flow-')){
+      if(style===null)current.removeAttribute('style');else current.setAttribute('style',style);
+      return false;
+    }
+    const temporary = name => name.startsWith('--flow-') || running && ['height', 'width', 'opacity', 'overflow', 'overflow-x', 'overflow-y', 'translate'].includes(name);
     let deferred=false;
     for(const name of new Set([...current.style,...incoming.style]))if(temporary(name)&&!name.startsWith('--flow-')&&(current.style.getPropertyValue(name)!==incoming.style.getPropertyValue(name)||current.style.getPropertyPriority(name)!==incoming.style.getPropertyPriority(name)))deferred=true;
     for (const name of [...current.style]) if (!temporary(name) && !incoming.style.getPropertyValue(name)) current.style.removeProperty(name);
