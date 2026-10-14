@@ -266,8 +266,12 @@ const TactileFlow = (() => {
     for (const el of after) { el.style.removeProperty('--flow-layout-x'); el.style.removeProperty('--flow-layout-y'); }
     for (const el of after) {
       if(!presented(el))continue;
-      const old = before.get(el), box = el.getBoundingClientRect();
-      if (old?.box.width && old.box.height && box.width && box.height) deltas.set(el, { x: old.box.left - box.left, y: old.box.top - box.top });
+      const old = before.get(el);
+      // Entry only needs opacity/translation. Measuring a newly inserted tree
+      // forces its entire SVG/readings layout inside the input/result task.
+      if(!old?.box.width||!old.box.height)continue;
+      const box=el.getBoundingClientRect();
+      if (box.width && box.height) deltas.set(el, { x: old.box.left - box.left, y: old.box.top - box.top });
     }
     for (const el of after) {
       const delta = deltas.get(el);

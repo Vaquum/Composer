@@ -1753,22 +1753,12 @@ const Match = {
     const pitch = (w - 2 * pad) / n, bw = Math.max(1.4, pitch * 0.6), ww = Math.max(0.8, Math.min(1.4, pitch * 0.08));
     const X = i => pad + pitch * (i + 0.5), Y = v => pad + (hi - v) / (hi - lo || 1) * (h - 2 * pad - 5);
     let s = `<svg viewBox="0 0 ${w} ${h}" aria-hidden="true">`;
-    const wicks=new Map(),bodies=new Map(),number=v=>+v.toFixed(2);
-    const rectangle=(x,y,width,height,round=false)=>{
-      x=number(x);y=number(y);width=number(width);height=number(height);
-      if(!round)return `M${x} ${y}h${width}v${height}h${-width}Z`;
-      const rx=Math.min(.6,width/2),ry=Math.min(.6,height/2),right=x+width,bottom=y+height;
-      return `M${x+rx} ${y}H${right-rx}A${rx} ${ry} 0 0 1 ${right} ${y+ry}V${bottom-ry}A${rx} ${ry} 0 0 1 ${right-rx} ${bottom}H${x+rx}A${rx} ${ry} 0 0 1 ${x} ${bottom-ry}V${y+ry}A${rx} ${ry} 0 0 1 ${x+rx} ${y}Z`;
-    };
     // bars the drawing skipped stay visible but faint, so the run reads as it happened
     const kept = new Set(r.picks);
     bars.forEach(([o, hh, l, c], i) => {
       const cls = (c > o ? 'cu' : c < o ? 'cd' : 'cz') + (kept.has(i) ? '' : ' skip'), t = Y(Math.max(o, c)), b = Y(Math.min(o, c));
-      wicks.set(cls,(wicks.get(cls)||'')+rectangle(X(i)-ww/2,Y(hh),ww,Math.max(.6,Y(l)-Y(hh))));
-      bodies.set(cls,(bodies.get(cls)||'')+rectangle(X(i)-bw/2,t,bw,Math.max(1,b-t),true));
+      s += `<rect class="${cls}" x="${(X(i) - ww / 2).toFixed(2)}" y="${Y(hh).toFixed(2)}" width="${ww.toFixed(2)}" height="${Math.max(0.6, Y(l) - Y(hh)).toFixed(2)}"/><rect class="${cls}" x="${(X(i) - bw / 2).toFixed(2)}" y="${t.toFixed(2)}" width="${bw.toFixed(2)}" height="${Math.max(1, b - t).toFixed(2)}" rx="0.6"/>`;
     });
-    // Separate paths retain the original wick/body opacity overlap on skipped bars.
-    for(const group of [wicks,bodies])for(const [cls,path]of group)s+=`<path class="${cls}" d="${path}"/>`;
     for (const bi of r.broken) {
       const hd = held[bi].h;
       if (hd.color) { const b = bars[hd.bar], t = Y(Math.max(b[0], b[3])), bt = Y(Math.min(b[0], b[3])); s += `<rect class="mk" x="${(X(hd.bar) - bw / 2 - 2).toFixed(2)}" y="${(t - 2).toFixed(2)}" width="${(bw + 4).toFixed(2)}" height="${(Math.max(1, bt - t) + 4).toFixed(2)}" rx="1.5"/>`; continue; }

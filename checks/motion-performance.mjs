@@ -207,6 +207,15 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
       root.remove();return{differences,ordinary,restored};
     });
     assert.deepEqual(priority,{differences:[],ordinary:true,restored:true},'active temporary styles remain owned until settlement; repeated markup must then apply deferred styles');
+    const entryReads=await page.evaluate(()=>{
+      const F=__perf.Flow,root=document.createElement('div');document.body.append(root);
+      const rect=Element.prototype.getBoundingClientRect;let reads=0;
+      Element.prototype.getBoundingClientRect=function(...args){if(this.dataset?.motionKey==='new-result')reads++;return rect.apply(this,args);};
+      try{F.patch(root,'<button data-motion-key="new-result"><svg viewBox="0 0 132 80"><rect width="132" height="80"/></svg>New result</button>');}
+      finally{Element.prototype.getBoundingClientRect=rect;F.finish(root);root.remove();}
+      return reads;
+    });
+    assert.equal(entryReads,0,'new result actors must not force synchronous post-insertion geometry during their entry');
     await seed(page,data);await settle(page);
     // Warm allocation pools before the retained-node and heap bounds.
     for(let i=0;i<2;i++){await call('reference',true);await call('reference',false);await settle(page);}

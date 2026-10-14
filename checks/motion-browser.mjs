@@ -5,7 +5,6 @@ import os from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { chromium, webkit } from 'playwright';
-import { thumbnailBeforeBatching } from './thumbnail-reference.mjs';
 const html=fs.readFileSync('index.html','utf8').replace('Panes.init();','window.__motionProbe={S,Stage,Match,Panes,Ref,Forecast,Ops,App,Flow,hist};\nPanes.init();');
 const fixture=fs.readFileSync('checks/pane-designs.mjs','utf8');
 const result=new Function(fixture.slice(fixture.indexOf('const row ='),fixture.indexOf('const before='))+'\nreturn r;')();
@@ -37,52 +36,6 @@ for(const [name,type] of [['Chromium',chromium],['WebKit',webkit]]){
   await page.addInitScript(()=>{window.Worker=class{postMessage(){} terminate(){}};});
   await page.route('https://fonts.**/**',route=>route.abort());
   await page.goto(base);await settled(page);await seed(page);await settled(page);
-  const thumbnails=[2,20,24].map(n=>{
-    // Maximum composition plus four skipped bars; up/down/flat, thin bodies,
-    // faint skipped candles and both forms of broken-relation annotation.
-    const shapes=[[30,68,18,56],[56,80,18,36],[40,70,20,40],[40,40.1,39.9,40.02],[40,40.1,39.9,39.98],[40,40,40,40]];
-    const r={raw:Array.from({length:n},(_,i)=>shapes[i%shapes.length]),picks:Array.from({length:n},(_,i)=>i).filter(i=>i%4<2),broken:[0,1]};
-    const held=[{h:{color:true,bar:0}},{h:{a:[0,1],b:[n-1,2]}}];
-    return {r,held,expected:thumbnailBeforeBatching(r,held)};
-  });
-  const thumbnailPixels=await page.evaluate(async fixtures=>{
-    const root=getComputedStyle(document.documentElement),color=v=>root.getPropertyValue(v).trim();
-    const css=`.cu{fill:${color('--up')}}.cd{fill:${color('--down')}}.cz{fill:${color('--flat')}}.skip{fill-opacity:.22}.mk{fill:none;stroke:${color('--shu')};stroke-width:1.3}.mkl{fill:none;stroke:${color('--shu')};stroke-width:1;stroke-dasharray:2 2}`;
-    const pixels=async(svg,dpr)=>{
-      const source=svg.replace('<svg ','<svg xmlns="http://www.w3.org/2000/svg" width="132" height="80" ').replace('aria-hidden="true">',`aria-hidden="true"><style>${css}</style>`);
-      const url=URL.createObjectURL(new Blob([source],{type:'image/svg+xml'}));
-      try{
-        const image=new Image();image.src=url;await image.decode();
-        const canvas=document.createElement('canvas');canvas.width=132*dpr;canvas.height=80*dpr;
-        const context=canvas.getContext('2d');context.drawImage(image,0,0,canvas.width,canvas.height);
-        return context.getImageData(0,0,canvas.width,canvas.height).data;
-      }finally{URL.revokeObjectURL(url);}
-    };
-    const results=[];
-    for(const {r,held,expected}of fixtures){
-      const actual=window.__motionProbe.Match.thumb(r,held),documentOf=s=>new DOMParser().parseFromString(s,'image/svg+xml');
-      const nodes=documentOf(actual),markers=s=>[...documentOf(s).querySelectorAll('.mk,.mkl')].map(n=>n.outerHTML);
-      for(const dpr of[1,2]){
-        const [a,b]=await Promise.all([pixels(actual,dpr),pixels(expected,dpr)]);let total=0,max=0;
-        // Compare premultiplied colour: an almost-transparent edge's raw RGB
-        // can differ by 255 while contributing less than one visible level.
-        for(let i=0;i<a.length;i++){
-          const alpha=i-i%4+3,delta=i%4===3?Math.abs(a[i]-b[i]):Math.abs(a[i]*a[alpha]-b[i]*b[alpha])/255;
-          total+=delta;max=Math.max(max,delta);
-        }
-        results.push({bars:r.raw.length,dpr,max,mean:total/a.length,paths:nodes.querySelectorAll('path').length,markers:JSON.stringify(markers(actual))===JSON.stringify(markers(expected))});
-      }
-    }
-    return results;
-  },thumbnails);
-  console.log(`${name} thumbnail raster parity: ${JSON.stringify(thumbnailPixels)}`);
-  for(const r of thumbnailPixels){
-    assert.ok(r.paths<=12&&r.markers,`${name}: bounded thumbnail paths and unchanged broken-relation markers`);
-    // Rect and path primitives differ slightly in rounded-edge antialiasing.
-    // Bound isolated rounded-edge coverage differences and total visible error
-    // (0.05 of 255 per channel); a missing or displaced candle exceeds these.
-    assert.ok(r.max<=40&&r.mean<=.05,`${name}: candle SVG raster parity at ${r.bars} bars/DPR ${r.dpr}: ${JSON.stringify(r)}`);
-  }
   await page.screenshot({path:path.join(screenshots,name+'.png')});
   console.log(`${name} resting scene: ${path.join(screenshots,name+'.png')}`);
   const feedback=await page.evaluate(()=>['.seg button','.icon','.chip','.pane-step','.prog i'].map(s=>getComputedStyle(document.querySelector(s)).transitionDuration));

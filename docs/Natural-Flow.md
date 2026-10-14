@@ -63,11 +63,9 @@ reuse projections within half a CSS pixel; quantile contours remain exact and
 render at native density. Forecast semantics and hit geometry update only when
 their state or geometry changes. Pointer drawing remains direct.
 
-Historical candle thumbnails batch disjoint wick/body shapes by colour and
-kept/skipped state. Separate wick/body paths preserve faint overlap, rounded
-bodies and broken-relation marks. Browser checks compare the old rectangle
-renderer at 2/20/24 bars and DPR 1/2. Pane geometry is reused only when structure,
-identity/order and text width remain equivalent; readout digits are tabular.
+Pane geometry is reused only when structure, identity/order and text width
+remain equivalent; readout digits are tabular. New actors need no prior-position
+geometry read. First disclosures seed natural size from their live open body.
 
 `npm run test:performance` exercises native Chromium, Chromium at 4× CPU and
 WebKit at 390/1600 px, DPR 1/2 and 2/20 bars, with 140 readings and all 729 six-bar
