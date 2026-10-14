@@ -953,18 +953,22 @@ const Stage = {
     return busy;
   },
   changeForecast() {
-    if (this.forecastSurface && !calm()) {
-      this.departingForecast = document.createElement('canvas');
-      this.departingForecast.width = this.forecastSurface.flowWidth; this.departingForecast.height = this.forecastSurface.flowHeight;
-      this.departingForecast.getContext('2d').drawImage(this.forecastSurface,0,0,this.forecastSurface.flowWidth,this.forecastSurface.flowHeight,0,0,this.departingForecast.width,this.departingForecast.height);
-      this.departingForecast.flowBox={...this.forecastSurface.flowBox};
+    if (this.forecastSurface?.flowBox && !calm()) {
+      const current=this.forecastSurface,old=this.departingForecast,C=current.flowBox,O=old?.flowBox;
+      const box={x:Math.min(C.x,O?.x??C.x),y:Math.min(C.y,O?.y??C.y)};
+      box.w=Math.max(C.x+C.w,O?O.x+O.w:0)-box.x;box.h=Math.max(C.y+C.h,O?O.y+O.h:0)-box.y;
+      const snapshot=document.createElement('canvas'),ctx=fitCanvas(snapshot,box.w,box.h);ctx.translate(-box.x,-box.y);
+      const opacity=canvas=>{const n=parseFloat(canvas.style.opacity);return Number.isFinite(n)?n:1;};
+      ctx.globalAlpha=opacity(current);paintCanvas(ctx,current,C.x,C.y,C.w,C.h);
+      if(old){ctx.globalCompositeOperation='destination-over';ctx.globalAlpha=opacity(old);paintCanvas(ctx,old,O.x,O.y,O.w,O.h);}
+      old?.remove();current.remove();this.departingForecast=snapshot;this.forecastSurface=null;this.layer(snapshot,box);snapshot.style.opacity='1';
       this.scene = 0;
-    } else { this.scene = 1; this.sceneVelocity = 0; this.departingForecast = null; }
+    } else { this.scene = 1; this.sceneVelocity = 0; this.departingForecast?.remove();this.departingForecast = null; }
   },
   settle() {
     const G = this.geom(),id=identity(); this.view.cur.set(this.view.tgt); this.view.vel.fill(0); this.plot.cur.set(this.plot.tgt); this.plot.vel.fill(0);
     S.bars.forEach((b,i) => { b.x = G.xs[i]; b.vx = 0; b.dv.set(b.v); b.vv.fill(0); b.a = 1; b.va = 0; b.col=(S.colored?COL.rgb[id.d[i]]:COL.rgb.z).slice(); });
-    this.ghosts = []; this.traces = []; this.scene = 1; this.sceneVelocity = 0; this.departingForecast = null;
+    this.ghosts = []; this.traces = []; this.scene = 1; this.sceneVelocity = 0; this.departingForecast?.remove();this.departingForecast = null;
     this.modeMix = Forecast.view === 'paths' ? 1 : 0; this.fanWeight = Forecast.fan ? 1 : 0;
     this.fanA = Match.fresh() && !Match.failed ? 1 : Forecast.source ? .35 : 0;
     this.tracePresence = this.trace ? 1 : 0;
@@ -985,7 +989,7 @@ const Stage = {
     if (this.departingForecast) {
       const x=[this.scene],v=[this.sceneVelocity];
       if (Flow.advance(x,v,[1],dt,.0008,calm())) busy=true;
-      else this.departingForecast=null;
+      else{this.departingForecast.remove();this.departingForecast=null;}
       this.scene=clamp(x[0],0,1);this.sceneVelocity=v[0];
     }
     S.bars.forEach((b,i) => {
@@ -1238,16 +1242,18 @@ const Stage = {
     const G = this.geom(); if (!G.w || !G.h) return;
     const ctx = fitCanvas(this.cv, G.w, G.h), id = identity();
     ctx.clearRect(0, 0, G.w, G.h);
+    if(!this.guideSurface)this.guideSurface=document.createElement('canvas');
+    const guide=fitCanvas(this.guideSurface,G.w,G.h,Math.min(2,devicePixelRatio||1),true);this.layer(this.guideSurface,{x:0,y:0,w:G.w,h:G.h},true);
+    guide.clearRect(0,0,this.guideSurface.width/this.guideSurface.flowDpr,this.guideSurface.height/this.guideSurface.flowDpr);
     const Y = v => this.Y(v, G), x0 = 24, x1 = G.w - 52;
     // Keep the root levels as faint rules; rank labels would overlap the future columns.
     const sb = S.bars[S.sel];
-    ctx.font = `500 11px ${FONT_MIN}`; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
     const seen = new Set();
     for (let k = 3; k >= 0; k--) {
       const rank = id.r[S.sel * 4 + k]; if (seen.has(rank)) continue; seen.add(rank);
       const y = Math.round(Y(sb.dv[k])) + 0.5;
-      ctx.strokeStyle = COL.mist; ctx.lineWidth = 1; ctx.setLineDash([1, 4]);
-      ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke(); ctx.setLineDash([]);
+      guide.strokeStyle = COL.mist; guide.lineWidth = 1; guide.setLineDash([1, 4]);
+      guide.beginPath(); guide.moveTo(x0, y); guide.lineTo(x1, y); guide.stroke(); guide.setLineDash([]);
     }
     // 鎖: each bar opens where the one before it closed, a hairline from that close to this open
     ctx.strokeStyle = COL['ink-3']; ctx.lineWidth = 1; ctx.globalAlpha = this.trace ? 0.25 : 0.6;
@@ -1268,7 +1274,7 @@ const Stage = {
     // the level a dragged part is easing onto, drawn in as it comes near and full once it rests there
     if (this.snapV !== null && this.snapA > 0.02) {
       const y = Math.round(Y(this.snapV)) + 0.5;
-      ctx.strokeStyle = COL.ai; ctx.lineWidth = 1.2; ctx.globalAlpha = this.snapA * this.snapA; ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke(); ctx.globalAlpha = 1;
+      guide.strokeStyle = COL.ai; guide.lineWidth = 1.2; guide.globalAlpha = this.snapA * this.snapA; guide.beginPath(); guide.moveTo(x0, y); guide.lineTo(x1, y); guide.stroke(); guide.globalAlpha = 1;
     }
     this.drawForecast(ctx,G);
     for (const g of this.ghosts) this.drawCandle(ctx, G, g.x, g.dv, g.col, g.a);
@@ -1337,20 +1343,25 @@ const Stage = {
   },
   // 続: the bars after the windows that match, each scaled so its own low and high sit on the drawing's, as a fan of
   // their closes (10 to 90%, 25 to 75% and the median) from the last bar's close, with the shape's high and low carried on
+  layer(canvas,box,background=false){
+    if(!this.paintRoot){this.paintRoot=document.createElement('div');this.paintRoot.setAttribute('aria-hidden','true');this.paintRoot.inert=true;
+      Object.assign(this.paintRoot.style,{position:'absolute',inset:'0',overflow:'hidden',pointerEvents:'none'});this.wrap.insertBefore(this.paintRoot,this.cv);}
+    if(canvas.parentElement!==this.paintRoot){if(background)this.paintRoot.prepend(canvas);else this.paintRoot.append(canvas);}
+    canvas.flowBox={...box};canvas.setAttribute('aria-hidden','true');
+    const styles={left:`${box.x}px`,top:`${box.y}px`,right:'auto',bottom:'auto',width:`${canvas.width/canvas.flowDpr}px`,height:`${canvas.height/canvas.flowDpr}px`,pointerEvents:'none'};
+    for(const [key,value]of Object.entries(styles))if(canvas.style[key]!==value)canvas.style[key]=value;
+  },
   drawForecast(ctx,G) {
     if(!this.forecastSurface)this.forecastSurface=document.createElement('canvas');
-    const old=this.departingForecast?.flowBox;
-    const x=Math.min(Math.max(0,Math.floor(G.forecastLeft-24)),old?.x??G.w),y=Math.min(Math.max(0,Math.floor(G.plotTop-24)),old?.y??G.h);
-    const box={x,y,w:G.w-x,h:Math.min(G.h,Math.max(Math.ceil(G.plotBottom+24),old?old.y+old.h:0))-y};
+    const x=Math.max(0,Math.floor(G.forecastLeft-24)),y=Math.max(0,Math.floor(G.plotTop-24));
+    const box={x,y,w:G.w-x,h:Math.min(G.h,Math.ceil(G.plotBottom+24))-y};
     const layer=fitCanvas(this.forecastSurface,box.w,box.h,Math.min(2,devicePixelRatio||1),true);layer.clearRect(0,0,this.forecastSurface.width/this.forecastSurface.flowDpr,this.forecastSurface.height/this.forecastSurface.flowDpr);layer.translate(-x,-y);
-    this.forecastSurface.flowBox=box;
+    this.layer(this.forecastSurface,box);
     this.drawFan(layer,G);
     if(Forecast.source){this.drawStates(layer,G);this.drawPaths(layer,G);this.drawBranches(layer,G);}else this.drawForecastEmpty(layer,G);
     if(this.departingForecast){
-      layer.save();layer.globalCompositeOperation='destination-in';layer.globalAlpha=this.scene;layer.fillRect(x,y,box.w,box.h);layer.restore();
-      layer.save();layer.globalCompositeOperation='destination-over';layer.globalAlpha=1-this.scene;paintCanvas(layer,this.departingForecast,old.x,old.y,old.w,old.h);layer.restore();
-    }
-    paintCanvas(ctx,this.forecastSurface,x,y,box.w,box.h);
+      this.forecastSurface.style.opacity=String(this.scene);this.departingForecast.style.opacity=String(1-this.scene);
+    }else this.forecastSurface.style.opacity='1';
   },
   drawFan(ctx, G) {
     const c=Forecast.source;
@@ -1852,7 +1863,7 @@ const Panes = {
     for (const side of onlySide ? [onlySide] : ['left','right']) {
       this.remember(side);
       const pane = $(`.pane[data-side="${side}"]`), variant = this.views[side];
-      Flow.resize($('.pane-body',pane),()=>{
+      Flow.resize($('.pane-body',pane),()=>Flow.batch(pane,()=>{
       if (side === 'left') {
         Flow.patch($('#lcap'), PaneDesigns.caption(r,ctx));
         Flow.patch($('#lrows'), PaneDesigns.left(variant,r,ctx));
@@ -1868,7 +1879,7 @@ const Panes = {
         $('#ncap').textContent = 'One changed bar-end comparison · selected timeframes';
         Flow.patch($('#rnear'), P.near.length ? P.near.map((nb,i) => `<div class="pnear" data-motion-key="${nb.a}-${nb.b}-${nb.rel}"><span>${esc(this.nearWord(nb))}<small>${fmt(nb.n)} windows${nb.up ? ` · next rose ${pct(nb.up[0])} · 95% interval ${pct(nb.up[1])}–${pct(nb.up[2])}` : ' · next-bar estimate unavailable'}</small></span><button type="button" data-i="${i}" title="Put its closest instance on the canvas">Try it</button></div>`).join('') : '<p class="pcap">No neighboring patterns found on these timeframes.</p>');
       }
-      });
+      }));
       pane.dataset.view = variant;
       const remembered = this.details.get(side + '-' + variant);
       for (const d of pane.querySelectorAll('details[data-detail]')) if (remembered?.has(d.dataset.detail)) d.open = remembered.get(d.dataset.detail);

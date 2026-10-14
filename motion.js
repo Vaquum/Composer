@@ -311,12 +311,18 @@ const TactileFlow = (() => {
       else { if (node.nodeType === 1) finish(node); node.remove(); }
     }
   }
-  const markups=new WeakMap();
+  const markups=new WeakMap();let transaction=null;
+  function batch(root,change){
+    return layout(root,geometries=>{
+      const previous=transaction;transaction={root,geometries};
+      try{return change();}finally{transaction=previous;}
+    });
+  }
   function patch(root, markup, animate = true) {
     const previous=markups.get(root);
     if(previous?.markup===markup&&previous.first===root.firstChild&&previous.last===root.lastChild){details(root);return;}
     const template = document.createElement('template'); template.innerHTML = markup; details(template.content);
-    const result=animate?layout(root,geometries=>reconcile(root,template.content,geometries,true)):reconcile(root,template.content,new Map(),false);
+    const result=animate?(transaction?.root.contains(root)?reconcile(root,template.content,transaction.geometries,true):layout(root,geometries=>reconcile(root,template.content,geometries,true))):reconcile(root,template.content,new Map(),false);
     details(root);invalidate(root);markups.set(root,{markup,first:root.firstChild,last:root.lastChild});return result;
   }
   function switchControl(input) {
@@ -337,5 +343,5 @@ const TactileFlow = (() => {
   addEventListener('pageshow', () => { suspended = document.hidden; });
   document.addEventListener('visibilitychange', () => { suspended = document.hidden; if (suspended) finish(); });
   details(document);
-  return { model, integrate, advance, bounds, reduced, spring, value, cancel, finish, reveal, visible, disclosure, resize, layout, patch, details, switchControl, onSettle: fn => settlers.add(fn), active: () => moving.size > 0 };
+  return { model, integrate, advance, bounds, reduced, spring, value, cancel, finish, reveal, visible, disclosure, resize, layout, batch, patch, details, switchControl, onSettle: fn => settlers.add(fn), active: () => moving.size > 0 };
 })();
