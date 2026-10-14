@@ -372,7 +372,10 @@ const TactileFlow = (() => {
         if(node.nodeType===1&&!node.isEqualNode(next)){deferred=attributes(node,next)||deferred;deferred=reconcile(node,next,geometries,animate)||deferred;}
         else {
           // An equal restored subtree implicitly restores queued descendants.
-          if(node.nodeType===1&&geometries.retirements?.size)for(const pending of geometries.retirements.keys())if(node.contains(pending)){geometries.retirements.delete(pending);markups.delete(node);}
+          if(node.nodeType===1&&geometries.retirements?.size)for(const pending of geometries.retirements.keys())if(node.contains(pending)){
+            geometries.retirements.delete(pending);
+            for(let ancestor=pending;ancestor;ancestor=ancestor.parentElement){markups.delete(ancestor);if(ancestor===node)break;}
+          }
           if(node.nodeType!==1&&node.nodeValue!==next.nodeValue)node.nodeValue=next.nodeValue;
         }
       }

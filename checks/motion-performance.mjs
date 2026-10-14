@@ -263,6 +263,15 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
       const retained=parent.firstElementChild===child&&child.isConnected;F.finish();root.remove();return retained;
     });
     assert.equal(restoredAncestor,true,'restoring an equal ancestor must cancel its descendants queued for retirement');
+    const repeatedRemoval=await page.evaluate(()=>{
+      const F=__perf.Flow,root=document.createElement('div');Object.assign(root.style,{position:'fixed',left:'10px',top:'10px',width:'200px'});document.body.append(root);
+      const a='<div class="prow" data-motion-key="a">A</div>',b='<div class="prow" data-motion-key="b">B</div>',cut=`<div data-motion-key="wrapper">${a}</div>`;
+      const full=`<section data-motion-key="ancestor"><div data-motion-key="container"><div data-motion-key="wrapper">${a}${b}</div></div></section>`;F.patch(root,full,false);
+      const container=root.firstElementChild.firstElementChild,reading=container.querySelector('[data-motion-key="b"]');
+      F.batch(root,()=>{F.patch(container,cut);F.patch(root,full);});const restored=reading.isConnected;
+      F.patch(container,cut);const removed=!reading.isConnected;F.finish();root.remove();return{restored,removed};
+    });
+    assert.deepEqual(repeatedRemoval,{restored:true,removed:true},'restored ancestor paths must invalidate nested caches before a repeated tail removal');
     const hierarchy=await page.evaluate(()=>{
       const F=__perf.Flow,root=document.createElement('div');Object.assign(root.style,{position:'fixed',left:'10px',top:'10px',width:'200px'});document.body.append(root);
       F.patch(root,'<section class="pane-group" data-motion-key="group"><div class="prow" data-motion-key="nested-reading">Nested retirement</div></section>');F.finish(root);
