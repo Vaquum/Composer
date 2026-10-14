@@ -192,14 +192,13 @@ const TactileFlow = (() => {
   });
   document.addEventListener('toggle',event=>{if(event.target.tagName==='DETAILS'){details(event.target.parentElement);invalidate(event.target);}},true);
   function clip(element,cache=new Map()) {
-    if(cache.has(element.parentElement))return cache.get(element.parentElement);
-    const bounds = { left: 0, top: 0, right: innerWidth, bottom: innerHeight };
-    for (let parent = element.parentElement; parent && parent !== document.body; parent = parent.parentElement) {
-      const style = getComputedStyle(parent), box = parent.getBoundingClientRect();
-      if (/auto|scroll|hidden|clip/.test(style.overflowX)) { bounds.left = Math.max(bounds.left, box.left + parent.clientLeft); bounds.right = Math.min(bounds.right, box.left + parent.clientLeft + parent.clientWidth); }
-      if (/auto|scroll|hidden|clip/.test(style.overflowY)) { bounds.top = Math.max(bounds.top, box.top + parent.clientTop); bounds.bottom = Math.min(bounds.bottom, box.top + parent.clientTop + parent.clientHeight); }
-    }
-    cache.set(element.parentElement,bounds);return bounds;
+    const parent=element.parentElement;
+    if(!parent||parent===document.body)return{left:0,top:0,right:innerWidth,bottom:innerHeight};
+    if(cache.has(parent))return cache.get(parent);
+    const bounds={...clip(parent,cache)},style=getComputedStyle(parent),box=parent.getBoundingClientRect();
+    if (/auto|scroll|hidden|clip/.test(style.overflowX)) { bounds.left = Math.max(bounds.left, box.left + parent.clientLeft); bounds.right = Math.min(bounds.right, box.left + parent.clientLeft + parent.clientWidth); }
+    if (/auto|scroll|hidden|clip/.test(style.overflowY)) { bounds.top = Math.max(bounds.top, box.top + parent.clientTop); bounds.bottom = Math.min(bounds.bottom, box.top + parent.clientTop + parent.clientHeight); }
+    cache.set(parent,bounds);return bounds;
   }
   function capture(element,cache) { const box=element.getBoundingClientRect();return { box, clip: box.width&&box.height?clip(element,cache):null }; }
   function retire(element, geometry = capture(element)) {
