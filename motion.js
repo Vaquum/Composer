@@ -279,9 +279,12 @@ const TactileFlow = (() => {
     }
     return result;
   }
+  const keyPriority=Object.assign(Object.create(null),{'data-motion-key':0,id:1,'data-reading':2,'data-detail':3,'data-key':4,'data-design':5,'data-k':6});
   function key(node, index) {
     if (node.nodeType !== 1) return `text-${index}`;
-    for (const name of ['data-motion-key', 'id', 'data-reading', 'data-detail', 'data-key', 'data-design', 'data-k']) if (node.hasAttribute(name)) return `${node.tagName}:${name}:${node.getAttribute(name)}`;
+    let selected=null,priority=Infinity;
+    for(const name of node.getAttributeNames())if(keyPriority[name]<priority){selected=name;priority=keyPriority[name];}
+    if(selected)return `${node.tagName}:${selected}:${node.getAttribute(selected)}`;
     return `${node.tagName}:${node.classList[0] || ''}:${index}`;
   }
   function attributes(current, incoming) {

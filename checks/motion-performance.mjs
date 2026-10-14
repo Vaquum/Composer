@@ -37,7 +37,7 @@ const seed=(page,result)=>page.evaluate(r=>{
 },result);
 const reports=[];
 try{
-for(const [name,type] of [['Chromium',chromium],['WebKit',webkit]]){
+for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU',chromium,4],['WebKit',webkit,1]]){
   const browser=await type.launch({headless:true});
   try{
   for(const [n,width,dpr] of [[2,1600,1],[20,1600,2],[20,390,2]]){
@@ -58,7 +58,7 @@ for(const [name,type] of [['Chromium',chromium],['WebKit',webkit]]){
     await page.evaluate(n=>{while(__perf.S.bars.length<n)__perf.Ops.add();},n);
     const data=fixture(n);await seed(page,data);await settle(page);
     let cdp;
-    if(name==='Chromium'){cdp=await context.newCDPSession(page);await cdp.send('Performance.enable');await cdp.send('Emulation.setCPUThrottlingRate',{rate:4});}
+    if(type===chromium){cdp=await context.newCDPSession(page);await cdp.send('Performance.enable');await cdp.send('Emulation.setCPUThrottlingRate',{rate});}
     await page.evaluate(()=>{
       const A=__perf;__samples.active=false;
       const step=A.Stage.step,draw=A.Stage.draw;let work=0;
@@ -82,7 +82,8 @@ for(const [name,type] of [['Chromium',chromium],['WebKit',webkit]]){
       // CI contention can stretch rAF intervals, so timing gates use measured application
       // work and input handlers. Frame delivery is reported, never hidden by idle samples.
       assert.ok(report.callMax<100,`${label}: an input/result task exceeded 100 ms (${report.callMax})`);
-      assert.ok(report.workP95<33.4,`${label}: application work exceeded two 60-Hz frames (${report.workP95})`);
+      assert.ok(report.workP95<(rate===1?16.7:33.4),`${label}: application work exceeded its ${rate===1?'native one-frame':'throttled two-frame'} budget (${report.workP95})`);
+      if(rate===1&&label!=='reduced-motion')assert.ok(report.frameP95<25,`${label}: native frame delivery exceeded its budget (${report.frameP95})`);
       assert.ok(report.paintP95<100,`${label}: pointer input waited more than 100 ms for its next paint (${report.paintP95})`);
       return sample;
     };
