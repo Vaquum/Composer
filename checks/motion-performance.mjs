@@ -141,14 +141,23 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
       await page.evaluate(()=>{const A=__perf,r=A.Match.result;A.Match.onmsg({...r,type:'result',id:A.Match.id,results:r.results.slice(1)});A.Match.id++;});
       await settle(page);
       assert.deepEqual(await page.locator('#emaki .card').evaluateAll(nodes=>nodes.map(n=>n.dataset.motionKey)),before,'a new search must cancel obsolete queued presentation');
-      await page.evaluate(()=>{const A=__perf,r=A.Match.result;A.Match.onmsg({...r,type:'result',id:A.Match.id,results:r.results.slice(1)});A.Match.fail('Synthetic presentation failure');});
+      const failedCohort=await page.evaluate(()=>{
+        const A=__perf,r=A.Match.result,next={...r,type:'result',id:A.Match.id,results:r.results.slice(1),panes:{...r.panes,rows:r.panes.rows.map(w=>({...w,set:w.set.map(v=>v+2)})),cont:{...r.panes.cont,aboveHigh:[.91,.9,.92]}}};
+        A.Match.onmsg(next);A.Match.presentResult();A.Match.fail('Synthetic presentation failure');
+        const left=document.createElement('div'),right=document.createElement('div');left.innerHTML=A.PaneDesigns.left('signal',next,{barCount:A.S.bars.length});right.innerHTML=A.PaneDesigns.right(A.Panes.views.right,next);
+        return{keys:next.results.map(x=>A.Match.resultKeyOf(x)),left:[...left.querySelectorAll('[data-reading]')].map(n=>n.textContent),right:right.textContent};
+      });
       await settle(page);
       assert.equal(await page.locator('#mmsg').textContent(),'Synthetic presentation failure','queued presentation must not overwrite a failure');
-      assert.deepEqual(await page.locator('#emaki .card').evaluateAll(nodes=>nodes.map(n=>n.dataset.motionKey)),before,'failure must cancel queued card replacement');
+      assert.deepEqual(await page.locator('#emaki .card').evaluateAll(nodes=>nodes.map(n=>n.dataset.motionKey)),failedCohort.keys,'failure must retain a complete accepted cohort');
+      assert.deepEqual(await page.locator('#lrows [data-reading]').evaluateAll(nodes=>nodes.map(n=>n.textContent)),failedCohort.left,'failure must keep the left pane on the accepted cohort');
+      assert.equal(await page.locator('#rbecame').textContent(),failedCohort.right,'failure must keep the right pane on the accepted cohort');
     }
     for(const variant of ['bars','ledger']){
       await seed(page,data);await settle(page);await call('pane',variant);await settle(page);
       if(variant==='ledger'){
+        await page.evaluate(()=>{const root=document.querySelector('#lrows');root.querySelector('details[data-detail="more"]').open=false;__perf.Flow.details(root);});
+        await settle(page);
         await page.locator('#lrows tbody tr').first().scrollIntoViewIfNeeded();
         const crossing=await page.evaluate(()=>{
           const A=__perf,root=document.querySelector('#lrows'),row=root.querySelector('tbody tr'),key=row.dataset.reading,text=row.textContent,r=A.Match.result;

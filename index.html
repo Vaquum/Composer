@@ -1384,7 +1384,7 @@ const Stage = {
     box.w=Math.max(1,G.w-box.x);box.h=Math.max(1,Math.min(G.h,Math.ceil(G.plotBottom+24))-box.y);
     if(this.fanCache?.source!==c||this.fanCache.key!==key){
     if(!this.fanSurface)this.fanSurface=document.createElement('canvas');
-    const density=.5, wash=fitCanvas(this.fanSurface,box.w*density,box.h*density,1,true);
+    const density=.4, wash=fitCanvas(this.fanSurface,box.w*density,box.h*density,1,true);
     wash.clearRect(0,0,this.fanSurface.width,this.fanSurface.height);wash.scale(density,density);wash.translate(-box.x,-box.y);wash.fillStyle=paint;
     const hull=(lower,upper)=>{
       wash.beginPath();wash.moveTo(lx,y0);
@@ -1666,7 +1666,7 @@ const Match = {
   },
   key() { return JSON.stringify(this.query().q); },
   fail(msg) {
-    this.presentation=null;
+    this.flushPresentation();
     this.failed = true; $('#prog').hidden = true; $('#mmsg').textContent = msg; $('#emaki').classList.add('stale');
     if (!this.result) { $('#emaki').innerHTML = ''; Panes.clear(); }
     App.redraw();

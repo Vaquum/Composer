@@ -103,7 +103,8 @@ New results replace queued work; a new search cancels obsolete presentation.
 Canvas frames share one DOM size/hint snapshot across stepping and drawing.
 Resize observers refresh settled dimensions without forcing layout each frame;
 reference motion and pointer handlers still read live geometry. Observer work
-is included in frame-work measurements. Failure cancels queued presentation.
+is included in frame-work measurements. Failure completes the accepted cohort
+before displaying the error, keeping both panes and cards consistent.
 Resize callbacks only refresh measurements and request work; layout writes run
 in the next canvas frame to avoid observer loops. Nested arrivals share their
 ancestor's entry. Retirement contexts are reused only within one read-only
