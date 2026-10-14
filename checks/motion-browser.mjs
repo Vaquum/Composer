@@ -29,7 +29,7 @@ for(const [name,type] of [['Chromium',chromium],['WebKit',webkit]]){
  const browser=await type.launch({headless:true});
  try {
   const page=await browser.newPage({viewport:{width:1600,height:1000}}),errors=[];
-  page.on('pageerror',error=>errors.push(error.message));
+  page.on('pageerror',error=>errors.push(error.stack||error.message));
   await page.addInitScript(()=>{window.Worker=class{postMessage(){} terminate(){}};});
   await page.route('https://fonts.**/**',route=>route.abort());
   await page.goto(base);await settled(page);await seed(page);await settled(page);
@@ -113,6 +113,16 @@ for(const [name,type] of [['Chromium',chromium],['WebKit',webkit]]){
     const opacity=A.Stage.trace.a;A.Match.setTrace(-1);const leaving=A.Stage.traces.at(-1)?.a;A.Flow.finish();return{opacity,leaving,clean:A.Stage.traces.length===0};
   });
   assert.ok(trace.opacity>0);assert.equal(trace.leaving,trace.opacity);assert.ok(trace.clean);
+  await page.evaluate(()=>{const A=window.__motionProbe;A.Forecast.choose('states');A.Ops.nudge(0,35);});
+  const point=await page.evaluate(async()=>{
+    const A=window.__motionProbe;for(let i=0;i<3;i++)await new Promise(requestAnimationFrame);
+    const G=A.Stage.geom(),b=A.S.bars[0],box=A.Stage.cv.getBoundingClientRect();return{x:box.left+b.x,y:box.top+A.Stage.Y((b.dv[1]+b.dv[2])/2,G)};
+  });
+  await page.mouse.move(point.x,point.y);await page.mouse.down();
+  const held=await page.evaluate(()=>{const A=window.__motionProbe;return{drag:!!A.Stage.drag,y:A.Stage.Y((A.S.bars[0].dv[1]+A.S.bars[0].dv[2])/2,A.Stage.geom())};});
+  await page.mouse.move(point.x,point.y+1);
+  const moved=await page.evaluate(()=>{const A=window.__motionProbe;return A.Stage.Y((A.S.bars[0].dv[1]+A.S.bars[0].dv[2])/2,A.Stage.geom());});
+  await page.mouse.up();assert.ok(held.drag);assert.ok(Math.abs(moved-held.y)<2,`${name}: direct input takes over the presented candle`);
   await page.emulateMedia({reducedMotion:'reduce'});await settled(page);
   const reduced=await page.evaluate(()=>{
     const A=window.__motionProbe;A.Ops.add();A.Stage.step(.016);const b=A.S.bars.at(-1),exact=b.a===1&&b.x===A.Stage.geom().xs.at(-1)&&b.dv.every((v,i)=>v===b.v[i]);

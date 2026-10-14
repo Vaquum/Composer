@@ -930,7 +930,7 @@ const Stage = {
     if (!this.ready || calm()) { this.view.cur.set(this.view.tgt); this.view.vel.fill(0); this.ready = true; }
   },
   retire(b) {
-    if (!calm()) this.ghosts.push({ dv: Float64Array.from(b.dv), x: b.x, col: b.col.slice(), a: b.a, va: b.va, startX: b.x, vx: b.vx });
+    if (!calm() && b.x !== null && b.a > 0) this.ghosts.push({ dv: Float64Array.from(b.dv), x: b.x, col: b.col.slice(), a: b.a, va: b.va, startX: b.x, vx: b.vx });
   },
   scalar(key, target, dt, epsilon = .0008) {
     const values = [this[key]], velocities = [this.scalarVelocity[key] || 0];
@@ -947,8 +947,8 @@ const Stage = {
     } else { this.scene = 1; this.sceneVelocity = 0; this.departingForecast = null; }
   },
   settle() {
-    const G = this.geom(); this.view.cur.set(this.view.tgt); this.view.vel.fill(0); this.plot.cur.set(this.plot.tgt); this.plot.vel.fill(0);
-    S.bars.forEach((b,i) => { b.x = G.xs[i]; b.vx = 0; b.dv.set(b.v); b.vv.fill(0); b.a = 1; b.va = 0; });
+    const G = this.geom(),id=identity(); this.view.cur.set(this.view.tgt); this.view.vel.fill(0); this.plot.cur.set(this.plot.tgt); this.plot.vel.fill(0);
+    S.bars.forEach((b,i) => { b.x = G.xs[i]; b.vx = 0; b.dv.set(b.v); b.vv.fill(0); b.a = 1; b.va = 0; b.col=(S.colored?COL.rgb[id.d[i]]:COL.rgb.z).slice(); });
     this.ghosts = []; this.traces = []; this.scene = 1; this.sceneVelocity = 0; this.departingForecast = null;
     this.modeMix = Forecast.view === 'paths' ? 1 : 0; this.fanWeight = Forecast.fan ? 1 : 0;
     this.fanA = Match.fresh() && !Match.failed ? 1 : Forecast.source ? .35 : 0;
