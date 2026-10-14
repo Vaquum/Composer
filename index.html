@@ -507,11 +507,16 @@ function moveParams(P, i, dv) {
 function flipParams(P) { const Q = copyParams(P); Q.o0 = P.c[0]; Q.c[0] = P.o0; Q.d[0] = P.d[0] === 'u' ? 'd' : 'u'; return Q; }
 /* ---- end of the chain ---- */
 function rr(ctx, x, y, w, h, r) { r = Math.max(0, Math.min(r, w / 2, h / 2)); ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
-function fitCanvas(cv, w, h) {
-  const dpr = Math.min(2, window.devicePixelRatio || 1), W = Math.round(w * dpr), H = Math.round(h * dpr);
-  if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+function fitCanvas(cv, w, h, dpr = Math.min(2, window.devicePixelRatio || 1), reserve = false) {
+  const W = Math.round(w * dpr), H = Math.round(h * dpr);
+  // Offscreen capacity grows in chunks instead of reallocating for every reference-panel pixel.
+  if (reserve ? cv.width < W || cv.height < H || cv.flowDpr !== dpr : cv.width !== W || cv.height !== H) {
+    cv.width = reserve ? Math.ceil(W/64)*64 : W; cv.height = reserve ? Math.ceil(H/64)*64 : H;
+  }
+  cv.flowDpr=dpr;cv.flowWidth=W;cv.flowHeight=H;
   const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); return ctx;
 }
+function paintCanvas(ctx,cv,x,y,w,h){ctx.drawImage(cv,0,0,cv.flowWidth??cv.width,cv.flowHeight??cv.height,x,y,w,h);}
 const FONT_UI = '"Zen Kaku Gothic New", "Hiragino Sans", system-ui, sans-serif';
 const FONT_MIN = '"Shippori Mincho", "Hiragino Mincho ProN", serif';
 
@@ -950,8 +955,8 @@ const Stage = {
   changeForecast() {
     if (this.forecastSurface && !calm()) {
       this.departingForecast = document.createElement('canvas');
-      this.departingForecast.width = this.forecastSurface.width; this.departingForecast.height = this.forecastSurface.height;
-      this.departingForecast.getContext('2d').drawImage(this.forecastSurface, 0, 0);
+      this.departingForecast.width = this.forecastSurface.flowWidth; this.departingForecast.height = this.forecastSurface.flowHeight;
+      this.departingForecast.getContext('2d').drawImage(this.forecastSurface,0,0,this.forecastSurface.flowWidth,this.forecastSurface.flowHeight,0,0,this.departingForecast.width,this.departingForecast.height);
       this.departingForecast.flowBox={...this.forecastSurface.flowBox};
       this.scene = 0;
     } else { this.scene = 1; this.sceneVelocity = 0; this.departingForecast = null; }
@@ -1337,15 +1342,15 @@ const Stage = {
     const old=this.departingForecast?.flowBox;
     const x=Math.min(Math.max(0,Math.floor(G.forecastLeft-24)),old?.x??G.w),y=Math.min(Math.max(0,Math.floor(G.plotTop-24)),old?.y??G.h);
     const box={x,y,w:G.w-x,h:Math.min(G.h,Math.max(Math.ceil(G.plotBottom+24),old?old.y+old.h:0))-y};
-    const layer=fitCanvas(this.forecastSurface,box.w,box.h);layer.clearRect(0,0,box.w,box.h);layer.translate(-x,-y);
+    const layer=fitCanvas(this.forecastSurface,box.w,box.h,Math.min(2,devicePixelRatio||1),true);layer.clearRect(0,0,this.forecastSurface.width/this.forecastSurface.flowDpr,this.forecastSurface.height/this.forecastSurface.flowDpr);layer.translate(-x,-y);
     this.forecastSurface.flowBox=box;
     this.drawFan(layer,G);
     if(Forecast.source){this.drawStates(layer,G);this.drawPaths(layer,G);this.drawBranches(layer,G);}else this.drawForecastEmpty(layer,G);
     if(this.departingForecast){
       layer.save();layer.globalCompositeOperation='destination-in';layer.globalAlpha=this.scene;layer.fillRect(x,y,box.w,box.h);layer.restore();
-      layer.save();layer.globalCompositeOperation='destination-over';layer.globalAlpha=1-this.scene;layer.drawImage(this.departingForecast,old.x,old.y,old.w,old.h);layer.restore();
+      layer.save();layer.globalCompositeOperation='destination-over';layer.globalAlpha=1-this.scene;paintCanvas(layer,this.departingForecast,old.x,old.y,old.w,old.h);layer.restore();
     }
-    ctx.drawImage(this.forecastSurface,x,y,box.w,box.h);
+    paintCanvas(ctx,this.forecastSurface,x,y,box.w,box.h);
   },
   drawFan(ctx, G) {
     const c=Forecast.source;
@@ -1361,14 +1366,14 @@ const Stage = {
     const paint=rgbStr(pigment),weight=this.fanA*this.fanWeight*FAN_OPTIONS.strength*(1-(this.tracePresence||0)*.7);
     const key=[G.w,G.h,G.plotTop,G.plotBottom,this.view.lo,this.view.hi,lo,hi,y0,lx,...xs,paint].join('|');
     if(this.fanCache?.source===c&&this.fanCache.key===key){
-      const {box}=this.fanCache;ctx.save();ctx.globalAlpha=weight;ctx.drawImage(this.fanInkSurface,box.x,box.y,box.w,box.h);ctx.restore();return;
+      const {box}=this.fanCache;ctx.save();ctx.globalAlpha=weight;paintCanvas(ctx,this.fanInkSurface,box.x,box.y,box.w,box.h);ctx.restore();return;
     }
     // Raster work is limited to the fan's clipped region; fading reuses its ink.
     const box={x:Math.max(0,Math.floor(lx-24)),y:Math.max(0,Math.floor(G.plotTop-24))};
     box.w=Math.max(1,G.w-box.x);box.h=Math.max(1,Math.min(G.h,Math.ceil(G.plotBottom+24))-box.y);
     if(!this.fanSurface)this.fanSurface=document.createElement('canvas');
-    const density=.5, wash=fitCanvas(this.fanSurface,box.w*density,box.h*density);
-    wash.clearRect(0,0,box.w*density,box.h*density);wash.scale(density,density);wash.translate(-box.x,-box.y);wash.fillStyle=paint;
+    const density=.5, wash=fitCanvas(this.fanSurface,box.w*density,box.h*density,1,true);
+    wash.clearRect(0,0,this.fanSurface.width,this.fanSurface.height);wash.scale(density,density);wash.translate(-box.x,-box.y);wash.fillStyle=paint;
     const hull=(lower,upper)=>{
       wash.beginPath();wash.moveTo(lx,y0);
       c.fan.forEach((q,j)=>wash.lineTo(xs[j],Y(upper(q))));
@@ -1388,11 +1393,11 @@ const Stage = {
     fade.addColorStop(.94,'rgba(0,0,0,1)');fade.addColorStop(1,'rgba(0,0,0,0)');
     wash.fillStyle=fade;wash.fillRect(box.x,box.y,box.w,box.h);wash.globalCompositeOperation='source-over';
     if(!this.fanBlurSurface)this.fanBlurSurface=document.createElement('canvas');
-    const blur=fitCanvas(this.fanBlurSurface,box.w*density,box.h*density);blur.clearRect(0,0,box.w*density,box.h*density);
-    blur.filter=`blur(${6*FAN_OPTIONS.softness*density}px)`;blur.drawImage(this.fanSurface,0,0,box.w*density,box.h*density);blur.filter='none';
+    const blur=fitCanvas(this.fanBlurSurface,box.w*density,box.h*density,1,true);blur.clearRect(0,0,this.fanBlurSurface.width,this.fanBlurSurface.height);
+    blur.filter=`blur(${6*FAN_OPTIONS.softness*density}px)`;paintCanvas(blur,this.fanSurface,0,0,box.w*density,box.h*density);blur.filter='none';
     if(!this.fanInkSurface)this.fanInkSurface=document.createElement('canvas');
-    const ink=fitCanvas(this.fanInkSurface,box.w,box.h);ink.clearRect(0,0,box.w,box.h);ink.translate(-box.x,-box.y);
-    ink.drawImage(this.fanBlurSurface,box.x,box.y,box.w,box.h);
+    const ink=fitCanvas(this.fanInkSurface,box.w,box.h,Math.min(2,devicePixelRatio||1),true);ink.clearRect(0,0,this.fanInkSurface.width/this.fanInkSurface.flowDpr,this.fanInkSurface.height/this.fanInkSurface.flowDpr);ink.translate(-box.x,-box.y);
+    paintCanvas(ink,this.fanBlurSurface,box.x,box.y,box.w,box.h);
     const line=ink.createLinearGradient(lx,0,end,0);
     line.addColorStop(0,rgbStr(pigment,0));line.addColorStop(.08,paint);
     line.addColorStop(.94,paint);line.addColorStop(1,rgbStr(pigment,0));
@@ -1406,7 +1411,7 @@ const Stage = {
     contour(1,.23,.8);contour(3,.23,.8);
     if(FAN_OPTIONS.median)contour(2,.34,1);
     ink.globalAlpha=1;this.fanCache={source:c,key,box};
-    ctx.save();ctx.globalAlpha=weight;ctx.drawImage(this.fanInkSurface,box.x,box.y,box.w,box.h);ctx.restore();
+    ctx.save();ctx.globalAlpha=weight;paintCanvas(ctx,this.fanInkSurface,box.x,box.y,box.w,box.h);ctx.restore();
   },
   drawStateGlyph(ctx,glyph,x,center){
     const baseline=ctx.textBaseline;ctx.textBaseline='alphabetic';
