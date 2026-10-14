@@ -8,7 +8,7 @@ input[type="range"]::-moz-range-thumb { transition: box-shadow var(--flow-feedba
 .fan-switch input::after, .fan-switch input:checked::after { transform: translateX(var(--flow-switch-x, 13px)); transition: none; }
 [data-flow-layout], [data-flow-enter] { --flow-layout-x: 0px; --flow-layout-y: 0px; --flow-enter-y: 0px; translate: var(--flow-layout-x) calc(var(--flow-layout-y) + var(--flow-enter-y)); }
 [data-flow-visible][hidden] { display: var(--flow-display, block) !important; }
-[data-flow-visible][aria-hidden="true"] { pointer-events: none; }
+[data-flow-visible][hidden], [data-flow-visible][hidden] * { pointer-events: none !important; }
 [data-flow-sizing] > * { flex-shrink: 0; }
 [data-motion-running], [data-flow-retiring], [data-flow-measuring] { transition: none !important; animation: none !important; }
 details[data-flow-details] > .flow-detail-body { display: block !important; }

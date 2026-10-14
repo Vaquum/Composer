@@ -271,7 +271,6 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
   .ctl .v { min-width: 0; }
   .nextctl { height: auto; flex-wrap: wrap; white-space: normal; padding-block: 5px; row-gap: 6px; }
 }
-@media (prefers-reduced-motion: reduce) { .card, .prog i { } }
 </style>
 <link rel="stylesheet" href="panes.css">
 <link rel="stylesheet" href="motion.css">
@@ -2000,7 +1999,7 @@ const Ref = {
     $('#ref-body').scrollTop = 0;
   },
   clear() {
-    this.active = null; this.lastShape = ''; Flow.visible(this.spot,false);
+    this.active = null; this.lastShape = ''; Flow.visible(this.spot,false,0);
     for (const b of document.querySelectorAll('#ref-targets button')) b.setAttribute('aria-pressed', 'false');
     $('#ref-status').textContent = '';
   },
@@ -2025,18 +2024,18 @@ const Ref = {
   paint() {
     if (!this.active || this.pane.hidden) return;
     const raw = this.bounds(this.active), doc = this.pane.getBoundingClientRect(), W = innerWidth, H = innerHeight;
-    if (!raw) { Flow.visible(this.spot,false); $('#ref-status').textContent = 'This part is not on the page right now: it appears once there are results to show.'; return; }
+    if (!raw) { Flow.visible(this.spot,false,0); $('#ref-status').textContent = 'This part is not on the page right now: it appears once there are results to show.'; return; }
     let l = Math.max(0, raw.left - 4), t = Math.max(0, raw.top - 4), r = Math.min(W, raw.right + 4), b = Math.min(H, raw.bottom + 4);
     // keep the reference itself undimmed and unframed
     if (l < doc.right && r > doc.left && t < doc.bottom && b > doc.top) { if (doc.width >= W - 16) b = Math.min(b, doc.top); else l = Math.max(l, doc.right); }
-    if (r <= l || b <= t) { Flow.visible(this.spot,false); $('#ref-status').textContent = 'This part is outside the visible area: scroll it into view to highlight it.'; return; }
+    if (r <= l || b <= t) { Flow.visible(this.spot,false,0); $('#ref-status').textContent = 'This part is outside the visible area: scroll it into view to highlight it.'; return; }
     const hole = (x, y, w, h) => `M${x},${y}h${w}v${h}h${-w}Z`;
     const shape = `M0,0H${W}V${H}H0Z${hole(doc.left, doc.top, doc.width, doc.height)}${hole(l, t, r - l, b - t)}`;
     if (shape !== this.lastShape) {
       this.lastShape = shape; this.spot.setAttribute('viewBox', `0 0 ${W} ${H}`); this.shade.setAttribute('d', shape);
       for (const [k, v] of Object.entries({ x: l, y: t, width: r - l, height: b - t })) this.frame.setAttribute(k, v);
     }
-    Flow.visible(this.spot,true);this.spot.setAttribute('aria-hidden','true');
+    Flow.visible(this.spot,true,0);this.spot.setAttribute('aria-hidden','true');
     $('#ref-status').textContent = `Highlighted: ${this.active.label.replace(/^Show /, '')}. Escape or a click on the dimmed area stops it.`;
   },
 };

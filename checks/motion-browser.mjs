@@ -78,6 +78,13 @@ for(const [name,type] of [['Chromium',chromium],['WebKit',webkit]]){
   assert.ok(reference.before<reference.width);assert.ok(Math.abs(reference.before-reference.after)<=1);assert.ok(Math.abs(reference.after-reference.reopened)<=1);
   assert.deepEqual(reference.closed,{hidden:true,inert:true,focus:'reftoggle'});
   await page.evaluate(()=>window.__motionProbe.Ref.close());await settled(page);
+  const spotlight=await page.evaluate(()=>{
+    const A=window.__motionProbe;A.Ref.open();A.Flow.finish();document.querySelector('#ref-targets button').click();A.Ref.paint();A.Flow.finish();
+    const decorative=A.Ref.spot.getAttribute('aria-hidden')==='true';A.Ref.clear();
+    const state={decorative,hidden:A.Ref.spot.hasAttribute('hidden'),pointer:getComputedStyle(A.Ref.shade).pointerEvents,y:A.Ref.spot.style.getPropertyValue('--flow-enter-y')};
+    A.Flow.finish();A.Ref.close();A.Flow.finish();return state;
+  });
+  assert.deepEqual(spotlight,{decorative:true,hidden:true,pointer:'none',y:'0px'},`${name}: spotlight exit releases input and preserves target geometry`);
   const disclosure=await page.evaluate(async()=>{
     const summary=document.querySelector('.lpane details summary'),detail=summary.parentElement,body=detail.querySelector('.flow-detail-body'),F=window.__motionProbe.Flow;
     const initial=detail.getBoundingClientRect().height;summary.click();const immediate=detail.open;

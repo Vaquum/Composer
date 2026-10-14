@@ -87,7 +87,7 @@ const TactileFlow = (() => {
       write: ({ opacity, y }) => { element.style.opacity = String(bounded(opacity)); element.style.setProperty('--flow-enter-y', `${y}px`); },
       done: () => { element.style.opacity = ''; element.style.removeProperty('--flow-enter-y'); delete element.dataset.flowEnter; } });
   }
-  function visible(element, open) {
+  function visible(element, open, distance = model.information) {
     if (element.hidden === !open && !value(element, 'visibility')) return;
     const hidden = element.hasAttribute('hidden'), display = hidden ? '' : getComputedStyle(element).display;
     element.hidden = !open; element.toggleAttribute('hidden',!open);element.inert = !open;
@@ -95,7 +95,7 @@ const TactileFlow = (() => {
     element.style.setProperty('--flow-display', display || getComputedStyle(element).display);
     element.dataset.flowEnter = '';
     spring(element, 'visibility', { from: { progress: hidden ? 0 : 1 }, to: { progress: open ? 1 : 0 },
-      write: ({ progress }) => { element.style.opacity = String(bounded(progress)); element.style.setProperty('--flow-enter-y', `${(1 - progress) * model.information}px`); },
+      write: ({ progress }) => { element.style.opacity = String(bounded(progress)); element.style.setProperty('--flow-enter-y', `${(1 - progress) * distance}px`); },
       done: () => { element.style.opacity = ''; element.style.removeProperty('--flow-enter-y'); element.style.removeProperty('--flow-display'); delete element.dataset.flowVisible; delete element.dataset.flowEnter; } });
   }
   function intrinsic(element, axis = 'height') {
