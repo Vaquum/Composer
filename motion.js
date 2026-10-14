@@ -36,6 +36,15 @@ const TactileFlow = (() => {
   if (typeof window === 'undefined') return { model, integrate, advance, bounds };
   const preference = matchMedia('(prefers-reduced-motion: reduce)');
   const owners = new WeakMap(), moving = new Set(), settlers = new Set();
+  let visibility=new WeakMap();const observed=new Set();
+  const viewport=typeof IntersectionObserver==='function'?new IntersectionObserver(entries=>{for(const entry of entries)visibility.set(entry.target,entry.isIntersecting);},{rootMargin:'160px'}):null;
+  function releaseObservers(){for(const node of observed)if(!node.isConnected){viewport.unobserve(node);observed.delete(node);}}
+  function observe(nodes){if(viewport)for(const node of nodes)if(!observed.has(node)){observed.add(node);viewport.observe(node);}}
+  function resetVisibility(){
+    visibility=new WeakMap();if(!viewport)return;
+    releaseObservers();for(const node of observed){viewport.unobserve(node);viewport.observe(node);}
+  }
+  addEventListener('scroll',resetVisibility,true);addEventListener('resize',resetVisibility);
   let frame = 0, previousTime = 0, suspended = document.hidden, printing = false;
   const reduced = () => preference.matches || suspended || printing;
   const bounded = value => Math.max(0, Math.min(1, value));
@@ -214,6 +223,7 @@ const TactileFlow = (() => {
   }
   function capture(element,cache) {
     if(!presented(element))return{box:{width:0,height:0},clip:null};
+    if(!moving.size&&visibility.get(element)===false)return{box:{width:0,height:0},clip:null,unseen:true};
     const box=element.getBoundingClientRect();return { box, clip: box.width&&box.height?clip(element,cache):null };
   }
   function retire(element, geometry = capture(element)) {
@@ -256,10 +266,12 @@ const TactileFlow = (() => {
   }
   const actors = ':scope > *, [data-reading], [data-detail], .pane-group, .prow, .pnear';
   function layout(root, change, selector = actors, measure = true) {
+    releaseObservers();
     const active = document.activeElement;
     const restore=()=>{if(active?.isConnected&&root.contains(active)&&document.activeElement!==active)active.focus({preventScroll:true});};
     if(reduced()||!measure){const result=change(new Map());restore();return result;}
-    const clips=new Map(),before = new Map([...root.querySelectorAll(selector)].map(el => [el, capture(el,clips)]));before.retirements=new Map();before.bookends=new Map();
+    const initial=[...root.querySelectorAll(selector)];observe(initial);
+    const clips=new Map(),before = new Map(initial.map(el => [el, capture(el,clips)]));before.retirements=new Map();before.bookends=new Map();
     const result = change(before);
     // Read departing styles before removals/ghost insertion can force another layout.
     for(const [node,commit]of before.retirements){
@@ -267,8 +279,10 @@ const TactileFlow = (() => {
       while(parent&&!before.retirements.get(parent)?.snapshot)parent=parent.parentElement;
       if(!parent)commit();
     }
+    releaseObservers();
     restore();
     const after = [...root.querySelectorAll(selector)], actorsAfter=new Set(after),deltas = new Map(),entries=new Set(),afterClips=new Map();
+    observe(after);
     const visible=(box,bounds)=>bounds&&box.width&&box.height&&box.right>bounds.left&&box.left<bounds.right&&box.bottom>bounds.top&&box.top<bounds.bottom;
     for (const el of after) { el.style.removeProperty('--flow-layout-x'); el.style.removeProperty('--flow-layout-y'); }
     for (const el of after) {
@@ -276,7 +290,7 @@ const TactileFlow = (() => {
       const old = before.get(el);
       // Entry only needs opacity/translation. Measuring a newly inserted tree
       // forces its entire SVG/readings layout inside the input/result task.
-      if(!old?.box.width||!old.box.height)continue;
+      if(!old?.box.width||!old.box.height){const channel=old?.unseen&&owners.get(el)?.get('layout');if(channel)complete(channel);continue;}
       const box=el.getBoundingClientRect();
       const wasVisible=visible(old.box,old.clip),isVisible=visible(box,clip(el,afterClips));
       if(!wasVisible){
@@ -356,7 +370,11 @@ const TactileFlow = (() => {
     for(const {node,next}of plan){
       if(node!==next){
         if(node.nodeType===1&&!node.isEqualNode(next)){deferred=attributes(node,next)||deferred;deferred=reconcile(node,next,geometries,animate)||deferred;}
-        else if(node.textContent!==next.textContent)node.textContent=next.textContent;
+        else {
+          // An equal restored subtree implicitly restores queued descendants.
+          if(node.nodeType===1&&geometries.retirements?.size)for(const pending of geometries.retirements.keys())if(node.contains(pending)){geometries.retirements.delete(pending);markups.delete(node);}
+          if(node.textContent!==next.textContent)node.textContent=next.textContent;
+        }
       }
       if(node!==cursor)root.insertBefore(node,cursor);
       cursor=node.nextSibling;

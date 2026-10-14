@@ -251,6 +251,14 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
       F.finish();root.remove();return valid;
     });
     assert.equal(batchCache,true,'queued tail retirement must leave the markup cache bound to the final requested bookends');
+    const restoredAncestor=await page.evaluate(()=>{
+      const F=__perf.Flow,root=document.createElement('div');document.body.append(root);
+      const full='<section data-motion-key="parent"><span data-motion-key="child">Child</span></section>';F.patch(root,full,false);
+      const parent=root.firstElementChild,child=parent.firstElementChild;
+      F.batch(root,()=>{F.patch(parent,'');F.patch(root,full);});
+      const retained=parent.firstElementChild===child&&child.isConnected;F.finish();root.remove();return retained;
+    });
+    assert.equal(restoredAncestor,true,'restoring an equal ancestor must cancel its descendants queued for retirement');
     const hierarchy=await page.evaluate(()=>{
       const F=__perf.Flow,root=document.createElement('div');Object.assign(root.style,{position:'fixed',left:'10px',top:'10px',width:'200px'});document.body.append(root);
       F.patch(root,'<section class="pane-group" data-motion-key="group"><div class="prow" data-motion-key="nested-reading">Nested retirement</div></section>');F.finish(root);

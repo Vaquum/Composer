@@ -82,6 +82,10 @@ updates. Viewport arrivals enter locally; unseen retained actors settle directly
 Nested removals keep the outer snapshot and do not paint a child twice. Batch
 markup caches record planned bookends after queued removals. Tests also replace
 every result card and change the reading order/text width at maximum composition.
+Scrolling pane bodies keep natural height: their rows/sections carry motion,
+avoiding a second size animation and duplicated geometry work. Cached viewport
+visibility skips offscreen geometry in settled scenes; scroll/resize resets it,
+and disconnected targets are released. Active scenes retain live measurements.
 
 `npm run test:performance` exercises native Chromium, Chromium at 4× CPU and
 WebKit at 390/1600 px, DPR 1/2 and 2/20 bars, with 140 readings and all 729 six-bar

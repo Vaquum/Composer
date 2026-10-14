@@ -1887,7 +1887,9 @@ const Panes = {
         Flow.patch(root,html,true,!measure);
       }
       },measure);
-      if(measure)Flow.resize($('.pane-body',pane),update);else update();
+      // The pane itself scrolls; its body has no painted size boundary. Keep its
+      // height natural while the visible rows/sections carry the position springs.
+      update();
       pane.dataset.view = variant;
       const remembered = this.details.get(side + '-' + variant);
       for (const d of pane.querySelectorAll('details[data-detail]')) if (remembered?.has(d.dataset.detail)) d.open = remembered.get(d.dataset.detail);
