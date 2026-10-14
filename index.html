@@ -1635,7 +1635,7 @@ canvasResize.observe(Stage.wrap);canvasResize.observe(Stage.hint);
 
 /* ================= the history: one matcher, three ways of holding, mixed as you like ================= */
 const Match = {
-  worker: null, ready: false, failed: false, id: 0, shown: 0, sentKey: '', timer: 0, sent: null, result: null, sticky: -1,
+  worker: null, ready: false, failed: false, id: 0, shown: 0, sentKey: '', timer: 0, sent: null, result: null, resultSent:null, sticky: -1,
   drawnKey: '', resultKey: '',
   start() {
     try {
@@ -1678,8 +1678,8 @@ const Match = {
     if (m.type === 'readings') { Panes.readings = 'ready'; if (this.result) { this.sentKey = ''; this.send(); } return; }
     if (m.type === 'readings-error') { Panes.readings = 'failed'; Panes.note = m.message; if (this.result) Panes.render(this.result); return; }
     if (m.type === 'result' && m.id === this.id) {
-      this.result = m; this.resultKey = this.sentKey;
-      const sent=this.sent,cards=()=>{this.render(sent);Stage.fit();App.redraw();};
+      this.result = m; this.resultSent=this.sent;this.resultKey = this.sentKey;
+      const sent=this.resultSent,cards=()=>{this.render(sent);Stage.fit();App.redraw();};
       if((m.panes?.rows.length||0)>70){
         this.presentation={result:m,tasks:[()=>Panes.render(m,'left',sent),()=>Panes.render(m,'right',sent),cards]};
         setTimeout(()=>this.presentResult(),0);
@@ -1688,8 +1688,7 @@ const Match = {
   },
   presentResult(schedule=true){
     const pending=this.presentation;if(!pending)return;
-    if(pending.result!==this.result||!pending.started&&pending.result.id!==this.id){this.presentation=null;return;}
-    pending.started=true;
+    if(pending.result!==this.result){this.presentation=null;return;}
     pending.tasks.shift()();
     if(this.presentation!==pending)return;
     if(!pending.tasks.length)this.presentation=null;
@@ -1716,7 +1715,7 @@ const Match = {
     if (this.ready || !this.result) $('#mmsg').textContent = this.ready ? 'Searching the BTCUSDT history…' : 'Loading the BTCUSDT 15m to 4h klines…';
     this.worker.postMessage({ type: 'query', id: this.id, q });
   },
-  render(sent=this.sent) {
+  render(sent=this.resultSent||this.sent) {
     const r = this.result, held = sent.held, n = sent.q.bars.length,current=r.id===this.id;
     this.presentedResults=r.results;
     if(current)$('#prog').hidden = true;
@@ -1881,7 +1880,7 @@ const Panes = {
     for (const id of ['lrows','lnext','rnext','rbecame','rfan','ncap','rnear']) $('#' + id).replaceChildren();
     $('#lcap').textContent = 'Matching data unavailable.'; $('#rcap').textContent = 'Continuation unavailable.';
   },
-  render(r, onlySide = null, sent=Match.sent) {
+  render(r, onlySide = null, sent=r===Match.result?Match.resultSent||Match.sent:Match.sent) {
     const P = r.panes; if (!P) return;
     const ctx = { barCount: sent?.q.bars.length??S.bars.length, timeframes: TF_LABELS.map((label,k) => ({label,k})).filter(t => sent?.q.tfs[t.k]), readings: this.readings, note: this.note, nextWords };
     for (const side of onlySide ? [onlySide] : ['left','right']) {
