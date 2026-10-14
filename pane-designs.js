@@ -18,6 +18,7 @@ const PaneDesigns = (() => {
   const displayed = (w, x) => value(w, x) + unit(w);
   const sorted = P => (P.rows || []).slice().sort((a, b) => Math.abs(b.d) - Math.abs(a.d));
   const clear = w => w.set[1] > w.all[0] || w.set[2] < w.all[0];
+  const ledgerNote=rows=>`${rows.filter(clear).length} of ${rows.length} intervals exclude the all-window mean.`;
   const detail = (key, title, content, open = false) => `<details class="pane-details" data-detail="${key}"${open ? ' open' : ''}><summary>${title}</summary>${content}</details>`;
   const legend = () => '<div class="pane-legend"><span><i class="legend-dot" aria-hidden="true"></i>Selected</span><span><i class="legend-band" aria-hidden="true"></i>95% interval</span><span><i class="legend-tick" aria-hidden="true"></i>All</span></div>';
   function trackFields(w) {
@@ -51,8 +52,7 @@ const PaneDesigns = (() => {
     }
     const remaining = all.length > 10 ? detail('more', `${all.length-10} more readings`, variant === 'ledger' ? table(all.slice(10)) : all.slice(10).map(w=>reading(w)).join('')) : '';
     if (variant === 'ledger') {
-      const count = first.filter(clear).length;
-      return '<p class="pane-order">Largest differences first</p>'+table(first)+`<p class="pane-note">${count} of ${first.length} intervals exclude the all-window mean.</p>`+remaining+detail('intervals',`95% intervals · all ${all.length} readings`,legend()+all.map(w=>reading(w)).join(''));
+      return '<p class="pane-order">Largest differences first</p>'+table(first)+`<p class="pane-note">${ledgerNote(first)}</p>`+remaining+detail('intervals',`95% intervals · all ${all.length} readings`,legend()+all.map(w=>reading(w)).join(''));
     }
     const lead = first[0], delta = difference(lead), rest = first.slice(1);
     return `<div class="pane-hero" data-reading="${lead.bar}-${lead.key}"><p class="pane-hero-label">Largest difference · Bar ${lead.bar+1} ${label(lead).toLowerCase()}</p><p class="pane-hero-value">${value(lead,lead.set[0])}<span class="pane-unit">${unit(lead)}</span></p><p class="pane-hero-compare">All ${displayed(lead,lead.all[0])}${delta ? ' · <strong>'+delta+'</strong>' : ''}</p>${track(lead)}</div>`+legend()+
@@ -107,6 +107,21 @@ const PaneDesigns = (() => {
       };
     };
   }
+  function updateLedger(root,r){
+    const all=sorted(r.panes),tables=[...root.querySelectorAll('.pane-ledger tbody')],intervals=root.querySelector('details[data-detail="intervals"] .flow-detail-content'),note=root.querySelector(':scope > .pane-note');
+    if(r.panes.n<30||!r.panes.readings||!all.length||tables.length!==(all.length>10?2:1)||!intervals||!note)return false;
+    const rows=tables.flatMap(body=>[...body.children]),charts=[...intervals.querySelectorAll(':scope > [data-reading]')],keys=all.map(w=>`${w.bar}-${w.key}`);
+    const byKey=nodes=>new Map(nodes.map(node=>[node.dataset.reading,node])),tableRows=byKey(rows),chartRows=byKey(charts);
+    if(rows.length!==all.length||charts.length!==all.length||tableRows.size!==all.length||chartRows.size!==all.length||keys.some(key=>!tableRows.has(key)||!chartRows.has(key)))return false;
+    const updater=readingUpdater(r),changes=[...rows,...charts].map(node=>updater(node,node));if(changes.some(change=>!change))return false;
+    for(const change of changes)change();
+    const order=(parent,nodes,start=parent.firstChild)=>{let cursor=start;for(const node of nodes){if(node!==cursor)parent.insertBefore(node,cursor);cursor=node.nextSibling;}};
+    order(tables[0],keys.slice(0,10).map(key=>tableRows.get(key)));
+    if(tables[1])order(tables[1],keys.slice(10).map(key=>tableRows.get(key)));
+    order(intervals,keys.map(key=>chartRows.get(key)),charts[0]);
+    const text=ledgerNote(all.slice(0,10));if(note.textContent!==text)note.textContent=text;
+    return {kind:'ledger'};
+  }
   function meter(w, direction = 'selected', reference = null) {
     if (!w) return '';
     return `<div class="pane-meter ${direction}" role="img" aria-label="${pct(w[0])}; 95% interval ${pct(w[1])} to ${pct(w[2])}${reference === null ? '' : '; all windows '+pct(reference)}"><i class="meter-fill" style="width:${w[0]*100}%"></i><i class="meter-ci" style="left:${w[1]*100}%;width:${(w[2]-w[1])*100}%"></i><i class="meter-dot" style="left:${w[0]*100}%"></i>${reference === null ? '' : `<i class="meter-reference" style="left:${reference*100}%"></i>`}</div>`;
@@ -142,5 +157,5 @@ const PaneDesigns = (() => {
   }
   const leftMethod = barCount => `<ul class="pane-method"><li>All means every ${barCount}-bar window on the selected timeframes. Rows compare selected-window and all-window means.</li><li>Volume, trades and mean trade size: relative to the median of the prior 11 bars; geometric means.</li><li>Body and range: prior-bar Wilder ATR(14). Maker share: share of volume. Last close: position in the prior UTC day's range.</li><li>Every reading track has its own scale. Differences are ranked in standard deviations of all windows.</li><li>95% intervals: t for means, Wilson for rates. No estimate below 30 windows.</li></ul>`;
   const rightMethod = after => `<ul class="pane-method"><li>Each window is scaled from its own low and high to your drawing. The canvas fan shows the median and middle 50% and 80% of closes.</li><li>Breaks count any crossing during the next ${after} bars. Final close compares bar ${after} with the window's last close.</li><li>The terminal band is the middle 50% of closes, not a confidence interval. Outcome rates use all complete continuations, with Wilson 95% intervals.</li></ul>`;
-  return { variants, left, updateSignal, readingUpdater, right, next, terminal, caption, leftMethod, rightMethod };
+  return { variants, left, updateSignal, readingUpdater, updateLedger, right, next, terminal, caption, leftMethod, rightMethod };
 })();

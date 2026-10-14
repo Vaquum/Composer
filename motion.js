@@ -431,13 +431,14 @@ const TactileFlow = (() => {
     return applyReconcile(planReconcile(root,incoming,geometries,animate,retain,new Map()),geometries);
   }
   const markups=new WeakMap();let transaction=null;
-  function update(root,markup,change){
+  function update(root,markup,change,intrinsic=false){
     const previous=markups.get(root);
     if(!previous||previous.first!==root.firstChild||previous.last!==root.lastChild)return false;
     const memo=change(previous.memo);if(!memo)return false;
     for(let parent=root.parentElement;parent;parent=parent.parentElement)markups.delete(parent);
     const walker=document.createTreeWalker(root,NodeFilter.SHOW_ALL);let node;
-    while((node=walker.nextNode()))markups.delete(node);
+    while((node=walker.nextNode())){markups.delete(node);if(intrinsic){const measurement=measurements.get(node);if(measurement)measurement.dirty=true;}}
+    if(intrinsic)invalidate(root);
     markups.set(root,{markup,first:root.firstChild,last:root.lastChild,memo});return true;
   }
   function stableUpdate(root,incoming){

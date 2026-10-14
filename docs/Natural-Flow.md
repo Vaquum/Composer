@@ -108,6 +108,9 @@ Resize callbacks only refresh measurements and request work; layout writes run
 in the next canvas frame to avoid observer loops. Nested arrivals share their
 ancestor's entry. Retirement contexts are reused only within one read-only
 reconciliation plan, and clipping reads bounds only for clipping ancestors.
+Ledger updates retain rows across the leading/rest tables and reorder existing
+interval charts. They share the full renderer's formatting, validate identities,
+and invalidate intrinsic targets when content changes.
 
 `npm run test:performance` exercises native Chromium, Chromium at 4× CPU and
 WebKit at 390/1600 px, DPR 1/2 and 2/20 bars, with 140 readings and all 729 six-bar
