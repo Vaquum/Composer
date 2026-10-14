@@ -179,7 +179,7 @@ for(const [name,type] of [['Chromium',chromium],['WebKit',webkit]]){
     A.Ops.restore(saved);return minimum;
   });
   assert.ok(collapse>0,`${name}: a one-price composition keeps a positive frame`);
-  await page.emulateMedia({reducedMotion:'reduce'});await settled(page);
+  await page.emulateMedia({reducedMotion:'reduce'});await page.waitForFunction(()=>window.__motionProbe.Flow.reduced());await settled(page);
   const reduced=await page.evaluate(()=>{
     const A=window.__motionProbe;A.Ops.add();A.Stage.step(.016);const b=A.S.bars.at(-1),exact=b.a===1&&b.x===A.Stage.geom().xs.at(-1)&&b.dv.every((v,i)=>v===b.v[i]);
     A.Ops.remove();const ghosts=A.Stage.ghosts.length;A.Forecast.choose('states');A.Stage.step(.016);

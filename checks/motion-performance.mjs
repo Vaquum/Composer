@@ -206,8 +206,16 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
     assert.equal(cleanup.temporary,0);assert.equal(cleanup.running,false);
     if(cdp){const after=(await cdp.send('Performance.getMetrics')).metrics.find(m=>m.name==='JSHeapUsedSize').value;assert.ok(after-heap<2e6,`transition heap grew by ${after-heap} bytes after GC`);}
     await page.emulateMedia({reducedMotion:'reduce'});
+    await page.waitForFunction(()=>__perf.Flow.reduced());
     const reduced=await measure('reduced-motion',async()=>{await call('reference',true);await call('pane','bars');await call('forecast','states');await call('reference',false);});
     assert.equal(reduced.measures,0,'reduced motion must bypass intrinsic measurement clones');
+    const focus=await page.evaluate(()=>{
+      const F=__perf.Flow,root=document.createElement('div');Object.assign(root.style,{position:'fixed',left:'10px',top:'10px'});document.body.append(root);
+      F.patch(root,'<button data-motion-key="a">A</button><button data-motion-key="b">B</button>');
+      const button=root.firstElementChild;button.focus();F.patch(root,'<button data-motion-key="b">B</button><button data-motion-key="a">A</button>');
+      const state={retained:button.isConnected,focused:document.activeElement===button,reordered:root.firstElementChild.dataset.motionKey==='b'};root.remove();return state;
+    });
+    assert.deepEqual(focus,{retained:true,focused:true,reordered:true},'reduced-motion reorders must retain live keyboard focus');
     assert.deepEqual(errors,[]);
     }finally{await context.close();}
   }

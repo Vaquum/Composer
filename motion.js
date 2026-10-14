@@ -126,8 +126,8 @@ const TactileFlow = (() => {
       const measurement=measurements.get(node);if(measurement)measurement.dirty=true;
     }
   }
-  function natural(element,axis='height') {
-    const measurement={dirty:true,width:NaN,size:0};measurements.set(element,measurement);
+  function natural(element,axis='height',initial=null) {
+    const measurement={dirty:!initial,width:initial?.width??NaN,size:initial?.size??0};measurements.set(element,measurement);
     return ()=>{
       const width=element.getBoundingClientRect().width;
       if(measurement.dirty||width!==measurement.width){measurement.size=intrinsic(element,axis);measurement.width=width;measurement.dirty=false;}
@@ -136,12 +136,16 @@ const TactileFlow = (() => {
   }
   const sizes = new WeakMap();
   function resize(element, change) {
-    const height = element.getBoundingClientRect().height;
+    const height = element.getBoundingClientRect().height,free=!sizes.has(element)&&!element.style.height;
     const result = change();
     if (!element.getClientRects().length || reduced()) return result;
+    // These containers have natural CSS height. Read their live target before
+    // constraining it; unchanged content size needs neither a spring nor a clone.
+    const box=free?element.getBoundingClientRect():null;
+    if(box&&Math.abs(box.height-height)<.5)return result;
     if (!sizes.has(element)) sizes.set(element, { height: element.style.height, overflow: element.style.overflow });
     element.dataset.flowSizing = ''; element.style.overflow = 'hidden';
-    const target=natural(element);
+    const target=natural(element,'height',box?{width:box.width,size:box.height}:null);
     spring(element, 'size', { from: { height }, to: () => ({ height: target() }),
       write: ({ height }) => { element.style.height = `${Math.max(0, height)}px`;invalidate(element.parentElement); },
       done: () => { Object.assign(element.style, sizes.get(element)); sizes.delete(element);measurements.delete(element);delete element.dataset.flowSizing;invalidate(element.parentElement); } });
@@ -247,13 +251,14 @@ const TactileFlow = (() => {
   }
   const actors = ':scope > *, [data-reading], [data-detail], .pane-group, .prow, .pnear';
   function layout(root, change, selector = actors) {
-    if(reduced())return change(new Map());
     const active = document.activeElement;
+    const restore=()=>{if(active?.isConnected&&root.contains(active)&&document.activeElement!==active)active.focus({preventScroll:true});};
+    if(reduced()){const result=change(new Map());restore();return result;}
     const clips=new Map(),before = new Map([...root.querySelectorAll(selector)].map(el => [el, capture(el,clips)]));before.retirements=[];
     const result = change(before);
     // Read departing styles before removals/ghost insertion can force another layout.
     for(const commit of before.retirements)commit();
-    if (active?.isConnected && root.contains(active) && document.activeElement !== active) active.focus({ preventScroll: true });
+    restore();
     const after = [...root.querySelectorAll(selector)], actorsAfter=new Set(after),deltas = new Map();
     for (const el of after) { el.style.removeProperty('--flow-layout-x'); el.style.removeProperty('--flow-layout-y'); }
     for (const el of after) {

@@ -43,3 +43,32 @@ using explicitly synthetic UI fixtures, to check retained focus and disclosure
 state, reversal continuity, inert exits, forecast changes, direct input, reduced
 motion, responsive geometry and lifecycle cleanup. Existing current-data checks
 remain the authority for matching and statistical results.
+
+## Performance contract
+
+Pane updates share one geometry transaction. Unchanged markup and invisible
+native-disclosure contents skip reconciliation/layout work. Retirement reads
+styles before committing removals; shallow CSS-context shells preserve the
+presented actor without copying every computed property of its descendants.
+Natural-size targets use the live unconstrained box first, then reuse measurements
+until content or available width changes. An unchanged size creates no spring.
+
+Guides, forecasts and foreground candles/traces use clipped native canvas layers
+in their original paint order. Scene opacity is composited by the browser; an
+interrupted scene is captured once at the next scene change. Offscreen capacity
+grows in chunks. The blurred fan wash uses bounded low-density pixels and may
+reuse projections within half a CSS pixel; quantile contours remain exact and
+render at native density. Forecast semantics and hit geometry update only when
+their state or geometry changes. Pointer drawing remains direct.
+
+`npm run test:performance` exercises native Chromium, Chromium at 4× CPU and
+WebKit at 390/1600 px, DPR 1/2 and 2/20 bars, with 140 readings and all 729 six-bar
+sequences in the largest synthetic fixture. It reports frame delivery, application
+work, input/result handler time, pointer-to-paint latency and long tasks. Guards
+require native p95 frame intervals below 25 ms, native p95 application work below
+16.7 ms (33.4 ms under CPU throttling), and input/result work and pointer latency
+below 100 ms. Reduced motion waits for the browser's reported preference before
+measurement. Bounded intrinsic measurements, idle DOM writes, retained styling,
+pixel reuse, focus and repeated-transition DOM/heap cleanup are also checked.
+These budgets characterize the tested environment; current-data checks validate
+the actual statistics independently of the presentation fixtures.
