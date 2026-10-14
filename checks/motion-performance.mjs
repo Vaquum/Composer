@@ -244,6 +244,13 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
       F.finish(root);root.remove();return state;
     });
     assert.deepEqual(restoredBatch,{keys:['a','b'],retained:true,focused:true},'restoring an actor within a batch must cancel its queued retirement');
+    const batchCache=await page.evaluate(()=>{
+      const F=__perf.Flow,root=document.createElement('div');document.body.append(root);
+      const keep='<button data-motion-key="a">A</button>';F.patch(root,keep+'<button data-motion-key="b">B</button>');F.finish(root);
+      F.batch(root,()=>F.patch(root,keep));const valid=F.update(root,keep,()=>({}));
+      F.finish();root.remove();return valid;
+    });
+    assert.equal(batchCache,true,'queued tail retirement must leave the markup cache bound to the final requested bookends');
     const hierarchy=await page.evaluate(()=>{
       const F=__perf.Flow,root=document.createElement('div');Object.assign(root.style,{position:'fixed',left:'10px',top:'10px',width:'200px'});document.body.append(root);
       F.patch(root,'<section class="pane-group" data-motion-key="group"><div class="prow" data-motion-key="nested-reading">Nested retirement</div></section>');F.finish(root);
