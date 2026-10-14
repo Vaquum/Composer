@@ -200,7 +200,13 @@ const TactileFlow = (() => {
     if (/auto|scroll|hidden|clip/.test(style.overflowY)) { bounds.top = Math.max(bounds.top, box.top + parent.clientTop); bounds.bottom = Math.min(bounds.bottom, box.top + parent.clientTop + parent.clientHeight); }
     cache.set(parent,bounds);return bounds;
   }
-  function capture(element,cache) { const box=element.getBoundingClientRect();return { box, clip: box.width&&box.height?clip(element,cache):null }; }
+  function presented(element) {
+    return !element.closest('[hidden]:not([data-flow-visible])')&&!element.parentElement?.closest('details:not([open]):not([data-flow-details])');
+  }
+  function capture(element,cache) {
+    if(!presented(element))return{box:{width:0,height:0},clip:null};
+    const box=element.getBoundingClientRect();return { box, clip: box.width&&box.height?clip(element,cache):null };
+  }
   function retire(element, geometry = capture(element)) {
     const { box, clip: bounds } = geometry;
     if(reduced()||!box.width||!box.height){finish(element);element.remove();return;}
@@ -247,6 +253,7 @@ const TactileFlow = (() => {
     const after = [...root.querySelectorAll(selector)], actorsAfter=new Set(after),deltas = new Map();
     for (const el of after) { el.style.removeProperty('--flow-layout-x'); el.style.removeProperty('--flow-layout-y'); }
     for (const el of after) {
+      if(!presented(el))continue;
       const old = before.get(el), box = el.getBoundingClientRect();
       if (old?.box.width && old.box.height && box.width && box.height) deltas.set(el, { x: old.box.left - box.left, y: old.box.top - box.top });
     }
@@ -255,7 +262,7 @@ const TactileFlow = (() => {
       if (!delta) {
         let parent=el.parentElement,nested=false;
         while(parent&&parent!==root){if(actorsAfter.has(parent)&&!before.has(parent)){nested=true;break;}parent=parent.parentElement;}
-        if(!before.has(el)&&!nested&&el.getClientRects().length)reveal(el);continue;
+        if(!before.has(el)&&!nested&&presented(el)&&el.getClientRects().length)reveal(el);continue;
       }
       let parent = el.parentElement;
       while (parent && parent !== root && !deltas.has(parent)) parent = parent.parentElement;
