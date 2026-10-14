@@ -181,7 +181,10 @@ const TactileFlow = (() => {
     body.dataset.flowOpen=String(open);detail.dataset.flowDetails='';detail.open=open;
     body.hidden=!open;body.inert=!open;body.dataset.flowVisible='';body.dataset.flowDisclosure='';
     body.style.setProperty('--flow-display','block');body.style.overflow='hidden';
-    const target=natural(body);
+    // On the first opening the unconstrained live body already has its natural
+    // height. A clone would lay out the entire readings list a second time.
+    const box=open&&!reduced()&&!body.style.height?body.getBoundingClientRect():null;
+    const target=natural(body,'height',box?{width:box.width,size:box.height}:null);
     spring(body,'disclosure',{from:{size:height,opacity:open&&!height?0:Number(getComputedStyle(body).opacity)},to:()=>({size:open?reduced()?height:target():0,opacity:open?1:0}),
       write:({size,opacity})=>{body.style.height=`${Math.max(0,size)}px`;body.style.opacity=String(bounded(opacity));invalidate(detail);},
       done:()=>{
@@ -295,25 +298,28 @@ const TactileFlow = (() => {
   function attributes(current, incoming) {
     let equal=current.attributes.length===incoming.attributes.length;
     if(equal)for(const attr of current.attributes)if(incoming.getAttribute(attr.name)!==attr.value){equal=false;break;}
-    if(equal)return;
+    if(equal)return false;
     const preserve = name => name.startsWith('data-flow-') || name === 'data-motion-running' || current.tagName === 'DETAILS' && name === 'open' || name==='inert'&&current.classList.contains('flow-detail-body');
     for (const attr of [...current.attributes]) if (!preserve(attr.name) && attr.name !== 'style' && !incoming.hasAttribute(attr.name)) current.removeAttribute(attr.name);
     for (const attr of incoming.attributes) if (!preserve(attr.name) && attr.name !== 'style' && current.getAttribute(attr.name) !== attr.value) current.setAttribute(attr.name, attr.value);
-    if(current.getAttribute('style')===incoming.getAttribute('style'))return;
+    if(current.getAttribute('style')===incoming.getAttribute('style'))return false;
     const temporary = name => name.startsWith('--flow-') || Boolean(owners.get(current)?.size) && ['height', 'width', 'opacity', 'overflow', 'overflow-x', 'overflow-y', 'translate'].includes(name);
+    let deferred=false;
+    for(const name of new Set([...current.style,...incoming.style]))if(temporary(name)&&!name.startsWith('--flow-')&&(current.style.getPropertyValue(name)!==incoming.style.getPropertyValue(name)||current.style.getPropertyPriority(name)!==incoming.style.getPropertyPriority(name)))deferred=true;
     for (const name of [...current.style]) if (!temporary(name) && !incoming.style.getPropertyValue(name)) current.style.removeProperty(name);
     for (const name of incoming.style) if (!temporary(name)&&(current.style.getPropertyValue(name)!==incoming.style.getPropertyValue(name)||current.style.getPropertyPriority(name)!==incoming.style.getPropertyPriority(name))) current.style.setProperty(name, incoming.style.getPropertyValue(name), incoming.style.getPropertyPriority(name));
+    return deferred;
   }
   function reconcile(root, incoming, geometries, animate) {
     markups.delete(root);
     // A retained disclosure inside this patch may have new children or text.
     const measurement=measurements.get(root);if(measurement)measurement.dirty=true;
     const old = [...root.childNodes], desired = [...incoming.childNodes], used = new Set(), keyed = new Map(old.map((node, i) => [key(node, i), node]));
-    let cursor = root.firstChild;
+    let cursor = root.firstChild,deferred=false;
     desired.forEach((next, index) => {
       let node = keyed.get(key(next, index));
       if (!node || used.has(node) || node.nodeType !== next.nodeType || node.nodeName !== next.nodeName) node = next;
-      else if (node.nodeType === 1&&!node.isEqualNode(next)) { attributes(node, next); reconcile(node, next, geometries, animate); }
+      else if (node.nodeType === 1&&!node.isEqualNode(next)) { deferred=attributes(node,next)||deferred;deferred=reconcile(node,next,geometries,animate)||deferred; }
       else if (node.textContent !== next.textContent) node.textContent = next.textContent;
       used.add(node);
       if (node !== cursor) root.insertBefore(node, cursor);
@@ -323,6 +329,7 @@ const TactileFlow = (() => {
       if (node.nodeType === 1 && animate && geometries.has(node)) geometries.retirements.push(retire(node, geometries.get(node)));
       else { if (node.nodeType === 1) finish(node); node.remove(); }
     }
+    return deferred;
   }
   const markups=new WeakMap();let transaction=null;
   function batch(root,change,measure=true){
@@ -337,7 +344,11 @@ const TactileFlow = (() => {
     for(let parent=root.parentElement;parent;parent=parent.parentElement)markups.delete(parent);
     const template = document.createElement('template'); template.innerHTML = markup; details(template.content);
     const result=animate?(transaction?.root.contains(root)?reconcile(root,template.content,transaction.geometries,true):layout(root,geometries=>reconcile(root,template.content,geometries,true))):reconcile(root,template.content,new Map(),false);
-    details(root);invalidate(root);markups.set(root,{markup,first:root.firstChild,last:root.lastChild});return result;
+    details(root);invalidate(root);
+    // A spring owns temporary presentation styles until it settles. Do not
+    // memoize an incoming style request that reconciliation had to defer.
+    if(!result)markups.set(root,{markup,first:root.firstChild,last:root.lastChild});else markups.delete(root);
+    return result;
   }
   function switchControl(input) {
     const target = input.checked ? 13 : 0;
