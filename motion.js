@@ -395,7 +395,17 @@ const TactileFlow = (() => {
     const remove=[];
     for (const node of old) if (!used.has(node)) {
       if (node.nodeType === 1 && animate && geometries.has(node)) geometries.retirements.set(node,retire(node,geometries.get(node),contexts));
-      else remove.push(node);
+      else if(node.nodeType===1&&animate&&geometries.retirements){
+        const captured=[...geometries].filter(([actor])=>node.contains(actor));
+        if(captured.length){
+          for(const [actor,geometry]of captured){
+            if(geometries.retirements.has(actor))continue;
+            let parent=actor.parentElement;while(parent&&!geometries.retirements.get(parent)?.snapshot)parent=parent.parentElement;
+            if(!parent)geometries.retirements.set(actor,retire(actor,geometry,contexts));
+          }
+          geometries.retirements.set(node,()=>{finish(node);node.remove();});
+        }else remove.push(node);
+      }else remove.push(node);
     }
     for(const item of plan){
       const {node,next}=item;

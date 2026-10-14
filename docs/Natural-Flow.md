@@ -116,6 +116,8 @@ Rows crossing a closed ledger disclosure retain their nodes while their old
 visible copy retires or their new visible position enters.
 Layout checks viewport scroll position before using visibility caches; reset
 also discards queued observations from before the scroll.
+Unmapped wrapper removal defers its cleanup and retires captured descendant
+actors; restoration within the same batch cancels both operations.
 
 `npm run test:performance` exercises native Chromium, Chromium at 4× CPU and
 WebKit at 390/1600 px, DPR 1/2 and 2/20 bars, with 140 readings and all 729 six-bar

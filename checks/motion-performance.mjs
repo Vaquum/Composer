@@ -350,6 +350,16 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
       F.finish();root.remove();return copies;
     });
     assert.equal(hierarchy,1,'nested removals must paint a reading once when its ancestor also retires');
+    const unmappedWrapper=await page.evaluate(()=>{
+      const F=__perf.Flow,root=document.createElement('div');root.style.cssText='position:fixed;left:10px;top:10px;width:220px';document.body.append(root);
+      const full='<section data-motion-key="outer"><div data-motion-key="wrapper"><div class="prow" data-reading="wrapped">Wrapped reading</div></div></section>';F.patch(root,full,false);
+      const section=root.firstElementChild,wrapper=section.firstElementChild,reading=wrapper.firstElementChild;
+      F.batch(root,()=>{F.patch(section,'');F.patch(root,full);});
+      const restored=section.firstElementChild===wrapper&&wrapper.firstElementChild===reading&&reading.isConnected;
+      F.batch(root,()=>F.patch(section,''));const copies=document.querySelectorAll('[data-flow-retiring] [data-reading="wrapped"]').length;
+      F.finish();root.remove();return{restored,copies};
+    });
+    assert.deepEqual(unmappedWrapper,{restored:true,copies:1},'unmapped wrapper removal must retire captured readings once and permit restoration within a batch');
     const viewport=await page.evaluate(async()=>{
       const F=__perf.Flow,root=document.createElement('div');Object.assign(root.style,{position:'fixed',left:'10px',top:'10px',width:'200px',height:'60px',overflow:'hidden'});document.body.append(root);
       const row=k=>`<div data-motion-key="${k}" style="height:80px">${k}</div>`;F.patch(root,row('a')+row('b')+row('c'));F.finish(root);
