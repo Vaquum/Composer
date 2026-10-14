@@ -1,4 +1,7 @@
 :root { --flow-feedback: 100ms; }
+@property --flow-layout-x { syntax: '<length>'; inherits: false; initial-value: 0px; }
+@property --flow-layout-y { syntax: '<length>'; inherits: false; initial-value: 0px; }
+@property --flow-enter-y { syntax: '<length>'; inherits: false; initial-value: 0px; }
 button, .hint, .home, .fan-switch input { transition: background-color var(--flow-feedback) ease-out, color var(--flow-feedback) ease-out, box-shadow var(--flow-feedback) ease-out, opacity var(--flow-feedback) ease-out; }
 .seg button, .icon, .bars button, .pinbtn, .chip, .card { transition: background-color var(--flow-feedback) ease-out, color var(--flow-feedback) ease-out, box-shadow var(--flow-feedback) ease-out, opacity var(--flow-feedback) ease-out; }
 .hint { transition: color var(--flow-feedback) ease-out; }

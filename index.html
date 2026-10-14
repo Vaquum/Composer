@@ -1880,7 +1880,7 @@ const Panes = {
         Flow.disclosure($('#rnextsec'),variant==='bars');
         $('#ncap').textContent = 'One changed bar-end comparison · selected timeframes';
       }
-      for(const [id,html]of Object.entries(markup))Flow.patch($('#'+id),html);
+      for(const [id,html]of Object.entries(markup))Flow.patch($('#'+id),html,true,!measure);
       },measure);
       if(measure)Flow.resize($('.pane-body',pane),update);else update();
       pane.dataset.view = variant;

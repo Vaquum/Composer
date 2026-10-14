@@ -353,18 +353,34 @@ const TactileFlow = (() => {
     return deferred;
   }
   const markups=new WeakMap();let transaction=null;
+  function stableUpdate(root,incoming){
+    const old=document.createTreeWalker(root,NodeFilter.SHOW_ALL),next=document.createTreeWalker(incoming,NodeFilter.SHOW_ALL),parents=new WeakMap([[root,incoming]]),pairs=[];
+    let current=old.nextNode(),desired=next.nextNode();
+    while(current||desired){
+      if(!current||!desired||current.nodeType!==desired.nodeType||current.nodeName!==desired.nodeName||parents.get(current.parentNode)!==desired.parentNode||key(current,0)!==key(desired,0))return null;
+      pairs.push([current,desired]);parents.set(current,desired);current=old.nextNode();desired=next.nextNode();
+    }
+    let deferred=false;
+    for(const [current,desired]of pairs){
+      markups.delete(current);const measurement=measurements.get(current);if(measurement)measurement.dirty=true;
+      if(current.nodeType===1)deferred=attributes(current,desired)||deferred;
+      else if(current.nodeValue!==desired.nodeValue)current.nodeValue=desired.nodeValue;
+    }
+    return deferred;
+  }
   function batch(root,change,measure=true){
     return layout(root,geometries=>{
       const previous=transaction;transaction={root,geometries};
       try{return change();}finally{transaction=previous;}
     },actors,measure);
   }
-  function patch(root, markup, animate = true) {
+  function patch(root, markup, animate = true, stable = false) {
     const previous=markups.get(root);
     if(previous?.markup===markup&&previous.first===root.firstChild&&previous.last===root.lastChild){details(root);return;}
     for(let parent=root.parentElement;parent;parent=parent.parentElement)markups.delete(parent);
     const template = document.createElement('template'); template.innerHTML = markup; details(template.content);
-    const result=animate?(transaction?.root.contains(root)?reconcile(root,template.content,transaction.geometries,true):layout(root,geometries=>reconcile(root,template.content,geometries,true))):reconcile(root,template.content,new Map(),false);
+    let result=stable&&previous&&previous.first===root.firstChild&&previous.last===root.lastChild?stableUpdate(root,template.content):null;
+    if(result===null)result=animate?(transaction?.root.contains(root)?reconcile(root,template.content,transaction.geometries,true):layout(root,geometries=>reconcile(root,template.content,geometries,true))):reconcile(root,template.content,new Map(),false);
     details(root);invalidate(root);
     // A spring owns temporary presentation styles until it settles. Do not
     // memoize an incoming style request that reconciliation had to defer.

@@ -265,6 +265,17 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
       const descendantRestored=child.innerHTML===inside;root.remove();return{ancestorRestored,descendantRestored};
     });
     assert.deepEqual(nested,{ancestorRestored:true,descendantRestored:true},'nested patches must invalidate enclosing and retained descendant markup caches');
+    const stable=await page.evaluate(()=>{
+      const F=__perf.Flow,root=document.createElement('div');document.body.append(root);
+      F.patch(root,'<button data-motion-key="a" aria-label="11" style="color:red"><span>11</span></button><button data-motion-key="b">B</button>',false);
+      const a=root.firstElementChild,text=a.firstElementChild.firstChild;
+      F.patch(root,'<button data-motion-key="a" aria-label="12" style="color:blue!important"><span>12</span></button><button data-motion-key="b">B</button>',false,true);
+      const updated=root.firstElementChild===a&&a.firstElementChild.firstChild===text&&text.nodeValue==='12'&&a.getAttribute('aria-label')==='12'&&a.style.getPropertyPriority('color')==='important';
+      a.focus();F.batch(root,()=>F.patch(root,'<button data-motion-key="b">B</button><button data-motion-key="a" aria-label="12" style="color:blue!important"><span>12</span></button>',true,true),false);
+      const reordered=root.lastElementChild===a&&document.activeElement===a;
+      root.remove();return{updated,reordered};
+    });
+    assert.deepEqual(stable,{updated:true,reordered:true},'stable readouts must retain nodes and update semantics/styles, with keyed reconciliation on a structure change');
     assert.deepEqual(errors,[]);
     }finally{await context.close();}
   }

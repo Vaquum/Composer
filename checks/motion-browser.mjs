@@ -36,6 +36,12 @@ for(const [name,type] of [['Chromium',chromium],['WebKit',webkit]]){
   await page.addInitScript(()=>{window.Worker=class{postMessage(){} terminate(){}};});
   await page.route('https://fonts.**/**',route=>route.abort());
   await page.goto(base);await settled(page);await seed(page);await settled(page);
+  const offsets=await page.evaluate(()=>{
+    const parent=document.createElement('div'),child=document.createElement('div');parent.append(child);document.body.append(parent);
+    const names=['--flow-layout-x','--flow-layout-y','--flow-enter-y'];for(const name of names)parent.style.setProperty(name,'20px');
+    const values=names.map(name=>getComputedStyle(child).getPropertyValue(name).trim());parent.remove();return values;
+  });
+  assert.deepEqual(offsets,['0px','0px','0px'],`${name}: motion offsets must stay local to the actor`);
   await page.screenshot({path:path.join(screenshots,name+'.png')});
   console.log(`${name} resting scene: ${path.join(screenshots,name+'.png')}`);
   const feedback=await page.evaluate(()=>['.seg button','.icon','.chip','.pane-step','.prog i'].map(s=>getComputedStyle(document.querySelector(s)).transitionDuration));
