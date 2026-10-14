@@ -245,26 +245,31 @@ const TactileFlow = (() => {
     context.append(snapshot);
     ghost.inert = true; ghost.setAttribute('aria-hidden', 'true'); ghost.dataset.flowRetiring = '';
     Object.assign(ghost.style, { position: 'fixed', left: `${box.left}px`, top: `${box.top}px`, width: `${box.width}px`, height: `${box.height}px`, margin: '0', translate: 'none', transform: 'none', pointerEvents: 'none', zIndex: '90' });
-    return()=>{
+    const commit=()=>{
     finish(element); element.remove(); document.body.append(ghost);
     spring(ghost, 'retirement', { from: { opacity, y: 0 }, to: { opacity: 0, y: -model.information },
       write: ({ opacity, y }) => {
         ghost.style.opacity = String(bounded(opacity)); ghost.style.translate = `0 ${y}px`;
         ghost.style.clipPath = `inset(${Math.max(0, bounds.top - box.top - y)}px ${Math.max(0, box.right - bounds.right)}px ${Math.max(0, box.bottom + y - bounds.bottom)}px ${Math.max(0, bounds.left - box.left)}px)`;
       }, done: () => ghost.remove() });
-    };
+    };commit.snapshot=ghost;return commit;
   }
   const actors = ':scope > *, [data-reading], [data-detail], .pane-group, .prow, .pnear';
   function layout(root, change, selector = actors, measure = true) {
     const active = document.activeElement;
     const restore=()=>{if(active?.isConnected&&root.contains(active)&&document.activeElement!==active)active.focus({preventScroll:true});};
     if(reduced()||!measure){const result=change(new Map());restore();return result;}
-    const clips=new Map(),before = new Map([...root.querySelectorAll(selector)].map(el => [el, capture(el,clips)]));before.retirements=new Map();
+    const clips=new Map(),before = new Map([...root.querySelectorAll(selector)].map(el => [el, capture(el,clips)]));before.retirements=new Map();before.bookends=new Map();
     const result = change(before);
     // Read departing styles before removals/ghost insertion can force another layout.
-    for(const commit of before.retirements.values())commit();
+    for(const [node,commit]of before.retirements){
+      let parent=node.parentElement;
+      while(parent&&!before.retirements.get(parent)?.snapshot)parent=parent.parentElement;
+      if(!parent)commit();
+    }
     restore();
-    const after = [...root.querySelectorAll(selector)], actorsAfter=new Set(after),deltas = new Map();
+    const after = [...root.querySelectorAll(selector)], actorsAfter=new Set(after),deltas = new Map(),entries=new Set(),afterClips=new Map();
+    const visible=(box,bounds)=>bounds&&box.width&&box.height&&box.right>bounds.left&&box.left<bounds.right&&box.bottom>bounds.top&&box.top<bounds.bottom;
     for (const el of after) { el.style.removeProperty('--flow-layout-x'); el.style.removeProperty('--flow-layout-y'); }
     for (const el of after) {
       if(!presented(el))continue;
@@ -273,6 +278,12 @@ const TactileFlow = (() => {
       // forces its entire SVG/readings layout inside the input/result task.
       if(!old?.box.width||!old.box.height)continue;
       const box=el.getBoundingClientRect();
+      const wasVisible=visible(old.box,old.clip),isVisible=visible(box,clip(el,afterClips));
+      if(!wasVisible){
+        const channel=owners.get(el)?.get('layout');if(channel)complete(channel);
+        if(isVisible)entries.add(el);
+        continue;
+      }
       if (box.width && box.height) deltas.set(el, { x: old.box.left - box.left, y: old.box.top - box.top });
     }
     for (const el of after) {
@@ -280,7 +291,7 @@ const TactileFlow = (() => {
       if (!delta) {
         let parent=el.parentElement,nested=false;
         while(parent&&parent!==root){if(actorsAfter.has(parent)&&!before.has(parent)){nested=true;break;}parent=parent.parentElement;}
-        if(!before.has(el)&&!nested&&presented(el))reveal(el);continue;
+        if((!before.has(el)||entries.has(el))&&!nested&&presented(el))reveal(el);continue;
       }
       let parent = el.parentElement;
       while (parent && parent !== root && !deltas.has(parent)) parent = parent.parentElement;
@@ -350,9 +361,19 @@ const TactileFlow = (() => {
       if(node!==cursor)root.insertBefore(node,cursor);
       cursor=node.nextSibling;
     }
+    geometries.bookends?.set(root,{first:plan[0]?.node??null,last:plan.at(-1)?.node??null});
     return deferred;
   }
   const markups=new WeakMap();let transaction=null;
+  function update(root,markup,change){
+    const previous=markups.get(root);
+    if(!previous||previous.first!==root.firstChild||previous.last!==root.lastChild)return false;
+    const memo=change(previous.memo);if(!memo)return false;
+    for(let parent=root.parentElement;parent;parent=parent.parentElement)markups.delete(parent);
+    const walker=document.createTreeWalker(root,NodeFilter.SHOW_ALL);let node;
+    while((node=walker.nextNode()))markups.delete(node);
+    markups.set(root,{markup,first:root.firstChild,last:root.lastChild,memo});return true;
+  }
   function stableUpdate(root,incoming){
     const old=document.createTreeWalker(root,NodeFilter.SHOW_ALL),next=document.createTreeWalker(incoming,NodeFilter.SHOW_ALL),parents=new WeakMap([[root,incoming]]),pairs=[];
     let current=old.nextNode(),desired=next.nextNode();
@@ -384,7 +405,8 @@ const TactileFlow = (() => {
     details(root);invalidate(root);
     // A spring owns temporary presentation styles until it settles. Do not
     // memoize an incoming style request that reconciliation had to defer.
-    if(!result)markups.set(root,{markup,first:root.firstChild,last:root.lastChild});else markups.delete(root);
+    const ends=transaction?.root.contains(root)?transaction.geometries.bookends?.get(root):null;
+    if(!result)markups.set(root,{markup,first:ends?ends.first:root.firstChild,last:ends?ends.last:root.lastChild});else markups.delete(root);
     return result;
   }
   function switchControl(input) {
@@ -405,5 +427,5 @@ const TactileFlow = (() => {
   addEventListener('pageshow', () => { suspended = document.hidden; });
   document.addEventListener('visibilitychange', () => { suspended = document.hidden; if (suspended) finish(); });
   details(document);
-  return { model, integrate, advance, bounds, reduced, spring, value, cancel, finish, reveal, visible, disclosure, resize, layout, batch, patch, details, switchControl, onSettle: fn => settlers.add(fn), active: () => moving.size > 0 };
+  return { model, integrate, advance, bounds, reduced, spring, value, cancel, finish, reveal, visible, disclosure, resize, layout, batch, patch, update, details, switchControl, onSettle: fn => settlers.add(fn), active: () => moving.size > 0 };
 })();

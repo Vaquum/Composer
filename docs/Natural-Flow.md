@@ -76,6 +76,12 @@ or closes, avoiding repeated paragraph wrapping and text repainting.
 Motion offset properties do not inherit into SVG/reading descendants. Stable
 readouts validate tree shape and identity before updating attributes/text in
 place; changed structure falls back to keyed reconciliation.
+Signal readout bindings share the full renderer's formatting/track fields and
+live in the markup cache, avoiding reparsing the reading list on equal-geometry
+updates. Viewport arrivals enter locally; unseen retained actors settle directly.
+Nested removals keep the outer snapshot and do not paint a child twice. Batch
+markup caches record planned bookends after queued removals. Tests also replace
+every result card and change the reading order/text width at maximum composition.
 
 `npm run test:performance` exercises native Chromium, Chromium at 4× CPU and
 WebKit at 390/1600 px, DPR 1/2 and 2/20 bars, with 140 readings and all 729 six-bar

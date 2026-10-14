@@ -5,7 +5,7 @@ import http from 'node:http';
 import assert from 'node:assert/strict';
 import { chromium, webkit } from 'playwright';
 
-const html=fs.readFileSync('index.html','utf8').replace('Panes.init();','window.__perf={S,Stage,Match,Panes,Ref,Forecast,Ops,App,Flow};\nPanes.init();');
+const html=fs.readFileSync('index.html','utf8').replace('Panes.init();','window.__perf={S,Stage,Match,Panes,Ref,Forecast,Ops,App,Flow,PaneDesigns};\nPanes.init();');
 const assets=new Set(['motion.js','motion.css','panes.css','pane-designs.js','forecast.js','context.js']);
 function fixture(n){
   const keys=['vol','trades','size','maker','range','body','day'];
@@ -105,8 +105,9 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
       if(kind==='disclosure')document.querySelector('#lrows details summary').click();
       if(kind==='fan'){A.Forecast.fan=value;A.Forecast.remember();A.App.redraw();}
       if(kind==='refresh'){
-        const r=A.Match.result;A.Match.onmsg({...r,type:'result',id:A.Match.id,results:r.results.map(x=>({...x,start:x.start+900})),
-          panes:{...r.panes,rows:r.panes.rows.map(w=>({...w,set:w.set.map(v=>v+.001)})),cont:{...r.panes.cont,fan:r.panes.cont.fan.map(q=>q.map(v=>v+.001))}}});
+        const r=A.Match.result,layout=value==='layout',replace=value==='replace'||layout;
+        A.Match.onmsg({...r,type:'result',id:A.Match.id,results:r.results.map(x=>({...x,start:x.start+(replace?1e6:900),raw:x.raw.map(b=>b.slice())})),
+          panes:{...r.panes,rows:r.panes.rows.map((w,i)=>({...w,d:layout?(i+1)/r.panes.rows.length:w.d,set:w.set.map(v=>v+(layout?1:.001))})),cont:{...r.panes.cont,fan:r.panes.cont.fan.map(q=>q.map(v=>v+.001))}}});
       }
       __samples.calls.push(performance.now()-t);
     },{kind,value});
@@ -116,6 +117,9 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
     await measure('reference',async()=>{for(const topic of [2,3,4]){await call('reference',true);await settle(page);await call('topic',topic);await settle(page);await call('reference',false);await settle(page);}});
     await measure('forecast',async()=>{for(const v of ['paths','branches','states']){await call('forecast',v);await settle(page);}await call('fan',false);await settle(page);await call('fan',true);});
     await measure('refresh',async()=>{for(let i=0;i<3;i++){await call('refresh');await settle(page);}});
+    await measure('refresh-replace',async()=>{await call('refresh','replace');});
+    await measure('refresh-layout',async()=>{await call('refresh','layout');});
+    await seed(page,data);await settle(page);
     const refreshedDisclosure=await page.evaluate(async()=>{
       const A=__perf;A.S.tfOn.fill(false);A.S.tfOn[0]=true;A.Match.sent=A.Match.query();A.Panes.render(A.Match.result);A.Flow.finish();
       const summary=document.querySelector('#lnext details summary'),detail=summary.parentElement;
@@ -132,11 +136,17 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
     const readout=await page.evaluate(()=>{
       const A=__perf,mark=document.querySelector('#lrows .trk .bd'),before=mark.style.left,rect=Element.prototype.getBoundingClientRect;let reads=0;
       Element.prototype.getBoundingClientRect=function(...args){if(this.classList.contains('pane-body'))reads++;return rect.apply(this,args);};
-      try{const r=A.Match.result;A.Panes.render({...r,panes:{...r.panes,rows:r.panes.rows.map(w=>({...w,set:w.set.map(v=>v+.001)}))}});}
+      let parity=false;
+      try{
+        const r=A.Match.result,next={...r,panes:{...r.panes,rows:r.panes.rows.map(w=>({...w,set:w.set.map(v=>v+.001)}))}};A.Panes.render(next);
+        const expected=document.createElement('div');expected.innerHTML=A.PaneDesigns.left('signal',next,{barCount:A.S.bars.length});
+        const fields=root=>[...root.querySelectorAll('[data-reading]')].map(node=>({key:node.dataset.reading,text:node.textContent,aria:node.querySelector('.trk')?.getAttribute('aria-label'),styles:[...node.querySelectorAll('.trk i')].map(i=>i.getAttribute('style'))}));
+        parity=JSON.stringify(fields(document.querySelector('#lrows')))===JSON.stringify(fields(expected));
+      }
       finally{Element.prototype.getBoundingClientRect=rect;}
-      return {reads,updated:mark.style.left!==before};
+      return {reads,updated:mark.style.left!==before,parity};
     });
-    assert.deepEqual(readout,{reads:0,updated:true},'equal-width readout updates must change chart marks without remeasuring pane bodies');
+    assert.deepEqual(readout,{reads:0,updated:true,parity:true},'equal-width updates must retain chart/semantic parity with the full renderer without remeasuring pane bodies');
     await page.locator('#cv').scrollIntoViewIfNeeded();
     const point=await page.evaluate(()=>{
       const A=__perf,G=A.Stage.geom(),b=A.S.bars[0],box=A.Stage.cv.getBoundingClientRect();
@@ -234,6 +244,22 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
       F.finish(root);root.remove();return state;
     });
     assert.deepEqual(restoredBatch,{keys:['a','b'],retained:true,focused:true},'restoring an actor within a batch must cancel its queued retirement');
+    const hierarchy=await page.evaluate(()=>{
+      const F=__perf.Flow,root=document.createElement('div');Object.assign(root.style,{position:'fixed',left:'10px',top:'10px',width:'200px'});document.body.append(root);
+      F.patch(root,'<section class="pane-group" data-motion-key="group"><div class="prow" data-motion-key="nested-reading">Nested retirement</div></section>');F.finish(root);
+      const group=root.firstElementChild;F.batch(root,()=>{F.patch(group,'');F.patch(root,'');});
+      const copies=document.querySelectorAll('[data-flow-retiring] [data-motion-key="nested-reading"]').length;
+      F.finish();root.remove();return copies;
+    });
+    assert.equal(hierarchy,1,'nested removals must paint a reading once when its ancestor also retires');
+    const viewport=await page.evaluate(()=>{
+      const F=__perf.Flow,root=document.createElement('div');Object.assign(root.style,{position:'fixed',left:'10px',top:'10px',width:'200px',height:'60px',overflow:'hidden'});document.body.append(root);
+      const row=k=>`<div data-motion-key="${k}" style="height:80px">${k}</div>`;F.patch(root,row('a')+row('b')+row('c'));F.finish(root);
+      F.patch(root,row('b')+row('a')+row('c'));
+      const b=root.firstElementChild,c=root.lastElementChild,state={visibleEntry:!!F.value(b,'entry'),visibleLayout:!!F.value(b,'layout'),hiddenLayout:!!F.value(c,'layout')};
+      F.finish(root);root.remove();return state;
+    });
+    assert.deepEqual(viewport,{visibleEntry:true,visibleLayout:false,hiddenLayout:false},'newly visible readings enter locally; unseen readings do not run position springs');
     await seed(page,data);await settle(page);
     // Warm allocation pools before the retained-node and heap bounds.
     for(let i=0;i<2;i++){await call('reference',true);await call('reference',false);await settle(page);}

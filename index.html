@@ -1733,7 +1733,7 @@ const Match = {
   },
   resultKeyOf(r){return `${r.tf}:${r.start}:${r.picks.join(',')}`;},
   card(r, i, held) {
-    const d = new Date(r.start * 1000), when = `${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })} ${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+    const d = new Date(r.start * 1000), when = `${calendarDay.format(d)} ${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
     const broken = r.broken.map(i2 => held[i2].label);
     const flips = r.flips === 0 ? 'exact' : `${r.flips} flip${r.flips === 1 ? '' : 's'}`, off = `${(r.off * 100).toFixed(1)}% off`;
     const nx = r.next;
@@ -1772,14 +1772,15 @@ const Match = {
     const r=this.result&&i>=0?this.result.results[i]:null;
     if(!r){if(Stage.trace){Stage.trace.retiring=true;Stage.traces.push(Stage.trace);Stage.trace=null;}App.redraw();return;}
     const d=new Date(r.start*1000),key=this.resultKeyOf(r);
-    const content={key,bars:r.drawn,next:r.next?r.next.bar:null,caption:`${r.tf} · ${d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'})} · ${(r.off*100).toFixed(1)}% off · ${r.flips===0?'exact':r.flips+' flips'}`};
+    const content={key,bars:r.drawn,next:r.next?r.next.bar:null,caption:`${r.tf} · ${calendarDay.format(d)} · ${(r.off*100).toFixed(1)}% off · ${r.flips===0?'exact':r.flips+' flips'}`};
     if(Stage.trace?.key===key)Object.assign(Stage.trace,content);
     else{if(Stage.trace){Stage.trace.retiring=true;Stage.traces.push(Stage.trace);}Stage.trace={...content,a:calm()?1:0,va:0};}
     App.redraw();
   },
 };
 // a day as the cards write it, "10 Oct 2026"
-const day = t => new Date(t * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+const calendarDay=new Intl.DateTimeFormat('en-GB',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'});
+const day = t => calendarDay.format(new Date(t * 1000));
 // 次 in words: "rose", "rose at least 10 bps", "fell at least 1 ATR"
 function nextWords(f) {
   const verb = f.dir > 0 ? 'rose' : 'fell', v = Number.isInteger(f.value) ? String(f.value) : String(+f.value.toFixed(2));
@@ -1880,7 +1881,11 @@ const Panes = {
         Flow.disclosure($('#rnextsec'),variant==='bars');
         $('#ncap').textContent = 'One changed bar-end comparison · selected timeframes';
       }
-      for(const [id,html]of Object.entries(markup))Flow.patch($('#'+id),html,true,!measure);
+      for(const [id,html]of Object.entries(markup)){
+        const root=$('#'+id);
+        if(id==='lrows'&&!measure&&variant==='signal'&&Flow.update(root,html,memo=>PaneDesigns.updateSignal(root,r,memo)))continue;
+        Flow.patch(root,html,true,!measure);
+      }
       },measure);
       if(measure)Flow.resize($('.pane-body',pane),update);else update();
       pane.dataset.view = variant;

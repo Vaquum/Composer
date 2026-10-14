@@ -1,4 +1,4 @@
-// Pure presentation of the matcher's results. Each pane chooses its own layout;
+// Presentation of the matcher's results. HTML and retained updates share formatting.
 // changing a layout never changes the cohort or recomputes a statistic.
 const PaneDesigns = (() => {
   const variants = [
@@ -20,10 +20,14 @@ const PaneDesigns = (() => {
   const clear = w => w.set[1] > w.all[0] || w.set[2] < w.all[0];
   const detail = (key, title, content, open = false) => `<details class="pane-details" data-detail="${key}"${open ? ' open' : ''}><summary>${title}</summary>${content}</details>`;
   const legend = () => '<div class="pane-legend"><span><i class="legend-dot" aria-hidden="true"></i>Selected</span><span><i class="legend-band" aria-hidden="true"></i>95% interval</span><span><i class="legend-tick" aria-hidden="true"></i>All</span></div>';
-  function track(w) {
+  function trackFields(w) {
     const lo = w.set[1], hi = w.set[2], ref = w.all[0], a = Math.min(lo, ref), b = Math.max(hi, ref);
     const pad = (b - a) * .6 || .05, mn = a - pad, mx = b + pad, at = x => (x - mn) / (mx - mn) * 100;
-    return `<div class="trk" role="img" aria-label="Selected mean ${displayed(w,w.set[0])}; 95% interval ${displayed(w,lo)} to ${displayed(w,hi)}; all-window mean ${displayed(w,ref)}"><i class="bd" style="left:${at(lo)}%;width:${at(hi)-at(lo)}%"></i><i class="dt" style="left:${at(w.set[0])}%"></i><i class="tk" style="left:${at(ref)}%"></i></div>`;
+    return {aria:`Selected mean ${displayed(w,w.set[0])}; 95% interval ${displayed(w,lo)} to ${displayed(w,hi)}; all-window mean ${displayed(w,ref)}`,band:`left:${at(lo)}%;width:${at(hi)-at(lo)}%`,dot:`left:${at(w.set[0])}%`,reference:`left:${at(ref)}%`};
+  }
+  function track(w) {
+    const f=trackFields(w);
+    return `<div class="trk" role="img" aria-label="${f.aria}"><i class="bd" style="${f.band}"></i><i class="dt" style="${f.dot}"></i><i class="tk" style="${f.reference}"></i></div>`;
   }
   const reading = (w, showBar = true) => `<div class="prow" data-reading="${w.bar}-${w.key}"><div class="pl"><span>${showBar ? 'Bar '+(w.bar+1)+' · ' : ''}${label(w)}</span><b>${displayed(w,w.set[0])}</b></div><div class="pane-reading-bottom">${track(w)}<span class="pane-baseline">All ${displayed(w,w.all[0])}</span></div></div>`;
   const difference = w => {
@@ -53,6 +57,31 @@ const PaneDesigns = (() => {
     const lead = first[0], delta = difference(lead), rest = first.slice(1);
     return `<div class="pane-hero" data-reading="${lead.bar}-${lead.key}"><p class="pane-hero-label">Largest difference · Bar ${lead.bar+1} ${label(lead).toLowerCase()}</p><p class="pane-hero-value">${value(lead,lead.set[0])}<span class="pane-unit">${unit(lead)}</span></p><p class="pane-hero-compare">All ${displayed(lead,lead.all[0])}${delta ? ' · <strong>'+delta+'</strong>' : ''}</p>${track(lead)}</div>`+legend()+
       [...new Set(rest.map(w=>groups[w.key]))].map(group=>`<section class="pane-group" data-motion-key="group-${group}"><h3>${group}${group === 'Activity' || group === 'Trade size' ? '<span class="pane-unit">vs prior 11 bars</span>' : ''}</h3>${rest.filter(w=>groups[w.key]===group).map(w=>reading(w)).join('')}</section>`).join('')+remaining;
+  }
+  // Used only after the caller verifies unchanged layout/identity. Bindings live
+  // in Flow's markup entry, so a structural patch releases old DOM references.
+  function updateSignal(root,r,memo){
+    const rows=new Map((r.panes.rows||[]).map(w=>[`${w.bar}-${w.key}`,w]));
+    if(!memo){
+      const nodes=[...root.querySelectorAll('[data-reading]')];
+      if(nodes.length!==rows.size||!nodes.length)return false;
+      memo=nodes.map(node=>{
+        const hero=node.classList.contains('pane-hero'),track=node.querySelector('.trk');
+        return {node,key:node.dataset.reading,hero,value:hero?node.querySelector('.pane-hero-value')?.firstChild:node.querySelector('.pl b')?.firstChild,
+          baseline:hero?node.querySelector('.pane-hero-compare')?.firstChild:node.querySelector('.pane-baseline')?.firstChild,
+          delta:hero?node.querySelector('.pane-hero-compare strong'):null,track,band:track?.querySelector('.bd'),dot:track?.querySelector('.dt'),reference:track?.querySelector('.tk')};
+      });
+    }
+    if(memo.length!==rows.size||memo.some(b=>!rows.has(b.key)||b.node.dataset.reading!==b.key||![b.node,b.value,b.baseline,b.track,b.band,b.dot,b.reference,...(b.delta?[b.delta]:[])].every(n=>n&&root.contains(n))))return false;
+    const text=(node,value)=>{if(node.nodeValue!==value)node.nodeValue=value;},attribute=(node,name,value)=>{if(node.getAttribute(name)!==value)node.setAttribute(name,value);};
+    for(const b of memo){
+      const w=rows.get(b.key),f=trackFields(w),delta=b.hero?difference(w):'';
+      text(b.value,b.hero?value(w,w.set[0]):displayed(w,w.set[0]));
+      text(b.baseline,`All ${displayed(w,w.all[0])}${b.hero&&delta?' · ':''}`);
+      if(b.delta&&b.delta.textContent!==delta)b.delta.textContent=delta;
+      attribute(b.track,'aria-label',f.aria);attribute(b.band,'style',f.band);attribute(b.dot,'style',f.dot);attribute(b.reference,'style',f.reference);
+    }
+    return memo;
   }
   function meter(w, direction = 'selected', reference = null) {
     if (!w) return '';
@@ -89,5 +118,5 @@ const PaneDesigns = (() => {
   }
   const leftMethod = barCount => `<ul class="pane-method"><li>All means every ${barCount}-bar window on the selected timeframes. Rows compare selected-window and all-window means.</li><li>Volume, trades and mean trade size: relative to the median of the prior 11 bars; geometric means.</li><li>Body and range: prior-bar Wilder ATR(14). Maker share: share of volume. Last close: position in the prior UTC day's range.</li><li>Every reading track has its own scale. Differences are ranked in standard deviations of all windows.</li><li>95% intervals: t for means, Wilson for rates. No estimate below 30 windows.</li></ul>`;
   const rightMethod = after => `<ul class="pane-method"><li>Each window is scaled from its own low and high to your drawing. The canvas fan shows the median and middle 50% and 80% of closes.</li><li>Breaks count any crossing during the next ${after} bars. Final close compares bar ${after} with the window's last close.</li><li>The terminal band is the middle 50% of closes, not a confidence interval. Outcome rates use all complete continuations, with Wilson 95% intervals.</li></ul>`;
-  return { variants, left, right, next, terminal, caption, leftMethod, rightMethod };
+  return { variants, left, updateSignal, right, next, terminal, caption, leftMethod, rightMethod };
 })();
