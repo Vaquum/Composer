@@ -233,6 +233,7 @@ const TactileFlow = (() => {
   }
   const actors = ':scope > *, [data-reading], [data-detail], .pane-group, .prow, .pnear';
   function layout(root, change, selector = actors) {
+    if(reduced())return change(new Map());
     const active = document.activeElement;
     const clips=new Map(),before = new Map([...root.querySelectorAll(selector)].map(el => [el, capture(el,clips)]));
     const result = change(before);
@@ -287,10 +288,13 @@ const TactileFlow = (() => {
       else { if (node.nodeType === 1) finish(node); node.remove(); }
     }
   }
+  const markups=new WeakMap();
   function patch(root, markup, animate = true) {
+    const previous=markups.get(root);
+    if(previous?.markup===markup&&previous.first===root.firstChild&&previous.last===root.lastChild){details(root);return;}
     const template = document.createElement('template'); template.innerHTML = markup; details(template.content);
     const result=animate?layout(root,geometries=>reconcile(root,template.content,geometries,true)):reconcile(root,template.content,new Map(),false);
-    details(root);invalidate(root);return result;
+    details(root);invalidate(root);markups.set(root,{markup,first:root.firstChild,last:root.lastChild});return result;
   }
   function switchControl(input) {
     const target = input.checked ? 13 : 0;

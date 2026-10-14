@@ -801,16 +801,18 @@ const Forecast = {
     const next=ForecastViews.reconcile(this,{fresh:Match.fresh(),failed:Match.failed,data:Match.result?.panes?.cont,key:Match.resultKey});
     const changed=next.source!==this.source;Object.assign(this,next);
     const c=this.source,F=this.field(G),busy=['loading','refreshing'].includes(this.phase);
+    const semantic=[this.view,this.prefix,this.selected,this.phase,this.current,this.fan].join('|');
+    if(changed||semantic!==this.semantic){
+    this.semantic=semantic;
     this.panel.setAttribute('aria-busy',String(busy));this.panel.dataset.phase=this.phase;
     $('#forecast-retry').hidden=this.phase!=='error';
     const messages={ready:'',loading:'Finding matching continuations…',refreshing:'Updating · previous result',sparse:'Fewer than 30 complete continuations',error:c?'Update failed · previous result':'Continuation unavailable'};
     $('#forecast-message').textContent=messages[this.phase];
-    Object.assign($('#forecast-message').style,{left:`${F.left}px`,top:`${F.top-22}px`,width:`${Math.max(0,F.right-F.left-50)}px`});
-    Object.assign($('#forecast-retry').style,{left:`${F.right-48}px`,top:`${F.top-22}px`});
     $('#forecast-message').dataset.tip=(messages[this.phase]||'Historical continuation probabilities')+'. '+(c?`${c.n.toLocaleString('en-GB')} matched windows with all six following bars. `:'No probability estimate is available. ')+(this.current?'':c?'These are the previous composition’s readings; outcome selection waits for the update. ':'')+ForecastViews.definition;
     const status=`${messages[this.phase]||`${c?.n.toLocaleString('en-GB')} complete matched windows`}. ${this.view}. Fan ${this.fan?'on':'off'}.`;
     if($('#forecast-status').textContent!==status)$('#forecast-status').textContent=status;
     for(const pane of document.querySelectorAll('.pane')){pane.dataset.updating=String(!!Match.result&&!this.current);pane.setAttribute('aria-busy',String(busy));}
+    }
     const key=`${this.view}|${this.prefix}|${this.selected}|${this.phase}`;
     const sceneKey=`${this.view}|${this.prefix}`;
     if(changed||sceneKey!==this.sceneKey&&(this.view==='branches'||this.sceneKey?.startsWith('branches|')))Stage.changeForecast();
@@ -820,10 +822,16 @@ const Forecast = {
       this.rendered=key;this.context?.cancelFor?.(this.body);this.context?.cancelFor?.(this.fanHits);
       Flow.patch(this.body,this.markup(),false);
       Flow.patch(this.fanHits,c?'<button type="button" class="forecast-fan-hit" data-kind="fan" aria-label="Historical closing-price fan"></button>'+c.fan.flatMap((q,j)=>q.map((_,k)=>`<span class="forecast-fan-point" data-step="${j}" data-quantile="${k}" data-key="fan-${j}-${k}"></span>`)).join(''):'',false);
+      this.placement=null;this.tipSource=null;
       if(focused){const target=[...this.body.querySelectorAll('[data-key]')].find(b=>b.dataset.key===focused);target?.focus({preventScroll:true});}
       App.redraw();
     }
     this.place(G,F);
+  },
+  outcomes(prefix=''){
+    if(this.cohortSource!==this.source){this.cohortSource=this.source;this.cohorts=new Map();}
+    if(!this.cohorts.has(prefix))this.cohorts.set(prefix,ForecastViews.outcomes(this.source,prefix));
+    return this.cohorts.get(prefix);
   },
   markup(){
     const c=this.source,V=ForecastViews,escape=s=>String(s).replaceAll('&','&amp;').replaceAll('"','&quot;').replaceAll('<','&lt;');
@@ -856,8 +864,12 @@ const Forecast = {
     return html;
   },
   place(G,F){
-    const set=this.source?ForecastViews.outcomes(this.source,this.view==='branches'?this.prefix:''):null;
+    let lo=Infinity,hi=-Infinity;for(const b of S.bars){lo=Math.min(lo,b.dv[0]);hi=Math.max(hi,b.dv[3]);}
+    const placement=[G.w,G.h,G.forecastLeft,G.plotTop,G.plotBottom,...F.xs,F.width,lo,hi,Stage.view.lo,Stage.view.hi,this.semantic].join('|');
+    if(this.placement===placement)return;this.placement=placement;
+    const set=this.source?this.outcomes(this.view==='branches'?this.prefix:''):null;
     const put=(el,x,y,w,h)=>Object.assign(el.style,{left:`${x}px`,top:`${y}px`,width:`${Math.max(0,w)}px`,height:`${Math.max(0,h)}px`});
+    put($('#forecast-message'),F.left,F.top-22,F.right-F.left-50,22);put($('#forecast-retry'),F.right-48,F.top-22,48,22);
     this.body.querySelectorAll('[data-kind]').forEach(el=>{
       const j=+el.dataset.step,k=+el.dataset.stateIndex,kind=el.dataset.kind;
       if(kind==='path'){
@@ -876,13 +888,14 @@ const Forecast = {
     this.fanHits.hidden=!this.fan||!this.source;
     if(this.source){
       const c=this.source,fan=this.fanHits.querySelector('[data-kind="fan"]');
-      fan.dataset.tip=ForecastViews.fanTip(c)+(this.current?'':' Previous composition’s fan.');
+      const tipsChanged=this.tipSource!==c||this.tipCurrent!==this.current;
+      if(tipsChanged)fan.dataset.tip=ForecastViews.fanTip(c)+(this.current?'':' Previous composition’s fan.');
       put(fan,G.forecastLeft+8,G.plotTop,F.xs[5]-G.forecastLeft-8,G.plotH);
-      let lo=Infinity,hi=-Infinity;for(const b of S.bars){lo=Math.min(lo,b.dv[0]);hi=Math.max(hi,b.dv[3]);}
       this.fanHits.querySelectorAll('[data-quantile]').forEach(el=>{
         const j=+el.dataset.step,k=+el.dataset.quantile,y=Stage.Y(lo+c.fan[j][k]*(hi-lo),G);
-        put(el,F.xs[j]-9,y-5,18,10);el.dataset.tip=ForecastViews.fanTip(c,j,k)+(this.current?'':' Previous composition’s fan.');
+        put(el,F.xs[j]-9,y-5,18,10);if(tipsChanged)el.dataset.tip=ForecastViews.fanTip(c,j,k)+(this.current?'':' Previous composition’s fan.');
       });
+      this.tipSource=c;this.tipCurrent=this.current;
     }
   },
 };
@@ -939,6 +952,7 @@ const Stage = {
       this.departingForecast = document.createElement('canvas');
       this.departingForecast.width = this.forecastSurface.width; this.departingForecast.height = this.forecastSurface.height;
       this.departingForecast.getContext('2d').drawImage(this.forecastSurface, 0, 0);
+      this.departingForecast.flowBox={...this.forecastSurface.flowBox};
       this.scene = 0;
     } else { this.scene = 1; this.sceneVelocity = 0; this.departingForecast = null; }
   },
@@ -1320,14 +1334,18 @@ const Stage = {
   // their closes (10 to 90%, 25 to 75% and the median) from the last bar's close, with the shape's high and low carried on
   drawForecast(ctx,G) {
     if(!this.forecastSurface)this.forecastSurface=document.createElement('canvas');
-    const layer=fitCanvas(this.forecastSurface,G.w,G.h);layer.clearRect(0,0,G.w,G.h);
+    const old=this.departingForecast?.flowBox;
+    const x=Math.min(Math.max(0,Math.floor(G.forecastLeft-24)),old?.x??G.w),y=Math.min(Math.max(0,Math.floor(G.plotTop-24)),old?.y??G.h);
+    const box={x,y,w:G.w-x,h:Math.min(G.h,Math.max(Math.ceil(G.plotBottom+24),old?old.y+old.h:0))-y};
+    const layer=fitCanvas(this.forecastSurface,box.w,box.h);layer.clearRect(0,0,box.w,box.h);layer.translate(-x,-y);
+    this.forecastSurface.flowBox=box;
     this.drawFan(layer,G);
     if(Forecast.source){this.drawStates(layer,G);this.drawPaths(layer,G);this.drawBranches(layer,G);}else this.drawForecastEmpty(layer,G);
     if(this.departingForecast){
-      layer.save();layer.globalCompositeOperation='destination-in';layer.globalAlpha=this.scene;layer.fillRect(0,0,G.w,G.h);layer.restore();
-      layer.save();layer.globalCompositeOperation='destination-over';layer.globalAlpha=1-this.scene;layer.drawImage(this.departingForecast,0,0,G.w,G.h);layer.restore();
+      layer.save();layer.globalCompositeOperation='destination-in';layer.globalAlpha=this.scene;layer.fillRect(x,y,box.w,box.h);layer.restore();
+      layer.save();layer.globalCompositeOperation='destination-over';layer.globalAlpha=1-this.scene;layer.drawImage(this.departingForecast,old.x,old.y,old.w,old.h);layer.restore();
     }
-    ctx.drawImage(this.forecastSurface,0,0,G.w,G.h);
+    ctx.drawImage(this.forecastSurface,x,y,box.w,box.h);
   },
   drawFan(ctx, G) {
     const c=Forecast.source;
@@ -1341,9 +1359,16 @@ const Stage = {
     const neutral=rgbOf(COL['ink-2']),indigo=rgbOf(COL.ai);
     const pigment=neutral.map((v,j)=>Math.round(v*.78+indigo[j]*.22));
     const paint=rgbStr(pigment),weight=this.fanA*this.fanWeight*FAN_OPTIONS.strength*(1-(this.tracePresence||0)*.7);
+    const key=[G.w,G.h,G.plotTop,G.plotBottom,this.view.lo,this.view.hi,lo,hi,y0,lx,...xs,paint].join('|');
+    if(this.fanCache?.source===c&&this.fanCache.key===key){
+      const {box}=this.fanCache;ctx.save();ctx.globalAlpha=weight;ctx.drawImage(this.fanInkSurface,box.x,box.y,box.w,box.h);ctx.restore();return;
+    }
+    // Raster work is limited to the fan's clipped region; fading reuses its ink.
+    const box={x:Math.max(0,Math.floor(lx-24)),y:Math.max(0,Math.floor(G.plotTop-24))};
+    box.w=Math.max(1,G.w-box.x);box.h=Math.max(1,Math.min(G.h,Math.ceil(G.plotBottom+24))-box.y);
     if(!this.fanSurface)this.fanSurface=document.createElement('canvas');
-    const wash=fitCanvas(this.fanSurface,G.w,G.h);
-    wash.clearRect(0,0,G.w,G.h);wash.fillStyle=paint;
+    const wash=fitCanvas(this.fanSurface,box.w,box.h);
+    wash.clearRect(0,0,box.w,box.h);wash.translate(-box.x,-box.y);wash.fillStyle=paint;
     const hull=(lower,upper)=>{
       wash.beginPath();wash.moveTo(lx,y0);
       c.fan.forEach((q,j)=>wash.lineTo(xs[j],Y(upper(q))));
@@ -1361,23 +1386,25 @@ const Stage = {
     const fade=wash.createLinearGradient(lx,0,end,0);
     fade.addColorStop(0,'rgba(0,0,0,0)');fade.addColorStop(.08,'rgba(0,0,0,1)');
     fade.addColorStop(.94,'rgba(0,0,0,1)');fade.addColorStop(1,'rgba(0,0,0,0)');
-    wash.fillStyle=fade;wash.fillRect(0,0,G.w,G.h);wash.globalCompositeOperation='source-over';
-    ctx.save();ctx.beginPath();ctx.rect(0,G.plotTop-24,G.w,G.plotH+48);ctx.clip();
-    ctx.globalAlpha=weight;ctx.filter=`blur(${6*FAN_OPTIONS.softness}px)`;
-    ctx.drawImage(this.fanSurface,0,0,G.w,G.h);ctx.filter='none';
-    const line=ctx.createLinearGradient(lx,0,end,0);
+    wash.fillStyle=fade;wash.fillRect(box.x,box.y,box.w,box.h);wash.globalCompositeOperation='source-over';
+    if(!this.fanInkSurface)this.fanInkSurface=document.createElement('canvas');
+    const ink=fitCanvas(this.fanInkSurface,box.w,box.h);ink.clearRect(0,0,box.w,box.h);ink.translate(-box.x,-box.y);
+    ink.filter=`blur(${6*FAN_OPTIONS.softness}px)`;
+    ink.drawImage(this.fanSurface,box.x,box.y,box.w,box.h);ink.filter='none';
+    const line=ink.createLinearGradient(lx,0,end,0);
     line.addColorStop(0,rgbStr(pigment,0));line.addColorStop(.08,paint);
     line.addColorStop(.94,paint);line.addColorStop(1,rgbStr(pigment,0));
-    ctx.strokeStyle=line;ctx.lineJoin='round';ctx.lineCap='round';
+    ink.strokeStyle=line;ink.lineJoin='round';ink.lineCap='round';
     const contour=(k,alpha,width)=>{
-      ctx.globalAlpha=weight*FAN_OPTIONS.lines*alpha;ctx.lineWidth=width;
-      ctx.beginPath();ctx.moveTo(lx,y0);
-      c.fan.forEach((q,j)=>ctx.lineTo(xs[j],Y(q[k])));ctx.stroke();
+      ink.globalAlpha=FAN_OPTIONS.lines*alpha;ink.lineWidth=width;
+      ink.beginPath();ink.moveTo(lx,y0);
+      c.fan.forEach((q,j)=>ink.lineTo(xs[j],Y(q[k])));ink.stroke();
     };
     contour(0,.17,.8);contour(4,.17,.8);
     contour(1,.23,.8);contour(3,.23,.8);
     if(FAN_OPTIONS.median)contour(2,.34,1);
-    ctx.restore();
+    ink.globalAlpha=1;this.fanCache={source:c,key,box};
+    ctx.save();ctx.globalAlpha=weight;ctx.drawImage(this.fanInkSurface,box.x,box.y,box.w,box.h);ctx.restore();
   },
   drawStateGlyph(ctx,glyph,x,center){
     const baseline=ctx.textBaseline;ctx.textBaseline='alphabetic';
@@ -1388,7 +1415,7 @@ const Stage = {
   drawStates(ctx,G) {
     const mix=this.modeMix??(Forecast.view==='paths'?1:0);
     if(Forecast.view==='branches'||mix>.999)return;
-    const c=Forecast.source,set=ForecastViews.outcomes(c),F=Forecast.field(G);
+    const c=Forecast.source,set=Forecast.outcomes(),F=Forecast.field(G);
     ctx.save();
     const opacity=(Forecast.current?1:.4)*(1-mix);
     for(let j=0;j<6;j++){
@@ -1414,7 +1441,7 @@ const Stage = {
     const colors={U:COL.up,I:COL.flat,D:COL.down},glyphs={U:'↑',I:'•',D:'↓'};
     const alpha=(Forecast.current?1:.4)*mix,other=c.n-leaders.reduce((n,[,k])=>n+k,0);
     const tint=(color,a)=>rgbStr(paper.map((v,j)=>Math.round(v+(rgbOf(color)[j]-v)*a)));
-    const fromY=(key,j)=>{const p=ForecastViews.outcomes(c).grid[j].map(n=>n/c.n),k='UID'.indexOf(key);return F.top+F.height*(p.slice(0,k).reduce((a,b)=>a+b,0)+p[k]/2);};
+    const fromY=(key,j)=>{const p=Forecast.outcomes().grid[j].map(n=>n/c.n),k='UID'.indexOf(key);return F.top+F.height*(p.slice(0,k).reduce((a,b)=>a+b,0)+p[k]/2);};
     ctx.save();ctx.textBaseline='middle';ctx.textAlign='left';ctx.font=`400 11px ${FONT_UI}`;ctx.fillStyle=COL['ink-2'];ctx.globalAlpha=alpha;
     ctx.fillText(F.right-F.left<170?'Whole-path odds':'Whole-path probability',F.left,F.top+8);
     ctx.fillText(`Other paths ${ForecastViews.percent(other/c.n)}`,F.left,F.top+F.height-8);
