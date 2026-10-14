@@ -201,9 +201,10 @@ const TactileFlow = (() => {
     }
     cache.set(element.parentElement,bounds);return bounds;
   }
-  function capture(element,cache) { return { box: element.getBoundingClientRect(), clip: clip(element,cache) }; }
+  function capture(element,cache) { const box=element.getBoundingClientRect();return { box, clip: box.width&&box.height?clip(element,cache):null }; }
   function retire(element, geometry = capture(element)) {
     const { box, clip: bounds } = geometry;
+    if(reduced()||!box.width||!box.height){finish(element);element.remove();return;}
     let opacity = Number(getComputedStyle(element).opacity);
     for (let parent = element.parentElement; parent && parent !== document.body; parent = parent.parentElement) opacity *= Number(getComputedStyle(parent).opacity);
     if (reduced() || !box.width || !box.height || !opacity || box.right <= bounds.left || box.left >= bounds.right || box.bottom <= bounds.top || box.top >= bounds.bottom) { finish(element); element.remove(); return; }
@@ -238,7 +239,7 @@ const TactileFlow = (() => {
     const clips=new Map(),before = new Map([...root.querySelectorAll(selector)].map(el => [el, capture(el,clips)]));
     const result = change(before);
     if (active?.isConnected && root.contains(active) && document.activeElement !== active) active.focus({ preventScroll: true });
-    const after = [...root.querySelectorAll(selector)], deltas = new Map();
+    const after = [...root.querySelectorAll(selector)], actorsAfter=new Set(after),deltas = new Map();
     for (const el of after) { el.style.removeProperty('--flow-layout-x'); el.style.removeProperty('--flow-layout-y'); }
     for (const el of after) {
       const old = before.get(el), box = el.getBoundingClientRect();
@@ -246,7 +247,11 @@ const TactileFlow = (() => {
     }
     for (const el of after) {
       const delta = deltas.get(el);
-      if (!delta) { if (!before.has(el) && !after.some(parent => parent !== el && parent.contains(el) && !before.has(parent)) && el.getClientRects().length) reveal(el); continue; }
+      if (!delta) {
+        let parent=el.parentElement,nested=false;
+        while(parent&&parent!==root){if(actorsAfter.has(parent)&&!before.has(parent)){nested=true;break;}parent=parent.parentElement;}
+        if(!before.has(el)&&!nested&&el.getClientRects().length)reveal(el);continue;
+      }
       let parent = el.parentElement;
       while (parent && parent !== root && !deltas.has(parent)) parent = parent.parentElement;
       const ancestor = deltas.get(parent), from = { x: delta.x - (ancestor?.x || 0), y: delta.y - (ancestor?.y || 0) };
