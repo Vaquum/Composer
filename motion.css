@@ -11,6 +11,7 @@ input[type="range"]::-moz-range-thumb { transition: box-shadow var(--flow-feedba
 [data-flow-visible][hidden], [data-flow-visible][hidden] * { pointer-events: none !important; }
 [data-flow-sizing] > * { flex-shrink: 0; }
 [data-motion-running], [data-flow-retiring], [data-flow-measuring] { transition: none !important; animation: none !important; }
+[data-flow-retiring] * { transition: none !important; animation: none !important; pointer-events: none !important; }
 details[data-flow-details] > .flow-detail-body { display: block !important; }
 details[data-flow-details]::details-content { content-visibility: visible; }
 .flow-detail-body[inert] { pointer-events: none; }

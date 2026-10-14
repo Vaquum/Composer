@@ -119,6 +119,21 @@ const TactileFlow = (() => {
     element.parentElement.append(clone);
     try { return clone.getBoundingClientRect()[axis]; } finally { clone.remove(); }
   }
+  // Natural height changes with content or available width, not with each spring sample.
+  const measurements = new WeakMap();
+  function invalidate(element) {
+    for (let node=element;node;node=node.parentElement) {
+      const measurement=measurements.get(node);if(measurement)measurement.dirty=true;
+    }
+  }
+  function natural(element,axis='height') {
+    const measurement={dirty:true,width:NaN,size:0};measurements.set(element,measurement);
+    return ()=>{
+      const width=element.getBoundingClientRect().width;
+      if(measurement.dirty||width!==measurement.width){measurement.size=intrinsic(element,axis);measurement.width=width;measurement.dirty=false;}
+      return measurement.size;
+    };
+  }
   const sizes = new WeakMap();
   function resize(element, change) {
     const height = element.getBoundingClientRect().height;
@@ -126,9 +141,10 @@ const TactileFlow = (() => {
     if (!element.getClientRects().length || reduced()) return result;
     if (!sizes.has(element)) sizes.set(element, { height: element.style.height, overflow: element.style.overflow });
     element.dataset.flowSizing = ''; element.style.overflow = 'hidden';
-    spring(element, 'size', { from: { height }, to: () => ({ height: intrinsic(element) }),
-      write: ({ height }) => { element.style.height = `${Math.max(0, height)}px`; },
-      done: () => { Object.assign(element.style, sizes.get(element)); sizes.delete(element); delete element.dataset.flowSizing; } });
+    const target=natural(element);
+    spring(element, 'size', { from: { height }, to: () => ({ height: target() }),
+      write: ({ height }) => { element.style.height = `${Math.max(0, height)}px`;invalidate(element.parentElement); },
+      done: () => { Object.assign(element.style, sizes.get(element)); sizes.delete(element);measurements.delete(element);delete element.dataset.flowSizing;invalidate(element.parentElement); } });
     return result;
   }
   function disclosure(element, open, axis = 'height') {
@@ -138,10 +154,11 @@ const TactileFlow = (() => {
     element.dataset.flowDisclosure = ''; element.dataset.flowVisible = '';
     element.style.setProperty('--flow-display', display || getComputedStyle(element).display);
     element.style.overflow = 'hidden';
+    const target=natural(element,axis);
     spring(element, 'disclosure', { from: { size: start, opacity: open && !start ? 0 : Number(getComputedStyle(element).opacity) },
-      to: () => ({ size: open ? intrinsic(element, axis) : 0, opacity: open ? 1 : 0 }),
-      write: ({ size, opacity }) => { element.style[axis] = `${Math.max(0, size)}px`; element.style.opacity = String(bounded(opacity)); },
-      done: () => { element.style[axis] = ''; element.style.opacity = ''; element.style.overflow = ''; element.style.removeProperty('--flow-display'); delete element.dataset.flowDisclosure; delete element.dataset.flowVisible; } });
+      to: () => ({ size: open ? target() : 0, opacity: open ? 1 : 0 }),
+      write: ({ size, opacity }) => { element.style[axis] = `${Math.max(0, size)}px`; element.style.opacity = String(bounded(opacity));invalidate(element.parentElement); },
+      done: () => { element.style[axis] = ''; element.style.opacity = ''; element.style.overflow = ''; element.style.removeProperty('--flow-display'); delete element.dataset.flowDisclosure; delete element.dataset.flowVisible;measurements.delete(element);invalidate(element.parentElement); } });
   }
   function details(root) {
     for (const detail of root.querySelectorAll('details')) {
@@ -160,11 +177,12 @@ const TactileFlow = (() => {
     body.dataset.flowOpen=String(open);detail.dataset.flowDetails='';detail.open=open;
     body.hidden=!open;body.inert=!open;body.dataset.flowVisible='';body.dataset.flowDisclosure='';
     body.style.setProperty('--flow-display','block');body.style.overflow='hidden';
-    spring(body,'disclosure',{from:{size:height,opacity:open&&!height?0:Number(getComputedStyle(body).opacity)},to:()=>({size:open?intrinsic(body):0,opacity:open?1:0}),
-      write:({size,opacity})=>{body.style.height=`${Math.max(0,size)}px`;body.style.opacity=String(bounded(opacity));},
+    const target=natural(body);
+    spring(body,'disclosure',{from:{size:height,opacity:open&&!height?0:Number(getComputedStyle(body).opacity)},to:()=>({size:open?target():0,opacity:open?1:0}),
+      write:({size,opacity})=>{body.style.height=`${Math.max(0,size)}px`;body.style.opacity=String(bounded(opacity));invalidate(detail);},
       done:()=>{
         body.hidden=false;body.inert=!detail.open;body.style.height='';body.style.opacity='';body.style.overflow='';body.style.removeProperty('--flow-display');
-        delete body.dataset.flowVisible;delete body.dataset.flowDisclosure;delete body.dataset.flowOpen;delete detail.dataset.flowDetails;
+        delete body.dataset.flowVisible;delete body.dataset.flowDisclosure;delete body.dataset.flowOpen;delete detail.dataset.flowDetails;measurements.delete(body);invalidate(detail);
       }});
   }
   document.addEventListener('click',event=>{
@@ -172,29 +190,38 @@ const TactileFlow = (() => {
     if(detail?.tagName!=='DETAILS')return;
     event.preventDefault();details(detail.parentElement);detailVisibility(detail,!detail.open);
   });
-  document.addEventListener('toggle',event=>{if(event.target.tagName==='DETAILS')details(event.target.parentElement);},true);
-  function clip(element) {
+  document.addEventListener('toggle',event=>{if(event.target.tagName==='DETAILS'){details(event.target.parentElement);invalidate(event.target);}},true);
+  function clip(element,cache=new Map()) {
+    if(cache.has(element.parentElement))return cache.get(element.parentElement);
     const bounds = { left: 0, top: 0, right: innerWidth, bottom: innerHeight };
     for (let parent = element.parentElement; parent && parent !== document.body; parent = parent.parentElement) {
       const style = getComputedStyle(parent), box = parent.getBoundingClientRect();
       if (/auto|scroll|hidden|clip/.test(style.overflowX)) { bounds.left = Math.max(bounds.left, box.left + parent.clientLeft); bounds.right = Math.min(bounds.right, box.left + parent.clientLeft + parent.clientWidth); }
       if (/auto|scroll|hidden|clip/.test(style.overflowY)) { bounds.top = Math.max(bounds.top, box.top + parent.clientTop); bounds.bottom = Math.min(bounds.bottom, box.top + parent.clientTop + parent.clientHeight); }
     }
-    return bounds;
+    cache.set(element.parentElement,bounds);return bounds;
   }
-  function capture(element) { return { box: element.getBoundingClientRect(), clip: clip(element) }; }
+  function capture(element,cache) { return { box: element.getBoundingClientRect(), clip: clip(element,cache) }; }
   function retire(element, geometry = capture(element)) {
     const { box, clip: bounds } = geometry;
     let opacity = Number(getComputedStyle(element).opacity);
     for (let parent = element.parentElement; parent && parent !== document.body; parent = parent.parentElement) opacity *= Number(getComputedStyle(parent).opacity);
     if (reduced() || !box.width || !box.height || !opacity || box.right <= bounds.left || box.left >= bounds.right || box.bottom <= bounds.top || box.top >= bounds.bottom) { finish(element); element.remove(); return; }
-    const ghost = element.cloneNode(true), source = [element, ...element.querySelectorAll('*')], copies = [ghost, ...ghost.querySelectorAll('*')];
-    source.forEach((node, i) => {
-      const style = getComputedStyle(node);
-      for (const property of style) copies[i].style.setProperty(property, style.getPropertyValue(property));
-      copies[i].removeAttribute('id');
-      for (const attribute of [...copies[i].attributes]) if (attribute.name.startsWith('data-flow-') || attribute.name === 'data-motion-running') copies[i].removeAttribute(attribute.name);
-    });
+    // Preserve selector/inheritance context with shallow shells. Copying every computed
+    // property of every descendant made a pane switch a hundreds-of-ms blocking task.
+    const ghost=document.createElement('div'),snapshot=element.cloneNode(true);let context=ghost;
+    const ancestors=[];for(let parent=element.parentElement;parent&&parent!==document.body;parent=parent.parentElement)ancestors.unshift(parent);
+    for(const parent of ancestors){
+      const shell=parent.cloneNode(false);shell.removeAttribute('id');shell.removeAttribute('hidden');
+      for(const attribute of [...shell.attributes])if(attribute.name.startsWith('data-flow-')||attribute.name==='data-motion-running')shell.removeAttribute(attribute.name);
+      Object.assign(shell.style,{display:'contents',opacity:'1',translate:'none',transform:'none',filter:'none',contain:'none',containerType:'normal'});
+      context.append(shell);context=shell;
+    }
+    for(const node of [snapshot,...snapshot.querySelectorAll('*')])node.removeAttribute('id');
+    const style=getComputedStyle(element);
+    for(const property of ['display','box-sizing','font','color','text-align','padding','border','border-radius','background','gap','flex-direction','align-items','justify-content'])snapshot.style.setProperty(property,style.getPropertyValue(property));
+    Object.assign(snapshot.style,{position:'absolute',left:'0',top:'0',width:`${box.width}px`,height:`${box.height}px`,margin:'0',translate:'none',transform:'none'});
+    context.append(snapshot);
     ghost.inert = true; ghost.setAttribute('aria-hidden', 'true'); ghost.dataset.flowRetiring = '';
     Object.assign(ghost.style, { position: 'fixed', left: `${box.left}px`, top: `${box.top}px`, width: `${box.width}px`, height: `${box.height}px`, margin: '0', translate: 'none', transform: 'none', pointerEvents: 'none', zIndex: '90' });
     finish(element); element.remove(); document.body.append(ghost);
@@ -207,7 +234,7 @@ const TactileFlow = (() => {
   const actors = ':scope > *, [data-reading], [data-detail], .pane-group, .prow, .pnear';
   function layout(root, change, selector = actors) {
     const active = document.activeElement;
-    const before = new Map([...root.querySelectorAll(selector)].map(el => [el, capture(el)]));
+    const clips=new Map(),before = new Map([...root.querySelectorAll(selector)].map(el => [el, capture(el,clips)]));
     const result = change(before);
     if (active?.isConnected && root.contains(active) && document.activeElement !== active) active.focus({ preventScroll: true });
     const after = [...root.querySelectorAll(selector)], deltas = new Map();
@@ -241,7 +268,7 @@ const TactileFlow = (() => {
     for (const attr of incoming.attributes) if (!preserve(attr.name) && attr.name !== 'style' && current.getAttribute(attr.name) !== attr.value) current.setAttribute(attr.name, attr.value);
     const temporary = name => name.startsWith('--flow-') || Boolean(owners.get(current)?.size) && ['height', 'width', 'opacity', 'overflow', 'translate'].includes(name);
     for (const name of [...current.style]) if (!temporary(name) && !incoming.style.getPropertyValue(name)) current.style.removeProperty(name);
-    for (const name of incoming.style) if (!temporary(name)) current.style.setProperty(name, incoming.style.getPropertyValue(name), incoming.style.getPropertyPriority(name));
+    for (const name of incoming.style) if (!temporary(name)&&(current.style.getPropertyValue(name)!==incoming.style.getPropertyValue(name)||current.style.getPropertyPriority(name)!==incoming.style.getPropertyPriority(name))) current.style.setProperty(name, incoming.style.getPropertyValue(name), incoming.style.getPropertyPriority(name));
   }
   function reconcile(root, incoming, geometries, animate) {
     const old = [...root.childNodes], desired = [...incoming.childNodes], used = new Set(), keyed = new Map(old.map((node, i) => [key(node, i), node]));
@@ -263,7 +290,7 @@ const TactileFlow = (() => {
   function patch(root, markup, animate = true) {
     const template = document.createElement('template'); template.innerHTML = markup; details(template.content);
     const result=animate?layout(root,geometries=>reconcile(root,template.content,geometries,true)):reconcile(root,template.content,new Map(),false);
-    details(root);return result;
+    details(root);invalidate(root);return result;
   }
   function switchControl(input) {
     const target = input.checked ? 13 : 0;
