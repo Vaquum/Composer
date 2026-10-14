@@ -1211,7 +1211,7 @@ const Stage = {
       if (d.kind === 'move') Ops.flip(d.bar);
       refresh(); return;
     }
-    const changed = S.bars.some((b, i) => b.v.some((x, k) => x !== d.base[i][k]));
+    const changed = S.bars.some((b,i)=>b.d!==d.start.bars[i].d||b.v.some((x,k)=>x!==d.start.bars[i].v[k]));
     if (changed) pushHist(d.start);
     this.fit(); refresh();
   },
@@ -1517,7 +1517,7 @@ const Stage = {
     }
     ctx.restore();
     ctx.font = `400 12px ${FONT_UI}`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = COL['ink-2'];
-    ctx.fillText(`写し · ${t.caption}`, 28, G.plotTop - 12);
+    if(t===this.trace)ctx.fillText(`写し · ${t.caption}`,28,G.plotTop-12);
   },
   drawSkeleton(ctx, G) {
     const marks = skelMarks(); if (!marks.length) return;

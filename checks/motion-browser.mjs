@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { chromium, webkit } from 'playwright';
-const html=fs.readFileSync('index.html','utf8').replace('Panes.init();','window.__motionProbe={S,Stage,Match,Panes,Ref,Forecast,Ops,App,Flow};\nPanes.init();');
+const html=fs.readFileSync('index.html','utf8').replace('Panes.init();','window.__motionProbe={S,Stage,Match,Panes,Ref,Forecast,Ops,App,Flow,hist};\nPanes.init();');
 const fixture=fs.readFileSync('checks/pane-designs.mjs','utf8');
 const result=new Function(fixture.slice(fixture.indexOf('const row ='),fixture.indexOf('const before='))+'\nreturn r;')();
 Object.assign(result.panes.cont,{fan:Array.from({length:6},(_,i)=>[-.2-i*.05,.2,.5+i*.08,1.2,1.6+i*.05]),sequences:[['UUUUUU',260],['IIIIII',100],['DDDDDD',39]],examples:{}});
@@ -64,10 +64,11 @@ for(const [name,type] of [['Chromium',chromium],['WebKit',webkit]]){
   const retainedDetails=await page.evaluate(async()=>{
     const A=window.__motionProbe,detail=document.querySelector('#lnext details');detail.open=true;
     await new Promise(requestAnimationFrame);const body=detail.querySelector('.flow-detail-body');
-    A.Panes.render(A.Match.result);const state={open:detail.open,bodyRetained:body===detail.querySelector('.flow-detail-body'),available:!body.inert};
+    A.Panes.render(A.Match.result);const live=document.querySelector('#lnext details'),liveBody=live.querySelector('.flow-detail-body');
+    const state={open:live.open,detailRetained:live===detail&&detail.isConnected,bodyRetained:liveBody===body&&body.isConnected,available:!liveBody.inert};
     detail.open=false;A.Flow.finish();return state;
   });
-  assert.deepEqual(retainedDetails,{open:true,bodyRetained:true,available:true},`${name}: an open disclosure stays accessible on data refresh`);
+  assert.deepEqual(retainedDetails,{open:true,detailRetained:true,bodyRetained:true,available:true},`${name}: an open disclosure stays accessible on data refresh`);
   const reference=await page.evaluate(async()=>{
     const A=window.__motionProbe,width=A.Stage.wrap.clientWidth;document.querySelector('#reftoggle').focus();A.Ref.open();const initial=A.Stage.wrap.clientWidth;
     for(let i=0;i<6;i++)await new Promise(requestAnimationFrame);
@@ -116,6 +117,11 @@ for(const [name,type] of [['Chromium',chromium],['WebKit',webkit]]){
   });
   assert.ok(retirement.detached&&retirement.inert);assert.equal(retirement.count,retirement.before-1);assert.ok(retirement.ghosts>0);
   await settled(page);
+  const unpresented=await page.evaluate(()=>{
+    const A=window.__motionProbe,count=A.S.bars.length;A.Ops.add();A.Ops.remove();A.Ops.add();A.Ops.undo();return{count:A.S.bars.length,original:count};
+  });
+  assert.equal(unpresented.count,unpresented.original,`${name}: add/remove/undo before a frame is safe`);
+  await settled(page);
   const forecast=await page.evaluate(async()=>{
     const A=window.__motionProbe,root=A.S.bars.map(b=>Array.from(b.v)),width=A.Stage.wrap.clientWidth;
     A.Forecast.choose('paths');for(let i=0;i<6;i++)await new Promise(requestAnimationFrame);
@@ -127,6 +133,19 @@ for(const [name,type] of [['Chromium',chromium],['WebKit',webkit]]){
   });
   assert.ok(forecast.before>0);assert.equal(forecast.after,forecast.before);assert.ok(forecast.departing&&forecast.rootUnchanged&&forecast.widthUnchanged);assert.equal(forecast.prefix,'U');
   await settled(page);
+  const captions=await page.evaluate(async()=>{
+    const A=window.__motionProbe;document.querySelector('#emaki .card').click();const trace=A.Stage.trace,original=A.Match.result;
+    const updated={...original,results:original.results.map((r,i)=>i?r:{...r,off:.2,flips:3})};
+    A.Match.onmsg({...updated,type:'result',id:A.Match.id});
+    const fresh=trace===A.Stage.trace&&A.Stage.trace.caption.includes('20.0% off · 3 flips')&&document.querySelector('#emaki .card .fl').textContent.includes('20.0% off');
+    for(let i=0;i<4;i++)await new Promise(requestAnimationFrame);
+    A.Match.setTrace(1);const ctx=A.Stage.cv.getContext('2d'),fill=ctx.fillText,painted=[];
+    ctx.fillText=function(text,...args){if(String(text).startsWith('写し'))painted.push(text);return fill.call(this,text,...args);};
+    try{for(const t of A.Stage.traces)A.Stage.drawTrace(ctx,A.Stage.geom(),t);A.Stage.drawTrace(ctx,A.Stage.geom());}finally{ctx.fillText=fill;}
+    const current=A.Stage.trace.caption;A.Match.result=original;A.Match.sticky=-1;A.Match.render();A.Flow.finish();return{fresh,painted,current};
+  });
+  assert.ok(captions.fresh,`${name}: a retained pinned trace refreshes its statistics`);
+  assert.deepEqual(captions.painted,[`写し · ${captions.current}`],`${name}: only the active trace paints a caption`);
   const trace=await page.evaluate(async()=>{
     const A=window.__motionProbe;A.Match.setTrace(0);for(let i=0;i<6;i++)await new Promise(requestAnimationFrame);
     const opacity=A.Stage.trace.a;A.Match.setTrace(-1);const leaving=A.Stage.traces.at(-1)?.a;A.Flow.finish();return{opacity,leaving,clean:A.Stage.traces.length===0};
@@ -142,6 +161,17 @@ for(const [name,type] of [['Chromium',chromium],['WebKit',webkit]]){
   await page.mouse.move(point.x,point.y+1);
   const moved=await page.evaluate(()=>{const A=window.__motionProbe;return A.Stage.Y((A.S.bars[0].dv[1]+A.S.bars[0].dv[2])/2,A.Stage.geom());});
   await page.mouse.up();assert.ok(held.drag);assert.ok(Math.abs(moved-held.y)<2,`${name}: direct input takes over the presented candle`);
+  await settled(page);
+  const undo=await page.evaluate(async()=>{
+    const A=window.__motionProbe;A.Ops.nudge(0,35);for(let i=0;i<3;i++)await new Promise(requestAnimationFrame);
+    const before=A.S.bars.map(b=>({v:Array.from(b.v),d:b.d})),past=A.hist.past.length,G=A.Stage.geom();
+    A.Stage.view.tgt.set(A.Stage.view.cur);A.Stage.view.vel.fill(0);
+    const presented=A.S.bars.map(b=>({v:Array.from(b.dv),d:b.d})),y=A.Stage.Y((presented[0].v[1]+presented[0].v[2])/2,G);
+    A.Stage.drag={kind:'move',bar:0,y0:y,base:presented.map(b=>Float64Array.from(b.v)),P:{o0:presented[0].d==='u'?presented[0].v[1]:presented[0].v[2],c:presented.map(b=>b.d==='u'?b.v[2]:b.v[1]),l:presented.map(b=>b.v[0]),h:presented.map(b=>b.v[3]),d:presented.map(b=>b.d)},start:{bars:before,pins:JSON.parse(JSON.stringify(A.S.pins))},moved:false};
+    A.Stage.dragTo({x:0,y:y+12},true);A.Stage.dragTo({x:0,y},true);A.Stage.up();const recorded=A.hist.past.length===past+1;
+    A.Ops.undo();return{recorded,restored:JSON.stringify(before)===JSON.stringify(A.S.bars.map(b=>({v:Array.from(b.v),d:b.d})))};
+  });
+  assert.deepEqual(undo,{recorded:true,restored:true},`${name}: a round-trip drag during easing restores the pre-drag logical state`);
   const collapse=await page.evaluate(()=>{
     const A=window.__motionProbe,saved={bars:A.S.bars.map(b=>({v:Array.from(b.v),d:b.d})),pins:JSON.parse(JSON.stringify(A.S.pins))};
     A.S.bars.forEach(b=>b.v.fill(30));A.Stage.fit(true);let minimum=Infinity;
