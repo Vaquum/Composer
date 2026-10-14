@@ -104,6 +104,10 @@ Canvas frames share one DOM size/hint snapshot across stepping and drawing.
 Resize observers refresh settled dimensions without forcing layout each frame;
 reference motion and pointer handlers still read live geometry. Observer work
 is included in frame-work measurements. Failure cancels queued presentation.
+Resize callbacks only refresh measurements and request work; layout writes run
+in the next canvas frame to avoid observer loops. Nested arrivals share their
+ancestor's entry. Retirement contexts are reused only within one read-only
+reconciliation plan, and clipping reads bounds only for clipping ancestors.
 
 `npm run test:performance` exercises native Chromium, Chromium at 4× CPU and
 WebKit at 390/1600 px, DPR 1/2 and 2/20 bars, with 140 readings and all 729 six-bar

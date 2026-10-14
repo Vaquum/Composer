@@ -1628,7 +1628,7 @@ Stage.cv.addEventListener('keydown', e => {
 Stage.cv.addEventListener('wheel', e => { if (!e.ctrlKey) return; e.preventDefault(); setSpace(S.space - e.deltaY * 0.006); }, { passive: false });
 const canvasResize=new ResizeObserver(entries => {
   Stage.measureBox();
-  if(entries.some(entry=>entry.target===Stage.wrap)&&!Flow.value($('#ref'),'reference')){Flow.finish();Stage.plot.ready=false;if(!Stage.drag)Stage.settle();}
+  if(entries.some(entry=>entry.target===Stage.wrap)&&!Flow.value($('#ref'),'reference'))Stage.resizePending=true;
   App.redraw();
 });
 canvasResize.observe(Stage.wrap);canvasResize.observe(Stage.hint);
@@ -2190,7 +2190,10 @@ const App = {
     const dt = Math.min(0.032, Math.max(0, (now - this.lastT) / 1000)); this.lastT = now; this.dirty = false;
     let busy = false;
     // one bad frame must never stop the paper for good
-    try { Stage.frameBox=Stage.box&&!Flow.value(Ref.pane,'reference')?Stage.box:Stage.measureBox();busy = Stage.step(dt); Stage.draw(); } catch (err) { console.error(err); }
+    try {
+      if(Stage.resizePending){Stage.resizePending=false;if(!Flow.value(Ref.pane,'reference')){Flow.finish();Stage.plot.ready=false;if(!Stage.drag)Stage.settle();}}
+      Stage.frameBox=Stage.box&&!Flow.value(Ref.pane,'reference')?Stage.box:Stage.measureBox();busy = Stage.step(dt); Stage.draw();
+    } catch (err) { console.error(err); }
     finally{Stage.frameBox=null;}
     if (busy || this.dirty) requestAnimationFrame(t => this.tick(t)); else this.running = false;
   },
