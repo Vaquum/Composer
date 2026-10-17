@@ -5,7 +5,7 @@ const ForecastViews = (() => {
   const names = { U: 'Above', I: 'Inside', D: 'Below' };
   const words = key => [...key].map(s => names[s]).join(' → ');
   const percent = x => `${(100 * x).toFixed(1).replace(/\.0$/, '')}%`;
-  const count = n => n.toLocaleString('en-GB');
+  const count = new Intl.NumberFormat('en-GB').format;
   function rate(k, n) {
     if (n < 30) return null;
     const z = 1.959964, p = k / n, d = 1 + z * z / n;
