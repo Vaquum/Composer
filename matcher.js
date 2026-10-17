@@ -22,6 +22,9 @@
    seeded by the mean of the first 14 values and started again after any missing bar. */
 
 const TF_NAMES = ['15m', '30m', '1h', '2h', '4h'];
+// One display frame per worker task keeps replacement prompt while avoiding
+// excessive task rescheduling on a busy host. The worker never paints the UI.
+const WORK_SLICE_MS = 16;
 let BARS = null, latest = 0, pending = null;
 // what Composer reads about each bar beside its shape, once the activity has arrived (per timeframe, aligned with BARS)
 let READ = null, pendingActivity = null;
