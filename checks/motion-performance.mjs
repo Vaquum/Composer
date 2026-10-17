@@ -78,6 +78,8 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
     if(type===chromium){cdp=await context.newCDPSession(page);await cdp.send('Performance.enable');await cdp.send('Emulation.setCPUThrottlingRate',{rate});}
     await page.evaluate(()=>{
       const A=__perf;__samples.active=false;
+      const drawFan=A.Stage.drawFan;
+      A.Stage.drawFan=function(...args){const before=this.fanCache;try{return drawFan.apply(this,args);}finally{if(__samples.active&&before!==this.fanCache)__samples.fanRasters++;}};
       for(const [owner,names]of [[A.Stage,['move','down','up']],[A.Match,['presentResult']]])for(const name of names){
         const handler=owner[name];
         owner[name]=function(...args){const t=performance.now(),part=name==='presentResult'?['cards','right','left'][this.presentation?.tasks.length-1]:null;
@@ -90,13 +92,13 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
     });
     const measure=async(label,action)=>{
       await settle(page);
-      await page.evaluate(()=>{for(const key of ['frames','work','tasks','calls','paints','observers'])__samples[key]=[];for(const key of ['mutations','clones','measures','frameTime','frameWork'])__samples[key]=0;__samples.presentation={};__samples.active=true;});
+      await page.evaluate(()=>{for(const key of ['frames','work','tasks','calls','paints','observers'])__samples[key]=[];for(const key of ['mutations','clones','measures','frameTime','frameWork','fanRasters'])__samples[key]=0;__samples.presentation={};__samples.actions={};__samples.active=true;});
       await action();await settle(page);
       const sample=await page.evaluate(()=>{__samples.active=false;if(__samples.frameTime)__samples.work.push(__samples.frameWork);return{...__samples};});
       const p95=a=>a.length?a.slice().sort((a,b)=>a-b)[Math.floor((a.length-1)*.95)]:0;
       const report={browser:name,graphics,frameGate:controlledGraphics,bars:n,width,dpr,scenario:label,frames:sample.frames.length,
         frameP95:+p95(sample.frames).toFixed(1),workP95:+p95(sample.work).toFixed(1),callMax:+Math.max(0,...sample.calls).toFixed(1),
-        paintP95:+p95(sample.paints).toFixed(1),observerMax:+Math.max(0,...sample.observers).toFixed(1),taskMax:Math.max(0,...sample.tasks),presentationMax:Object.fromEntries(Object.entries(sample.presentation).map(([k,v])=>[k,+v.toFixed(1)])),measurements:sample.measures,mutations:sample.mutations};
+        paintP95:+p95(sample.paints).toFixed(1),observerMax:+Math.max(0,...sample.observers).toFixed(1),taskMax:Math.max(0,...sample.tasks),presentationMax:Object.fromEntries(Object.entries(sample.presentation).map(([k,v])=>[k,+v.toFixed(1)])),actionMax:Object.fromEntries(Object.entries(sample.actions).map(([k,v])=>[k,+v.toFixed(1)])),measurements:sample.measures,mutations:sample.mutations};
       reports.push(report);console.log(JSON.stringify(report));
       // CI contention can stretch rAF intervals, so timing gates use measured application
       // work and input handlers. Frame delivery is reported, never hidden by idle samples.
@@ -120,12 +122,34 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
         A.Match.onmsg({...r,type:'result',id:A.Match.id,results:r.results.map(x=>({...x,start:x.start+(replace?1e6:900),raw:x.raw.map(b=>b.slice())})),
           panes:{...r.panes,rows:r.panes.rows.map((w,i)=>({...w,d:layout?(i+1)/r.panes.rows.length:w.d,set:w.set.map(v=>v+(layout?1:.001))})),cont:{...r.panes.cont,fan:r.panes.cont.fan.map(q=>q.map(v=>v+.001))}}});
       }
-      __samples.calls.push(performance.now()-t);
+      const elapsed=performance.now()-t;__samples.calls.push(elapsed);
+      const action=kind+':'+value;__samples.actions[action]=Math.max(__samples.actions[action]||0,elapsed);
     },{kind,value});
     await measure('pane',async()=>{for(const v of ['bars','ledger','signal']){await call('pane',v);await settle(page);await call('paneRight',v);await settle(page);}});
     const size=await measure('disclosure',async()=>{await call('disclosure');});
     assert.ok(size.measures<=3,'opening a fixed-width disclosure must not clone/measure once per animation frame');
-    await measure('reference',async()=>{for(const topic of [2,3,4]){await call('reference',true);await settle(page);await call('topic',topic);await settle(page);await call('reference',false);await settle(page);}});
+    const framing=await measure('reference',async()=>{for(const topic of [2,3,4]){await call('reference',true);await settle(page);await call('topic',topic);await settle(page);await call('reference',false);await settle(page);}});
+    assert.ok(framing.fanRasters<=12,'framing must reuse the blurred fan rather than rebuilding it every spring frame');
+    const fanParity=await page.evaluate(()=>{
+      const A=__perf,combined=()=>{
+        const current=A.Stage.forecastSurface,C=current.flowBox,dpr=current.flowDpr,canvas=document.createElement('canvas');canvas.width=Math.round(C.w*dpr);canvas.height=Math.round(C.h*dpr);
+        const ctx=canvas.getContext('2d');ctx.scale(dpr,dpr);ctx.translate(-C.x,-C.y);
+        if(A.Stage.washState)A.Stage.paintWash(ctx,A.Stage.washState);
+        ctx.drawImage(current,0,0,current.flowWidth,current.flowHeight,C.x,C.y,C.w,C.h);return canvas.toDataURL();
+      };
+      const before=combined();A.Stage.fanCache=null;A.Stage.forecastPaint=null;A.Stage.draw();
+      const same=before===combined(),state=A.Stage.washState,origin=A.Stage.wrap.getBoundingClientRect();
+      const aligned=!state||[...A.Stage.washRoot.children].every((part,i)=>{const box=part.getBoundingClientRect(),piece=state.pieces[i];return Math.abs(box.left-origin.left-piece[2])<.1&&Math.abs(box.top-origin.top-state.top)<.1&&Math.abs(box.width-(piece[3]-piece[2]))<.1;});
+      A.Stage.changeForecast();const snapshot=A.Stage.departingForecast.toDataURL()===before;A.Stage.settle();
+      return{same,aligned,snapshot};
+    });
+    assert.deepEqual(fanParity,{same:true,aligned:true,snapshot:true},'composited fan pixels, projected layers and departure snapshots must match a fresh native render');
+    const collapsedWash=await page.evaluate(()=>{
+      const A=__perf,saved=A.S.bars.map(b=>b.dv.slice());
+      try{for(const b of A.S.bars)b.dv.fill(42);A.Stage.draw();return !A.Stage.washState&&(!A.Stage.washRoot||A.Stage.washRoot.hidden);}
+      finally{A.S.bars.forEach((b,i)=>b.dv.set(saved[i]));A.Stage.draw();}
+    });
+    assert.ok(collapsedWash,'a collapsed drawing must hide the previous composited fan wash');
     await measure('forecast',async()=>{for(const v of ['paths','branches','states']){await call('forecast',v);await settle(page);}await call('fan',false);await settle(page);await call('fan',true);});
     await measure('refresh',async()=>{for(let i=0;i<3;i++){await call('refresh');await settle(page);}});
     await measure('refresh-replace',async()=>{await call('refresh','replace');});
@@ -261,10 +285,32 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
     });
     assert.ok(raster.equal&&raster.different,'fan raster reuse must preserve pixels and refresh after camera changes');
     assert.ok(raster.pixels<raster.full*.85,'forecast transitions must not rasterize a full canvas');
+    const retainedRoot=await page.evaluate(()=>{
+      const A=__perf,ptr=A.Stage.ptr,hov=A.Stage.hov;A.Stage.ptr=A.Stage.hov=null;
+      const pixels=()=>A.Stage.cv.getContext('2d').getImageData(0,0,A.Stage.cv.width,A.Stage.cv.height).data;
+      A.Stage.rootPaintKey=null;A.Stage.draw();const fresh=pixels();A.Stage.draw();const cached=pixels();
+      const equal=fresh.every((v,i)=>v===cached[i]),before=A.S.bars[0].dv[0];A.S.bars[0].dv[0]-=1;A.Stage.draw();const changed=pixels();
+      const invalidated=changed.some((v,i)=>v!==fresh[i]);A.S.bars[0].dv[0]=before;A.Stage.ptr=ptr;A.Stage.hov=hov;A.Stage.draw();
+      return{equal,invalidated};
+    });
+    assert.deepEqual(retainedRoot,{equal:true,invalidated:true},'retained root pixels must match a fresh paint and update with drawing geometry');
     const quiet=await measure('stationary-forecast',async()=>{
       await page.evaluate(async()=>{for(let i=0;i<24;i++){__perf.Forecast.sync(__perf.Stage.geom());await new Promise(requestAnimationFrame);}});
     });
     assert.equal(quiet.mutations,0,'stationary forecast frames must not rewrite semantic or hit-target DOM');
+    if(cdp){
+      const density=dpr===1?2:1;
+      await cdp.send('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:density,mobile:false});
+      await page.evaluate(()=>__perf.App.redraw());await settle(page);
+      assert.equal(await page.evaluate(()=>__perf.Stage.forecastSurface.flowDpr),density,'a display-density change must repaint the forecast at native density');
+      await cdp.send('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:dpr,mobile:false});
+      await page.evaluate(()=>__perf.App.redraw());await settle(page);
+    }
+    const fontPaint=await page.evaluate(()=>{
+      const A=__perf,version=A.Stage.paintVersion||0;document.fonts.dispatchEvent(new Event('loadingdone'));
+      return (A.Stage.paintVersion||0)>version;
+    });
+    assert.ok(fontPaint,'late font loading must invalidate cached forecast glyphs');
     await page.locator('#emaki .card').first().scrollIntoViewIfNeeded();
     const retiring=await page.evaluate(()=>{
       const A=__perf,card=document.querySelector('#emaki .card'),read=node=>{

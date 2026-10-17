@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sys
 import threading
+import tempfile
 import unittest
 import urllib.error
 import urllib.request
@@ -67,6 +68,7 @@ class Server(unittest.TestCase):
         self.assertIn(b'TactileFlow', self.get('/motion.js').read())
         self.assertEqual(self.get('/motion.css').headers['Content-Type'], 'text/css; charset=utf-8')
         got = self.get('/bars')
+        self.assertEqual(got.version, 11)
         etag = got.headers['ETag']
         self.assertEqual((got.status, got.read(), got.headers['Cache-Control']), (200, b'CBAR11', 'private, no-cache'))
         self.assertEqual(self.get('/bars', {'If-None-Match': etag}).status, 304)
@@ -93,6 +95,40 @@ class Server(unittest.TestCase):
         self.state.try_refresh()
         self.assertEqual(self.get('/bars').read(), b'CBAR11')
         self.assertIn('hub unreachable', json.loads(self.get('/healthz').read())['last_failure'])
+
+    def test_snapshot_restores_without_reading_the_network(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            state = server.Bars(self.fake.current, self.fake.read, Path(directory))
+            state.refresh()
+            self.fake.fail = True
+            restored = server.Bars(self.fake.current, self.fake.read, Path(directory))
+            self.assertTrue(restored.restore())
+            self.assertEqual(restored.current(), state.current())
+            self.assertEqual(restored.current_activity(), state.current_activity())
+            restored.try_refresh()
+            self.assertEqual(restored.current(), state.current())
+            self.assertIn('hub unreachable', restored.health()['last_failure'])
+
+    def test_corrupt_snapshot_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            state = server.Bars(self.fake.current, self.fake.read, Path(directory))
+            state.refresh()
+            path = Path(directory) / 'history.snapshot'
+            data = bytearray(path.read_bytes())
+            data[-1] ^= 1
+            path.write_bytes(data)
+            restored = server.Bars(cache_dir=Path(directory))
+            self.assertFalse(restored.restore())
+            self.assertFalse(restored.health()['ready'])
+
+    def test_cold_server_answers_the_page_while_data_is_pending(self) -> None:
+        self.state.payload = self.state.activity = b''
+        self.assertEqual(self.get('/').status, 200)
+        response = self.get('/bars')
+        self.assertEqual((response.status, response.headers['Retry-After']), (503, '1'))
+        response = self.get('/healthz')
+        self.assertEqual(response.status, 503)
+        self.assertFalse(json.loads(response.read())['ready'])
 
 
 if __name__ == '__main__':

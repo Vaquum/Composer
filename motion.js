@@ -11,9 +11,11 @@ const TactileFlow = (() => {
     }
     return { position, velocity };
   }
-  function advance(values, velocities, targets, seconds, epsilon = .0008, immediate = false) {
+  function advance(values, velocities, targets, seconds, epsilon = .002, immediate = false) {
     let busy = false;
+    const validTime=Number.isFinite(seconds)&&seconds>=0;
     for (let i = 0; i < targets.length; i++) {
+      if(validTime&&values[i]===targets[i]&&velocities[i]===0&&Number.isFinite(values[i]))continue;
       const next = integrate(values[i], velocities[i], targets[i], immediate ? 0 : seconds);
       if (immediate || Math.abs(next.position - targets[i]) <= epsilon && Math.abs(next.velocity) <= epsilon * 10) {
         values[i] = targets[i]; velocities[i] = 0;
@@ -25,6 +27,7 @@ const TactileFlow = (() => {
   function bounds(values, velocities, targets, seconds, immediate = false) {
     const span=values[1]-values[0],targetSpan=targets[1]-targets[0];
     if(!(span>0)||!(targetSpan>0))throw Error('Tactile framing requires ordered bounds.');
+    if(Number.isFinite(seconds)&&seconds>=0&&Number.isFinite(span)&&Number.isFinite(targetSpan)&&values[0]===targets[0]&&values[1]===targets[1]&&velocities[0]===0&&velocities[1]===0)return false;
     const center=[(values[0]+values[1])/2],cv=[velocities[0]],zoom=[Math.log(span)],zv=[velocities[1]];
     const p=advance(center,cv,[(targets[0]+targets[1])/2],seconds,targetSpan*1e-4,immediate);
     const z=advance(zoom,zv,[Math.log(targetSpan)],seconds,.00001,immediate);
@@ -98,7 +101,7 @@ const TactileFlow = (() => {
       for (const [key, goal] of Object.entries(target)) {
         const next = integrate(channel.value[key], channel.velocity[key] || 0, goal, dt);
         channel.value[key] = next.position; channel.velocity[key] = next.velocity;
-        if (Math.abs(next.position - goal) > channel.range[key] * .0008 || Math.abs(next.velocity) > channel.range[key] * .008) resting = false;
+        if (Math.abs(next.position - goal) > channel.range[key] * .002 || Math.abs(next.velocity) > channel.range[key] * .02) resting = false;
       }
       if (resting || reduced()) complete(channel); else channel.write({ ...channel.value });
     }
@@ -270,7 +273,7 @@ const TactileFlow = (() => {
     if (!opacity)return settle;
     // Preserve selector/inheritance context with shallow shells. Copying every computed
     // property of every descendant made a pane switch a hundreds-of-ms blocking task.
-    const ghost=path.template.cloneNode(true),snapshot=element.cloneNode(true);let context=ghost;
+    const ghost=document.createElement('div'),content=path.template.cloneNode(true),snapshot=element.cloneNode(true);let context=content;
     while(context.firstElementChild)context=context.firstElementChild;
     for(const node of [snapshot,...snapshot.querySelectorAll('*')])node.removeAttribute('id');
     const frozen=['display','box-sizing','font','color','text-align','padding','border','border-radius','background','gap','flex-direction','align-items','justify-content'].map(property=>`${property}:${style.getPropertyValue(property)}!important`).join(';');
@@ -281,14 +284,19 @@ const TactileFlow = (() => {
     }
     snapshot.style.cssText+=`;${frozen};position:absolute!important;left:0!important;top:0!important;width:${box.width}px!important;height:${box.height}px!important;margin:0!important;opacity:1!important;translate:none!important;transform:none!important`;
     context.append(snapshot);
+    ghost.append(content);
     ghost.inert = true; ghost.setAttribute('aria-hidden', 'true'); ghost.dataset.flowRetiring = '';
-    ghost.style.cssText=`position:fixed;left:${box.left}px;top:${box.top}px;width:${box.width}px;height:${box.height}px;margin:0;translate:none;transform:none;pointer-events:none;z-index:90`;
+    // Keep the viewport clip still and translate only its contents. Updating a
+    // clip path every spring sample repaints the entire retained SVG/text tree.
+    // Twice the travel includes the shared spring's small overshoot.
+    const room=model.information*2,top=box.top-room,height=box.height+room*2;
+    ghost.style.cssText=`position:fixed;left:${box.left}px;top:${top}px;width:${box.width}px;height:${height}px;margin:0;translate:none;transform:none;pointer-events:none;z-index:90;clip-path:inset(${Math.max(0,bounds.top-top)}px ${Math.max(0,box.right-bounds.right)}px ${Math.max(0,top+height-bounds.bottom)}px ${Math.max(0,bounds.left-box.left)}px)`;
+    content.style.cssText=`position:absolute;left:0;top:${room}px;width:${box.width}px;height:${box.height}px;overflow:hidden;will-change:translate;pointer-events:none`;
     const commit=()=>{
     settle(); document.body.append(ghost);
     spring(ghost, 'retirement', { from: { opacity, y: 0 }, to: { opacity: 0, y: -model.information },
       write: ({ opacity, y }) => {
-        ghost.style.opacity = String(bounded(opacity)); ghost.style.translate = `0 ${y}px`;
-        ghost.style.clipPath = `inset(${Math.max(0, bounds.top - box.top - y)}px ${Math.max(0, box.right - bounds.right)}px ${Math.max(0, box.bottom + y - bounds.bottom)}px ${Math.max(0, bounds.left - box.left)}px)`;
+        ghost.style.opacity = String(bounded(opacity)); content.style.translate = `0 ${y}px`;
       }, done: () => ghost.remove() });
     };commit.snapshot=ghost;return commit;
   }
@@ -518,7 +526,7 @@ const TactileFlow = (() => {
     spring(input, 'switch', { from: { x: parseFloat(input.style.getPropertyValue('--flow-switch-x')) }, to: { x: target }, write: ({ x }) => input.style.setProperty('--flow-switch-x', `${x}px`) });
   }
   let position = 0, velocity = 0; const samples = [0];
-  do { const next = integrate(position, velocity, 1, .008); position = next.position; velocity = next.velocity; samples.push(position); } while (Math.abs(position - 1) > .0008 || Math.abs(velocity) > .008);
+  do { const next = integrate(position, velocity, 1, .008); position = next.position; velocity = next.velocity; samples.push(position); } while (Math.abs(position - 1) > .002 || Math.abs(velocity) > .02);
   samples[samples.length - 1] = 1;
   const css = document.documentElement.style;
   css.setProperty('--flow-settle', `${(samples.length - 1) * 8}ms`); css.setProperty('--flow-spring', `linear(${samples.map(n => n.toFixed(5)).join(',')})`);

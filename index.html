@@ -5,7 +5,7 @@
 <title>Composer</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=M+PLUS+1+Code:wght@400;500&family=Shippori+Mincho:wght@500;600&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
+<link rel="stylesheet" media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=M+PLUS+1+Code:wght@400;500&family=Shippori+Mincho:wght@500;600&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
 <style>
 :root {
   /* Layout: one sheet of paper. The composition sits in the middle with wide ma; the closest instances in BTCUSDT history answer in a scroll beneath it; its identity is written last. */
@@ -68,7 +68,7 @@ button:disabled { cursor: default; }
 .icon:disabled { opacity: .3; }
 
 .stage { flex: 1; display: flex; flex-direction: column; }
-.cvwrap { position: relative; flex: 1; min-height: max(360px, var(--forecast-min-height, 0px)); }
+.cvwrap { overflow: hidden; position: relative; flex: 1; min-height: max(360px, var(--forecast-min-height, 0px)); }
 .cvwrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; outline: none; }
 .hint { position: absolute; left: 28px; top: 56px; right: 24px; margin: 0; font-size: 12px; color: var(--ink-3); pointer-events: auto; }
 /* the paper narrows beside the panes and the reference: the hint then goes under the dock instead of into a thin column */
@@ -98,7 +98,7 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
 .bars .nb b { font: 500 15px/1 var(--font-mincho); color: var(--ink); margin-inline-end: 4px; }
 
 .forecast-controls { position: absolute; top: 14px; left: 24px; display: flex; align-items: center; gap: 8px; }
-.forecast-controls .chip { height: 30px; }
+.forecast-controls .chip { min-width: 76px; justify-content: center; height: 30px; }
 .forecast-mode-picker { display:flex; gap:2px; padding:2px; border-radius:7px; background:var(--paper-2); }
 .forecast-mode-picker button { width:32px; height:30px; padding:6px; border-radius:5px; color:var(--ink-3); }
 .forecast-mode-picker button[aria-checked="true"] { color:var(--ink); background:var(--paper); box-shadow:0 0 0 1px var(--hair); }
@@ -150,12 +150,13 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
 .nval input { width: 54px; height: 24px; border: 0; border-radius: 6px; padding: 0 6px; background: var(--paper); box-shadow: inset 0 0 0 1px var(--hair); font: 12px/1 var(--font-code); color: var(--ink); }
 .nval input:focus-visible { outline: 1.5px solid var(--ai); outline-offset: 1px; }
 .tfs { display: inline-flex; flex-wrap: wrap; gap: 4px; }
-.chip { height: 30px; padding: 0 9px; border-radius: 8px; font-size: 12px; color: var(--ink-3); box-shadow: inset 0 0 0 1px var(--hair); white-space: nowrap; }
+.chip { min-width: 76px; justify-content: center; height: 30px; padding: 0 9px; border-radius: 8px; font-size: 12px; color: var(--ink-3); box-shadow: inset 0 0 0 1px var(--hair); white-space: nowrap; }
 .chip b { font: 500 12px/1 var(--font-code); color: var(--ink-2); margin-inline-start: 5px; font-variant-numeric: tabular-nums; }
 .chip[aria-pressed="true"] { background: var(--paper-2); color: var(--ink); box-shadow: none; }
 .chip[aria-pressed="true"] b { color: var(--ink); }
 .status { display: flex; align-items: center; gap: 10px; min-height: 22px; font-size: 12.5px; color: var(--ink-2); }
 .status .msg { min-width: 0; }
+@media (min-width: 1181px) { .status { align-items: flex-start; } .status .prog { margin-top: 17px; } }
 .status .msg b { color: var(--ink); font-weight: 500; }
 .prog { flex: none; width: 90px; height: 1px; background: var(--hair); position: relative; overflow: hidden; }
 .prog i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--ai); width: 0; }
@@ -186,7 +187,7 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
 .nm.none { color: var(--ink-3); font-size: 12.5px; }
 .desc { margin: 0; font-size: 12.5px; color: var(--ink-2); max-width: 78ch; display: flex; flex-direction: column; gap: 2px; }
 .codebox { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; min-width: 0; }
-.codebox code { font: 400 12px/1.4 var(--font-code); color: var(--ink-2); overflow-wrap: anywhere; }
+.codebox code { min-height: 1.4em; font: 400 12px/1.4 var(--font-code); color: var(--ink-2); overflow-wrap: anywhere; }
 .codebox .dom { font-size: 12px; color: var(--ink-3); }
 .link { font-size: 12px; color: var(--ai); }
 
@@ -302,7 +303,7 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
     <div class="ref-targets" id="ref-targets"></div>
     <p class="ref-status" id="ref-status" role="status" aria-live="polite"></p>
   </aside>
-  <aside class="pane lpane" data-side="left" aria-label="What sets the matching windows apart">
+  <aside class="pane lpane" data-side="left" data-loading="true" aria-label="What sets the matching windows apart">
     <div class="pane-switch" role="group" aria-label="Left pane layout">
       <button type="button" class="pane-step" data-step="-1" aria-label="Previous left pane design">‹</button>
       <button type="button" class="pane-current" aria-haspopup="menu" aria-expanded="false" aria-controls="left-design-menu"><span aria-live="polite">Signal first</span><i aria-hidden="true">⌄</i></button>
@@ -311,7 +312,7 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
     </div>
     <header class="pane-header">
       <h2>What differs</h2>
-      <div class="pane-context" id="lcap">Loading the matching windows…</div>
+      <div class="pane-context" id="lcap"><strong>Matching windows</strong><span class="pane-meta">Loading BTCUSDT history…</span></div>
     </header>
     <div class="pane-body">
       <div class="pane-section pane-flow prows" id="lrows"></div>
@@ -382,7 +383,7 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
           <span class="seg mini" id="nmeas" role="group" aria-label="By how much"><button type="button" data-v="any">at all</button><button type="button" data-v="bps">bps</button><button type="button" data-v="atr">ATR</button></span>
           <label class="nval" id="nvalw" hidden>≥<input id="nval" type="number" inputmode="decimal" min="0.1" step="1" aria-label="Threshold"></label>
         </span>
-        <span class="tfs" id="tfs" role="group" aria-label="Timeframes"></span>
+        <span class="tfs" id="tfs" role="group" aria-label="Timeframes"><button type="button" class="chip" data-k="0" aria-pressed="true" title="Leave out 15m">15m</button><button type="button" class="chip" data-k="1" aria-pressed="true" title="Leave out 30m">30m</button><button type="button" class="chip" data-k="2" aria-pressed="true" title="Leave out 1h">1h</button><button type="button" class="chip" data-k="3" aria-pressed="true" title="Leave out 2h">2h</button><button type="button" class="chip" data-k="4" aria-pressed="true" title="Leave out 4h">4h</button></span>
         <span class="seg" id="xsel" role="group" aria-label="How many instances"><button type="button" data-x="12">12</button><button type="button" data-x="24">24</button><button type="button" data-x="48">48</button></span>
         </div>
       </div>
@@ -395,7 +396,7 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
       <div class="codebox"><code id="code"></code><button type="button" class="link" id="copy">Copy</button><span class="dom" id="dom"></span></div>
     </footer>
   </main>
-  <aside class="pane rpane" data-side="right" aria-label="What the shape became">
+  <aside class="pane rpane" data-side="right" data-loading="true" aria-label="What the shape became">
     <div class="pane-switch" role="group" aria-label="Right pane layout">
       <button type="button" class="pane-step" data-step="-1" aria-label="Previous right pane design">‹</button>
       <button type="button" class="pane-current" aria-haspopup="menu" aria-expanded="false" aria-controls="right-design-menu"><span aria-live="polite">Signal first</span><i aria-hidden="true">⌄</i></button>
@@ -827,7 +828,7 @@ const Forecast = {
       this.rendered=key;this.context?.cancelFor?.(this.body);this.context?.cancelFor?.(this.fanHits);
       Flow.patch(this.body,this.markup(),false);
       Flow.patch(this.fanHits,c?'<button type="button" class="forecast-fan-hit" data-kind="fan" aria-label="Historical closing-price fan"></button>'+c.fan.flatMap((q,j)=>q.map((_,k)=>`<span class="forecast-fan-point" data-step="${j}" data-quantile="${k}" data-key="fan-${j}-${k}"></span>`)).join(''):'',false);
-      this.placement=null;this.tipSource=null;
+      this.placement=null;this.positions=new WeakMap();this.tipSource=null;
       if(focused){const target=[...this.body.querySelectorAll('[data-key]')].find(b=>b.dataset.key===focused);target?.focus({preventScroll:true});}
       App.redraw();
     }
@@ -873,7 +874,15 @@ const Forecast = {
     const placement=[G.w,G.h,G.forecastLeft,G.plotTop,G.plotBottom,...F.xs,F.width,lo,hi,Stage.view.lo,Stage.view.hi,this.semantic].join('|');
     if(this.placement===placement)return;this.placement=placement;
     const set=this.source?this.outcomes(this.view==='branches'?this.prefix:''):null;
-    const put=(el,x,y,w,h)=>Object.assign(el.style,{left:`${x}px`,top:`${y}px`,width:`${Math.max(0,w)}px`,height:`${Math.max(0,h)}px`});
+    this.positions??=new WeakMap();
+    const put=(el,x,y,w,h)=>{
+      const values=[x,y,Math.max(0,w),Math.max(0,h)].map(v=>Math.round(v*1000)/1000),before=this.positions.get(el);
+      if(!before){el.style.left='0px';el.style.top='0px';}
+      if(!before||before[0]!==values[0]||before[1]!==values[1])el.style.translate=`${values[0]}px ${values[1]}px`;
+      if(!before||before[2]!==values[2])el.style.width=`${values[2]}px`;
+      if(!before||before[3]!==values[3])el.style.height=`${values[3]}px`;
+      this.positions.set(el,values);
+    };
     put($('#forecast-message'),F.left,F.top-22,F.right-F.left-50,22);put($('#forecast-retry'),F.right-48,F.top-22,48,22);
     this.body.querySelectorAll('[data-kind]').forEach(el=>{
       const j=+el.dataset.step,k=+el.dataset.stateIndex,kind=el.dataset.kind;
@@ -947,7 +956,7 @@ const Stage = {
   retire(b) {
     if (!calm() && b.x !== null && b.a > 0) this.ghosts.push({ dv: Float64Array.from(b.dv), x: b.x, col: b.col.slice(), a: b.a, va: b.va, startX: b.x, vx: b.vx });
   },
-  scalar(key, target, dt, epsilon = .0008) {
+  scalar(key, target, dt, epsilon = .002) {
     const values = [this[key]], velocities = [this.scalarVelocity[key] || 0];
     const busy = Flow.advance(values, velocities, [target], dt, epsilon, calm());
     this[key] = clamp(values[0], 0, 1); this.scalarVelocity[key] = velocities[0];
@@ -960,7 +969,9 @@ const Stage = {
       box.w=Math.max(C.x+C.w,O?O.x+O.w:0)-box.x;box.h=Math.max(C.y+C.h,O?O.y+O.h:0)-box.y;
       const snapshot=document.createElement('canvas'),ctx=fitCanvas(snapshot,box.w,box.h);ctx.translate(-box.x,-box.y);
       const opacity=canvas=>{const n=parseFloat(canvas.style.opacity);return Number.isFinite(n)?n:1;};
-      ctx.globalAlpha=opacity(current);paintCanvas(ctx,current,C.x,C.y,C.w,C.h);
+      ctx.globalAlpha=opacity(current);
+      if(this.washState)this.paintWash(ctx,this.washState);
+      paintCanvas(ctx,current,C.x,C.y,C.w,C.h);
       if(old){ctx.globalCompositeOperation='destination-over';ctx.globalAlpha=opacity(old);paintCanvas(ctx,old,O.x,O.y,O.w,O.h);}
       old?.remove();current.remove();this.departingForecast=snapshot;this.forecastSurface=null;this.layer(snapshot,box);snapshot.style.opacity='1';
       this.scene = 0;
@@ -989,7 +1000,7 @@ const Stage = {
     for (const [key,target] of [['modeMix',Forecast.view === 'paths' ? 1 : 0],['fanWeight',Forecast.fan ? 1 : 0],['tracePresence',this.trace ? 1 : 0],['fanA',Match.fresh() && !Match.failed ? 1 : Forecast.source ? .35 : 0]]) if (this.scalar(key,target,dt)) busy = true;
     if (this.departingForecast) {
       const x=[this.scene],v=[this.sceneVelocity];
-      if (Flow.advance(x,v,[1],dt,.0008,calm())) busy=true;
+      if (Flow.advance(x,v,[1],dt,.002,calm())) busy=true;
       else{this.departingForecast.remove();this.departingForecast=null;}
       this.scene=clamp(x[0],0,1);this.sceneVelocity=v[0];
     }
@@ -1001,17 +1012,17 @@ const Stage = {
       if (!(this.drag && this.drag.bar === i) && Flow.advance(b.dv,b.vv,b.v,dt,span*1e-4,calm())) busy=true;
       // A spring may overshoot a collapsed shadow; the visual must still be a candle.
       for(let k=1;k<4;k++)if(b.dv[k]<b.dv[k-1]){b.dv[k]=b.dv[k-1];b.vv[k]=0;}
-      const alpha=[b.a],av=[b.va];if(Flow.advance(alpha,av,[1],dt,.0008,calm()))busy=true;
+      const alpha=[b.a],av=[b.va];if(Flow.advance(alpha,av,[1],dt,.002,calm()))busy=true;
       b.a=clamp(alpha[0],0,1);b.va=av[0];b.col=(S.colored?COL.rgb[id.d[i]]:COL.rgb.z).slice();
     });
     for(const g of this.ghosts){
       const x=[g.x],v=[g.vx],a=[g.a],av=[g.va];
-      Flow.advance(x,v,[g.startX+Flow.model.travel],dt,.05,calm());Flow.advance(a,av,[0],dt,.0008,calm());
+      Flow.advance(x,v,[g.startX+Flow.model.travel],dt,.05,calm());Flow.advance(a,av,[0],dt,.002,calm());
       g.x=x[0];g.vx=v[0];g.a=clamp(a[0],0,1);g.va=av[0];
     }
     this.ghosts=this.ghosts.filter(g=>g.a>.001);if(this.ghosts.length)busy=true;
     for(const trace of [...this.traces,...(this.trace?[this.trace]:[])]){
-      const a=[trace.a],v=[trace.va||0];if(Flow.advance(a,v,[trace.retiring?0:1],dt,.0008,calm()))busy=true;
+      const a=[trace.a],v=[trace.va||0];if(Flow.advance(a,v,[trace.retiring?0:1],dt,.002,calm()))busy=true;
       trace.a=clamp(a[0],0,1);trace.va=v[0];
     }
     this.traces=this.traces.filter(t=>t.a>.001);
@@ -1241,8 +1252,21 @@ const Stage = {
   },
   draw() {
     const G = this.geom(); if (!G.w || !G.h) return;
-    const ctx = fitCanvas(this.cv, G.w, G.h), id = identity();
-    ctx.clearRect(0, 0, G.w, G.h);
+    this.drawForecast(null,G);
+    // Forecast crossfades and retained DOM departures do not change the root
+    // drawing. Leave its native pixels alone until a drawing input changes.
+    const quiet=!this.drag&&!this.hov&&!this.ptr&&!S.pinMode&&!S.pins.length&&!S.skel&&!this.trace&&!this.ghosts.length&&!this.traces.length;
+    const paintKey=quiet?JSON.stringify([this.paintVersion||0,Math.min(2,devicePixelRatio||1),G.w,G.h,G.plotTop,G.plotBottom,G.bw,
+      this.view.lo,this.view.hi,S.sel,S.colored,this.snapV,this.snapA,...S.bars.map(b=>[b.d,b.x,b.a,...b.v,...b.dv])]):null;
+    if(paintKey!==null&&this.rootPaintKey===paintKey)return;
+    this.rootPaintKey=null;
+    const ctx = fitCanvas(this.cv, G.w, G.h, Math.min(2, devicePixelRatio || 1), true), id = identity();
+    // Preserve a native-density backing store across reference-panel pixels.
+    // The wrapper clips spare capacity; CSS never scales the drawn coordinates.
+    const width = `${this.cv.width / this.cv.flowDpr}px`, height = `${this.cv.height / this.cv.flowDpr}px`;
+    if (this.cv.style.width !== width) this.cv.style.width = width;
+    if (this.cv.style.height !== height) this.cv.style.height = height;
+    ctx.clearRect(0, 0, this.cv.width / this.cv.flowDpr, this.cv.height / this.cv.flowDpr);
     if(!this.guideSurface)this.guideSurface=document.createElement('canvas');
     const guide=fitCanvas(this.guideSurface,G.w,G.h,Math.min(2,devicePixelRatio||1),true);this.layer(this.guideSurface,{x:0,y:0,w:G.w,h:G.h},true);
     guide.clearRect(0,0,this.guideSurface.width/this.guideSurface.flowDpr,this.guideSurface.height/this.guideSurface.flowDpr);
@@ -1277,7 +1301,6 @@ const Stage = {
       const y = Math.round(Y(this.snapV)) + 0.5;
       guide.strokeStyle = COL.ai; guide.lineWidth = 1.2; guide.globalAlpha = this.snapA * this.snapA; guide.beginPath(); guide.moveTo(x0, y); guide.lineTo(x1, y); guide.stroke(); guide.globalAlpha = 1;
     }
-    this.drawForecast(ctx,G);
     for (const g of this.ghosts) this.drawCandle(ctx, G, g.x, g.dv, g.col, g.a);
     S.bars.forEach((b, i) => this.drawBar(ctx, G, i));
 
@@ -1295,6 +1318,7 @@ const Stage = {
       ctx.fillStyle = COL['paper-2']; ctx.globalAlpha = 0.95; rr(ctx, x - 8, y - 11, tw + 16, 22, 5); ctx.fill(); ctx.globalAlpha = 1;
       ctx.fillStyle = COL.ink; ctx.fillText(t, x, y + 0.5);
     }
+    this.rootPaintKey=paintKey;
   },
   drawCandle(ctx, G, cx, dv, col, a) {
     const Y = v => this.Y(v, G), bw = G.bw, yL = Y(dv[0]), yB = Y(dv[1]), yT = Y(dv[2]), yH = Y(dv[3]);
@@ -1356,33 +1380,72 @@ const Stage = {
     if(!this.forecastSurface)this.forecastSurface=document.createElement('canvas');
     const x=Math.max(0,Math.floor(G.forecastLeft-24)),y=Math.max(0,Math.floor(G.plotTop-24));
     const box={x,y,w:G.w-x,h:Math.min(G.h,Math.ceil(G.plotBottom+24))-y};
-    const layer=fitCanvas(this.forecastSurface,box.w,box.h,Math.min(2,devicePixelRatio||1),true);layer.clearRect(0,0,this.forecastSurface.width/this.forecastSurface.flowDpr,this.forecastSurface.height/this.forecastSurface.flowDpr);layer.translate(-x,-y);
-    this.layer(this.forecastSurface,box);
-    this.drawFan(layer,G);
-    if(Forecast.source){this.drawStates(layer,G);this.drawPaths(layer,G);this.drawBranches(layer,G);}else this.drawForecastEmpty(layer,G);
+    const key = [Math.min(2,devicePixelRatio||1),this.paintVersion||0,G.w,G.h,G.plotTop,G.plotBottom,G.forecastLeft,G.forecastWidth,...G.futureXs,
+      this.view.lo,this.view.hi,this.modeMix,this.fanA,this.fanWeight,this.tracePresence,
+      Forecast.view,Forecast.prefix,Forecast.selected,Forecast.current,COL.paper,COL.up,COL.down,COL.ai,COL['ink-2'],
+      ...S.bars.flatMap(b=>[b.d,...b.dv])].join('|');
+    if (this.forecastPaint?.source !== Forecast.source || this.forecastPaint?.key !== key || this.forecastPaint?.canvas !== this.forecastSurface) {
+      const layer=fitCanvas(this.forecastSurface,box.w,box.h,Math.min(2,devicePixelRatio||1),true);
+      layer.clearRect(0,0,this.forecastSurface.width/this.forecastSurface.flowDpr,this.forecastSurface.height/this.forecastSurface.flowDpr);layer.translate(-x,-y);
+      this.layer(this.forecastSurface,box);
+      // Engines without canvas filters have no blur readback to avoid; keep
+      // their wash in the existing surface instead of adding compositor layers.
+      this.drawFan(layer,G,'filter' in layer);
+      if(Forecast.source){this.drawStates(layer,G);this.drawPaths(layer,G);this.drawBranches(layer,G);}else this.drawForecastEmpty(layer,G);
+      this.forecastPaint = { source: Forecast.source, key, canvas: this.forecastSurface };
+    }
+    if(this.washRoot)this.washRoot.style.opacity=String(this.departingForecast?this.scene:1);
     if(this.departingForecast){
       this.forecastSurface.style.opacity=String(this.scene);this.departingForecast.style.opacity=String(1-this.scene);
     }else this.forecastSurface.style.opacity='1';
   },
-  drawFan(ctx, G) {
+  paintWash(ctx,state){
+    const {surface,width,height,texture,top,scaleY,pieces,weight,clip}=state,alpha=ctx.globalAlpha;
+    ctx.save();ctx.beginPath();ctx.rect(0,clip.top,clip.width,clip.height);ctx.clip();ctx.globalAlpha=alpha*weight;
+    for(const [left,right,start,finish]of pieces)ctx.drawImage(surface,(left-texture.x)/texture.w*width,0,(right-left)/texture.w*width,height,start,top,finish-start,texture.h*scaleY);
+    ctx.restore();
+  },
+  composeWash(state){
+    if(!this.washRoot){
+      this.washRoot=document.createElement('div');this.washRoot.inert=true;this.washRoot.setAttribute('aria-hidden','true');
+      this.washRoot.style.cssText='position:absolute;inset:0;pointer-events:none';
+      for(let i=0;i<2;i++){const part=document.createElement('div'),canvas=document.createElement('canvas');part.style.cssText='position:absolute;left:0;top:0;overflow:hidden;transform-origin:0 0;will-change:transform';canvas.style.cssText='position:absolute;top:0;right:auto;bottom:auto;pointer-events:none';part.append(canvas);this.washRoot.append(part);}
+    }
+    if(this.washRoot.nextSibling!==this.forecastSurface)this.paintRoot.insertBefore(this.washRoot,this.forecastSurface);
+    this.washRoot.hidden=false;
+    const {cache,surface,width,height,texture,top,scaleY,pieces,weight,clip}=state;
+    const clipping=`inset(${clip.top}px 0 ${Math.max(0,this.geom().h-clip.top-clip.height)}px 0)`;
+    if(this.washRoot.style.clipPath!==clipping)this.washRoot.style.clipPath=clipping;
+    for(let i=0;i<2;i++){
+      const part=this.washRoot.children[i],canvas=part.firstElementChild,[left,right,start,finish]=pieces[i];
+      if(canvas.washCache!==cache){canvas.width=width;canvas.height=height;canvas.getContext('2d').drawImage(surface,0,0,width,height,0,0,width,height);canvas.washCache=cache;canvas.style.width=`${texture.w}px`;canvas.style.height=`${texture.h}px`;}
+      const styles={width:`${right-left}px`,height:`${texture.h}px`,transform:`matrix(${(finish-start)/(right-left)},0,0,${scaleY},${start},${top})`,opacity:String(weight)};
+      for(const [key,value]of Object.entries(styles))if(part.style[key]!==value)part.style[key]=value;
+      const offset=`${texture.x-left}px`;if(canvas.style.left!==offset)canvas.style.left=offset;
+    }
+  },
+  drawFan(ctx, G, composite=false) {
+    if(composite)this.washState=null;
     const c=Forecast.source;
-    if(!c||this.fanA<.01||this.fanWeight<.01||G.w<1||G.h<1||G.fanStep<4)return;
+    if(!c||this.fanA<.01||this.fanWeight<.01||G.w<1||G.h<1||G.fanStep<4){if(composite&&this.washRoot)this.washRoot.hidden=true;return;}
     let lo=Infinity,hi=-Infinity;
     for(const b of S.bars){lo=Math.min(lo,b.dv[0]);hi=Math.max(hi,b.dv[3]);}
-    if(!(hi>lo))return;
+    if(!(hi>lo)){if(composite&&this.washRoot)this.washRoot.hidden=true;return;}
     const last=S.bars[G.N-1],lx=G.forecastLeft;
     const xs=G.futureXs,end=xs.at(-1);
     const Y=u=>this.Y(lo+u*(hi-lo),G),y0=this.Y(closeOf(last.dv,last.d),G);
     const neutral=rgbOf(COL['ink-2']),indigo=rgbOf(COL.ai);
     const pigment=neutral.map((v,j)=>Math.round(v*.78+indigo[j]*.22));
     const paint=rgbStr(pigment),weight=this.fanA*this.fanWeight*FAN_OPTIONS.strength*(1-(this.tracePresence||0)*.7);
-    // The blurred wash cannot resolve sub-half-pixel projection changes. Keep
-    // its texture stable while painting every quantile contour at exact coordinates.
-    const key=[G.w,G.h,G.plotTop,G.plotBottom,y0,lx,...xs,...c.fan.flat().map(Y)].map(v=>Math.round(v*2)).join('|')+'|'+paint+'|'+FAN_OPTIONS.softness;
+    // Reproject the soft wash while framing moves; its contours still use the
+    // exact current coordinates. Blur once again at rest for native final pixels.
+    const key=[(closeOf(last.dv,last.d)-lo)/(hi-lo),paint,FAN_OPTIONS.softness].join('|');
+    const projection=[G.w,G.h,G.plotTop,G.plotBottom,Y(0),Y(1),lx,...xs].join('|');
+    const moving=!!Flow.value(Ref.pane,'reference')||this.view.vel.some(Boolean)||this.plot.vel.some(Boolean)||S.bars.some(b=>b.vv.some(Boolean));
     // Raster work is limited to the fan's clipped region; fading reuses its ink.
     const box={x:Math.max(0,Math.floor(lx-24)),y:Math.max(0,Math.floor(G.plotTop-24))};
     box.w=Math.max(1,G.w-box.x);box.h=Math.max(1,Math.min(G.h,Math.ceil(G.plotBottom+24))-box.y);
-    if(this.fanCache?.source!==c||this.fanCache.key!==key){
+    if(this.fanCache?.source!==c||this.fanCache.key!==key||!moving&&this.fanCache.projection!==projection){
     if(!this.fanSurface)this.fanSurface=document.createElement('canvas');
     const density=.4, wash=fitCanvas(this.fanSurface,box.w*density,box.h*density,1,true);
     wash.clearRect(0,0,this.fanSurface.width,this.fanSurface.height);wash.scale(density,density);wash.translate(-box.x,-box.y);wash.fillStyle=paint;
@@ -1407,10 +1470,17 @@ const Stage = {
     if(!this.fanBlurSurface)this.fanBlurSurface=document.createElement('canvas');
     const blur=fitCanvas(this.fanBlurSurface,box.w*density,box.h*density,1,true);blur.clearRect(0,0,this.fanBlurSurface.width,this.fanBlurSurface.height);
     blur.filter=`blur(${6*FAN_OPTIONS.softness*density}px)`;paintCanvas(blur,this.fanSurface,0,0,box.w*density,box.h*density);blur.filter='none';
-    this.fanCache={source:c,key,box};
+    this.fanCache={source:c,key,projection,box,root:lx,first:xs[0],end,zero:Y(0),one:Y(1)};
     }
+    const cached=this.fanCache,texture=cached.box,surface=this.fanBlurSurface;
+    const scaleY=(Y(1)-Y(0))/(cached.one-cached.zero),top=Y(0)+(texture.y-cached.zero)*scaleY;
+    // The first interval and the five equally spaced future columns resize
+    // independently. Two image slices preserve all six quantile positions.
+    const pieces=[[texture.x,cached.first,lx+(texture.x-cached.root)*(xs[0]-lx)/(cached.first-cached.root),xs[0]],
+      [cached.first,texture.x+texture.w,xs[0],xs[0]+(texture.x+texture.w-cached.first)*(end-xs[0])/(cached.end-cached.first)]];
+    const state={cache:cached,surface,width:surface.flowWidth,height:surface.flowHeight,texture,top,scaleY,pieces,weight,clip:{top:G.plotTop-24,width:G.w,height:G.plotH+48}};
+    if(composite){this.washState=state;this.composeWash(state);}else this.paintWash(ctx,state);
     ctx.save();ctx.beginPath();ctx.rect(0,G.plotTop-24,G.w,G.plotH+48);ctx.clip();ctx.globalAlpha=weight;
-    const texture=this.fanCache.box;paintCanvas(ctx,this.fanBlurSurface,texture.x,texture.y,texture.w,texture.h);
     const line=ctx.createLinearGradient(lx,0,end,0);
     line.addColorStop(0,rgbStr(pigment,0));line.addColorStop(.08,paint);
     line.addColorStop(.94,paint);line.addColorStop(1,rgbStr(pigment,0));
@@ -1646,12 +1716,15 @@ const Match = {
     worker.onmessage = e => { if (this.worker === worker) this.onmsg(e.data); };
     worker.onerror = e => { if (this.worker === worker) this.fail(`The matcher stopped: ${e.message || 'unknown error'}.`); };
     loadBars()
-      .then(buffer => { if (this.worker === worker) worker.postMessage({ type: 'bars', buffer }, [buffer]); })
+      .then(buffer => {
+        if (this.worker !== worker) return;
+        worker.postMessage({ type: 'bars', buffer }, [buffer]);
+        // Give matching data the whole connection first. Activity can fill the
+        // reserved readings after the first useful match, without doubling its wait.
+        loadPayload('activity').then(buffer => { if (this.worker === worker) worker.postMessage({ type: 'activity', buffer }, [buffer]); })
+          .catch(err => { if (this.worker !== worker) return; Panes.readings = 'failed'; Panes.note = err.message; if (this.result) Panes.render(this.result); });
+      })
       .catch(err => { if (this.worker === worker) this.fail(`The BTCUSDT klines could not be loaded (${err.message}).`); });
-    // what traded in each bar, for the left pane; matching never waits for it
-    fetch('activity').then(r => { if (!r.ok) throw new Error(`the server answered ${r.status}`); return r.arrayBuffer(); })
-      .then(buffer => { if (this.worker === worker) worker.postMessage({ type: 'activity', buffer }, [buffer]); })
-      .catch(err => { if (this.worker !== worker) return; Panes.readings = 'failed'; Panes.note = err.message; if (this.result) Panes.render(this.result); });
     this.schedule(true);
   },
   // the result on screen answers the drawing as it stands
@@ -1675,7 +1748,7 @@ const Match = {
     if (m.type === 'ready') { this.ready = true; this.until = m.to; if (!this.result) $('#mmsg').textContent = `Searching the BTCUSDT history, ${day(m.from)} to ${day(m.to)}…`; return; }
     if (m.type === 'error') { this.fail(`The BTCUSDT klines could not be read: ${m.message}`); return; }
     if (m.type === 'progress') { if (m.id === this.id) { $('#prog').hidden = false; $('#prog i').style.width = `${(m.f * 100).toFixed(1)}%`; } return; }
-    if (m.type === 'readings') { Panes.readings = 'ready'; if (this.result) { this.sentKey = ''; this.send(); } return; }
+    if (m.type === 'readings') { Panes.readings = 'ready'; if (this.sent) { this.sentKey = ''; this.send(); } return; }
     if (m.type === 'readings-error') { Panes.readings = 'failed'; Panes.note = m.message; if (this.result) Panes.render(this.result); return; }
     if (m.type === 'result' && m.id === this.id) {
       this.result = m; this.resultSent=this.sent;this.resultKey = this.sentKey;
@@ -1705,7 +1778,7 @@ const Match = {
     if (this.failed || !this.worker) return;
     clearTimeout(this.timer);
     if (Stage.drag) { if (Stage.drag.moved) $('#emaki').classList.add('stale'); return; }
-    this.timer = setTimeout(() => this.send(), now ? 0 : 140);
+    this.timer = setTimeout(() => this.send(), 0);
   },
   send() {
     const { held, q } = this.query(), key = JSON.stringify(q);
@@ -1809,10 +1882,17 @@ function nextWords(f) {
 }
 // The bars come from Composer's server, which reads them from the Vaquum HuggingFace kline files;
 // the payload is accepted only if it starts with its own marker.
+async function loadPayload(path) {
+  for (let attempt = 0; ; attempt++) {
+    const response = await fetch(path);
+    if (response.status === 503 && attempt < 60) { await new Promise(resolve => setTimeout(resolve, 1000)); continue; }
+    if (!response.ok) throw new Error(`the server answered ${response.status}`);
+    return response.arrayBuffer();
+  }
+}
 async function loadBars() {
-  const r = await fetch('bars');
-  if (!r.ok) throw new Error(`the server answered ${r.status}`);
-  const bytes = new Uint8Array(await r.arrayBuffer());
+  const buffer = await loadPayload('bars');
+  const bytes = new Uint8Array(buffer);
   if (!(bytes.length > 5 && String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3], bytes[4]) === 'CBAR1')) throw new Error('the server sent something other than bars');
   return bytes.buffer;
 }
@@ -1886,6 +1966,7 @@ const Panes = {
     for (const side of onlySide ? [onlySide] : ['left','right']) {
       this.remember(side);
       const pane = $(`.pane[data-side="${side}"]`), variant = this.views[side];
+      pane.dataset.loading = String(side === 'left' ? !P.readings && this.readings === 'loading' : !P.cont && !Match.result);
       const markup=side==='left'?{
         lcap:PaneDesigns.caption(r,ctx),lrows:PaneDesigns.left(variant,r,ctx),lnext:PaneDesigns.next(r,ctx),lmethod:PaneDesigns.leftMethod(ctx.barCount)
       }:{
@@ -2030,9 +2111,9 @@ const Ref = {
     this.render(0);
   },
   transition(open) {
-    const wasHidden=this.pane.hidden;
+    const wasHidden=this.pane.hidden,mobile=innerWidth<=700;
     if(wasHidden&&!open&&!Flow.value(this.pane,'reference'))return;
-    if((open||!wasHidden)&&!Flow.value(this.pane,'reference')){
+    if(!mobile&&(open||!wasHidden)&&!Flow.value(this.pane,'reference')){
       this.work.style.gridTemplateColumns='';this.pane.hidden=false;this.work.dataset.reference='open';
       const columns=getComputedStyle(this.work).gridTemplateColumns.split(' ').map(parseFloat);
       this.columns=columns;
@@ -2042,7 +2123,6 @@ const Ref = {
     this.pane.hidden=!open;this.pane.inert=!open;this.pane.setAttribute('aria-hidden',String(!open));
     this.pane.dataset.flowVisible='';this.pane.style.setProperty('--flow-display','flex');
     this.work.dataset.reference='open';this.pane.style.overflow='hidden';
-    const mobile=innerWidth<=700;
     if(!mobile)this.pane.style.setProperty('--flow-reference-content-width',`${this.contentWidth}px`);
     Flow.spring(this.pane,'reference',{from:{progress:wasHidden?0:1},to:{progress:open?1:0},
       write:({progress})=>{
@@ -2063,9 +2143,9 @@ const Ref = {
     $('#ref-topic').focus({preventScroll:true});
   },
   close() {
+    const to=this.back&&this.back.isConnected&&!this.pane.contains(this.back)&&!this.back.closest('[hidden]')&&this.back.getClientRects().length?this.back:$('#reftoggle');
     this.clear();this.transition(false);
     $('#reftoggle').setAttribute('aria-expanded','false');$('#reftoggle').setAttribute('aria-pressed','false');
-    const to=this.back&&this.back.isConnected&&this.back.getClientRects().length&&!this.back.closest('[hidden]')?this.back:$('#reftoggle');
     to.focus({preventScroll:true});
   },
   render(i) {
@@ -2250,7 +2330,7 @@ function setSpace(u) {
 }
 $('#space').value = String(S.space);
 $('#space').addEventListener('input', e => setSpace(+e.target.value));
-function onTheme() { const root=document.documentElement;root.dataset.flowTheme='';Flow.finish();readTheme();void document.body.offsetWidth;delete root.dataset.flowTheme;Stage.departingForecast=null;App.redraw(); }
+function onTheme() { const root=document.documentElement;root.dataset.flowTheme='';Flow.finish();readTheme();Stage.paintVersion=(Stage.paintVersion||0)+1;void document.body.offsetWidth;delete root.dataset.flowTheme;Stage.departingForecast=null;App.redraw(); }
 $('#theme').addEventListener('click', () => {
   const root = document.documentElement, cur = root.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
   root.dataset.theme = cur === 'dark' ? 'light' : 'dark'; onTheme();
@@ -2267,7 +2347,7 @@ refresh();
 Match.start();
 Flow.onSettle(()=>{if(Match.presentation){Match.flushPresentation();Flow.finish();}Stage.settle(!Stage.frameBox);App.redraw();});
 Flow.reveal($('.top'),0);Flow.reveal($('.stage'),0);Flow.reveal($('.lpane'));Flow.reveal($('.rpane'));
-if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => {Flow.finish();App.redraw();});
+if (document.fonts) { const fontsReady=()=>{Stage.paintVersion=(Stage.paintVersion||0)+1;Flow.finish();App.redraw();}; document.fonts.ready.then(fontsReady); document.fonts.addEventListener('loadingdone',fontsReady); }
 })();
 </script>
 

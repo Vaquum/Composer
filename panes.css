@@ -6,6 +6,7 @@
 .pane p { margin: 0; }
 .pane .pcap { font-size: var(--pane-label); color: var(--ink-2); }
 .pane-header { display: grid; gap: var(--pane-space); padding-bottom: var(--pane-space); border-bottom: 1px solid var(--hair); }
+.pane-context { min-height: 44px; }
 .pane-context > strong { font-size: 15px; font-weight: 600; color: var(--ink); }
 .pane-body, .pane-flow { display: flex; flex-direction: column; gap: var(--pane-space); min-width: 0; }
 .pane-section, .pane-flow > .pane-group { border-top: 1px solid var(--hair); padding-top: var(--pane-space); }
@@ -120,3 +121,9 @@
   .work > .pane, .work > .ref { transform: translateZ(0); }
 }
 @media (pointer: coarse) { .pane-switch { grid-template-columns: 44px minmax(0,1fr) 44px; } .pane-switch > button, .pane-menu button, .pane-details summary, .pnear button { min-height: 44px; } }
+
+/* Keep later sections below the initial viewport while their primary readings
+   load, so the first answer does not push visible controls out of the way. */
+.pane[data-loading="true"] :is(#lrows,#rbecame) { display: block; min-height: max(320px,calc(100dvh - 240px)); }
+
+.pane[data-loading="true"] :is(#lnextsec,#rfan,#rnearsec,details[data-detail="left-method"],details[data-detail="right-method"]) { display: none; }

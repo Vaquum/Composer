@@ -3,10 +3,14 @@
 // every such bound removed, on held, stretched, filtered, shape-only, nearest and fallback searches, and time the
 // heaviest one.
 import fs from 'node:fs';
+import assert from 'node:assert/strict';
 // Usage: node checks/similarity-equivalence.mjs MATCHER_JS BARS_FILE (BARS_FILE as bars.py writes it)
 const [matcherFile, barsFile] = process.argv.slice(2);
 const source = fs.readFileSync(matcherFile, 'utf8');
 const BOUNDS = [
+  ['endLimits=endGroups.length?new Int32Array(n):null', 'endLimits=null'],
+  ['    for (const h of endHolds[g]) if (!holdOk(h, MO, MH, ML, MC)) return 0;\n', ''],
+  [' || scoring && colours[g] + lower / 2 + FLIP_WEIGHT * differences[g] / (2 * cq.P) > Math.min(best.bound(), bestHere ? bestHere.d : Infinity)', ''],
   ['      if (floor > limit) continue;\n', ''],
   ['closeness(cq, MO, MH, ML, MC, W, best.bound())', 'closeness(cq, MO, MH, ML, MC, W, Infinity)'],
   ['closeness(cq, MO, MH, ML, MC, W, near.bound())', 'closeness(cq, MO, MH, ML, MC, W, Infinity)'],
@@ -36,14 +40,15 @@ const cases = [
   ['double bottom, 17 pins, stretch 4, shape only', { bars: DOUBLE, holds: PINS17, stretch: 4, oriented: false }, true],
   ['double bottom, 17 pins, next bar up 8 ATR: nothing passes, nearest shown', { bars: DOUBLE, holds: PINS17, stretch: 0, next: { dir: 1, measure: 'atr', value: 8 } }, true],
   ['double bottom, one pin, stretch 2', { bars: DOUBLE, holds: [PINS17[16]], stretch: 2 }, true],
-  ['double bottom, one pin, stretch 4', { bars: DOUBLE, holds: [PINS17[16]], stretch: 4 }, false],
+  ['double bottom, one pin, stretch 4', { bars: DOUBLE, holds: [PINS17[16]], stretch: 4 }, false, 5000],
 ];
 let id = 0, mismatches = 0;
 const key = r => JSON.stringify({ mode: r.mode, exact: r.exact, exactF: r.exactF, counts: r.counts, countsF: r.countsF, split: r.split, base: r.base, results: r.results.map(x => [x.tf, x.start, x.end, x.picks.join('.'), x.flips, x.off, x.score]) });
-for (const [label, q, compare] of cases) {
+for (const [label, q, compare, budget] of cases) {
   const query = { x: 48, tfs: [1, 1, 1, 1, 1], oriented: true, next: null, stretch: 0, ...q };
-  bounded.setLatest(++id); let t = Date.now(); const a = await bounded.search(query, id, () => {}); const tb = Date.now() - t;
-  let line = `${label}: ${a.mode}, bounded ${tb} ms`;
+  bounded.setLatest(++id); const cpuStart=process.cpuUsage();let t = Date.now(); const a = await bounded.search(query, id, () => {}); const tb = Date.now() - t;
+  const cpu=process.cpuUsage(cpuStart),cpuMs=Math.round((cpu.user+cpu.system)/1000);
+  let line = `${label}: ${a.mode}, bounded ${tb} ms wall (${cpuMs} ms CPU)`;
   if (compare) {
     exhaustive.setLatest(++id); t = Date.now(); const b = await exhaustive.search(query, id, () => {}); const te = Date.now() - t;
     const same = key(a) === key(b);
@@ -51,6 +56,7 @@ for (const [label, q, compare] of cases) {
     line += `, unbounded ${te} ms, identical ${same}`;
   }
   console.log(line + `; ${a.results.length} shown`);
+  if(budget)assert.ok(tb<budget,`${label}: exact search exceeded ${budget} ms (${tb})`);
 }
 console.log(mismatches ? `${mismatches} case(s) differ` : 'bounded search identical to the unbounded one on every compared case');
 process.exit(mismatches ? 1 : 0);

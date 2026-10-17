@@ -22,6 +22,9 @@
    seeded by the mean of the first 14 values and started again after any missing bar. */
 
 const TF_NAMES = ['15m', '30m', '1h', '2h', '4h'];
+// One display frame per worker task keeps replacement prompt while avoiding
+// excessive task rescheduling on a busy host. The worker never paints the UI.
+const WORK_SLICE_MS = 16;
 let BARS = null, latest = 0, pending = null;
 // what Composer reads about each bar beside its shape, once the activity has arrived (per timeframe, aligned with BARS)
 let READ = null, pendingActivity = null;
@@ -123,9 +126,12 @@ function readings(T, A) {
     const h = days.get(Math.floor(T.ts[i] / 86400) - 1);
     if (h && h[0] > h[1]) R.day[i] = (T.C[i] - h[1]) / (h[0] - h[1]);
   }
+  // Keep the exact log of each Float32 reading once, rather than repeating it
+  // for every admitted placement in every search.
+  R.features = READINGS.map((key, f) => AS_LOG[f] ? Float64Array.from(R[key], Math.log) : R[key]);
   R.base = READINGS.map((key, f) => {
     let c = 0, sum = 0, sq = 0;
-    for (const v of R[key]) { if (v !== v) continue; const x = AS_LOG[f] ? Math.log(v) : v; c++; sum += x; sq += x * x; }
+    for (const x of R.features[f]) { if (x !== x) continue; c++; sum += x; sq += x * x; }
     return [c, sum, sq];
   });
   return R;
@@ -305,11 +311,15 @@ class Best {
 
 let tickChannel = null, tickWaiters = [];
 function tick() {
+  // Node's MessagePort can drain its own queue ahead of timers; its native
+  // check-phase yield preserves the same replacement opportunity as a worker task.
+  if (typeof setImmediate === 'function') return new Promise(resolve => setImmediate(resolve));
   if (!tickChannel) { tickChannel = new MessageChannel(); tickChannel.port1.onmessage = () => { const w = tickWaiters.shift(); if (w) w(); }; }
   return new Promise(r => { tickWaiters.push(r); tickChannel.port2.postMessage(0); });
 }
 
 async function search(q, id, report) {
+  const read = READ;
   const t0 = Date.now(), cq = compile(q), n = cq.n, held = q.holds.length > 0, stretch = held ? q.stretch : 0;
   const MO = new Float64Array(n), MH = new Float64Array(n), ML = new Float64Array(n), MC = new Float64Array(n), W = new Float64Array(4 * n);
   const picks = new Int32Array(n), exact = TF_NAMES.map(() => 0), counts = TF_NAMES.map(() => 0);
@@ -318,7 +328,7 @@ async function search(q, id, report) {
   const base = { n: 0, up: 0, down: 0, flat: 0, pass: 0 }, split = { n: 0, up: 0, down: 0, flat: 0, none: 0 };
   const best = new Best(Math.max(400, q.x * 40));
   const total = BARS.reduce((a, T) => a + T.n, 0);
-  let done = 0, sinceTick = 0;
+  let done = 0, sinceTick = 0, deadline = performance.now() + WORK_SLICE_MS;
 
   // The panes: the set of windows that match (exact twins with nothing held, the windows that hold otherwise, on the
   // timeframes shown and through the next-bar filter), summed as they are found. For each drawn bar, the readings of the
@@ -329,18 +339,21 @@ async function search(q, id, report) {
   let fan = new Float32Array(SAMPLE * AFTER), cont = [0, 0, 0, 0], seed = 0x9e3779b9;
   let sequences = new Map();
   const rand = () => { seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  let batchPrefix = false, prefixWeight = 0;
+  const firstOnly = cq.holds.every(h => h.color ? h.bar === 0 : h.a[0] === 0 && h.b[0] === 0);
   const addSet = (k, T, s, ps, e, o) => {
-    setN++;
-    const R = READ && READ[k];
+    setN++; if (batchPrefix) prefixWeight++;
+    const R = read && read[k];
     if (R) {
       for (let g = 0; g < n; g++) {
+        if (batchPrefix && g < n - 1) continue;
         const j = s + (ps ? ps[g] : g);
         for (let r = 0; r < NR; r++) {
           // where a window closed in the prior day's range is read on its last bar only
           if (r === NR - 1 && g !== n - 1) continue;
-          const v = R[READINGS[r]][j];
-          if (v !== v) continue;
-          const x = AS_LOG[r] ? Math.log(v) : v, a = (g * NR + r) * 3;
+          const x = R.features[r][j];
+          if (x !== x) continue;
+          const a = (g * NR + r) * 3;
           acc[a]++; acc[a + 1] += x; acc[a + 2] += x * x;
         }
       }
@@ -351,19 +364,21 @@ async function search(q, id, report) {
     for (let g = 0; g < n; g++) { const j = s + (ps ? ps[g] : g); if (T.L[j] < lo) lo = T.L[j]; if (T.H[j] > hi) hi = T.H[j]; }
     if (!(hi > lo)) return;
     const m = ++cont[0];
-    let up = false, down = false, key = '';
+    let up = false, down = false, sequenceCode = 0;
     for (let j = 1; j <= AFTER; j++) {
       if (T.H[e + j] > hi) up = true;
       if (T.L[e + j] < lo) down = true;
       // Classify exact integer prices before scaling: a close on either boundary is inside.
-      key += T.C[e + j] > hi ? 'U' : T.C[e + j] < lo ? 'D' : 'I';
+      sequenceCode = sequenceCode * 3 + (T.C[e + j] > hi ? 0 : T.C[e + j] < lo ? 2 : 1);
     }
-    let sequence = sequences.get(key);
+    let sequence = sequences.get(sequenceCode);
     if (!sequence) {
+      let code = sequenceCode, key = '';
+      for (let j = 0; j < AFTER; j++) { key = 'UID'[code % 3] + key; code = Math.floor(code / 3); }
       const scale = v => (v - lo) / (hi - lo);
       const bars = Array.from({ length: AFTER }, (_, j) => [T.O[e + j + 1], T.H[e + j + 1], T.L[e + j + 1], T.C[e + j + 1]].map(scale));
       sequence = { key, n: 0, bars, start: scale(T.C[e]) };
-      sequences.set(key, sequence);
+      sequences.set(sequenceCode, sequence);
     }
     sequence.n++;
     if (up) cont[1]++;
@@ -377,11 +392,19 @@ async function search(q, id, report) {
 
   // held relations, with stretch: drawn bar g takes bar pos + skip, and the skipped bars are ignored.
   let T = null, s = 0, bestHere = null, on = false, any = false;
+  const windowBest = { d: Infinity, picks: new Int32Array(n), extra: 0, span: 0 };
+  // Every placement ends at the same candle. A hold against that endpoint can
+  // reject a branch as soon as its other endpoint is placed, without waiting
+  // through all intervening combinations. The normal final hold check remains.
+  const endHolds=Array.from({length:n},()=>[]);
+  for(const h of cq.holds)if(!h.color){const a=h.a[0],b=h.b[0];if(Math.max(a,b)===n-1&&a!==b)endHolds[Math.min(a,b)].push(h);}
+  const endGroups=endHolds.flatMap((holds,g)=>holds.length?[{g,holds}]:[]),endLimits=endGroups.length?new Int32Array(n):null;
   const fits = (g, pos, skip) => {
     const last = pos + skip;
     if (last >= T.n || T.run[last] < last - s + 1) return -1;
     MO[g] = T.O[last]; MH[g] = T.H[last]; ML[g] = T.L[last]; MC[g] = T.C[last]; picks[g] = last - s;
     for (const h of cq.byBar[g]) if (!holdOk(h, MO, MH, ML, MC)) return 0;
+    for (const h of endHolds[g]) if (!holdOk(h, MO, MH, ML, MC)) return 0;
     return 1;
   };
   // A window with stretch runs from start s to a chosen last bar e: the first drawn bar sits on s, the last on e,
@@ -389,41 +412,117 @@ async function search(q, id, report) {
   // `closest` then finds the closest-looking placement. Colours and flips are counted bar by bar while placing and
   // only add to the score, so a placement already past the best it could still beat is dropped there; shape and
   // sizes are added once all bars are placed.
-  const exists = (g, pos, spare) => {
-    for (let skip = g === n - 1 ? spare : 0; skip <= (g === 0 ? 0 : spare); skip++) {
-      const ok = fits(g, pos, skip);
-      if (ok < 0) return;
-      if (!ok) continue;
-      if (g === n - 1) { any = true; return; }
-      exists(g + 1, pos + skip + 1, spare - skip);
-      if (any) return;
+  // Minimum remaining colour cost over every legal skipped-bar placement.
+  // This is an admissible bound: cross-bar holds and shape costs only add work
+  // or nonnegative score. Store half-colour units in compact byte columns.
+  let colourBounds = null;
+  async function boundColours() {
+    const columns = Array.from({ length: n }, () => Array(stretch + 1));
+    for (let g = n - 1; g >= 0; g--) {
+      const local = cq.byBar[g].filter(h => h.color || h.a[0] === h.b[0]);
+      const own = new Uint8Array(T.n);
+      for (let i = 0; i < T.n; i++) {
+        if ((i & 1023) === 0 && performance.now() >= deadline) {
+          await tick(); if (id !== latest) return null; deadline = performance.now() + WORK_SLICE_MS; report(done / total);
+        }
+        const o = T.O[i], c = T.C[i];
+        own[i] = cq.oriented ? Math.abs((c > o ? 1 : c < o ? -1 : 0) - cq.D[g]) : 0;
+        if (local.length) {
+          MO[g] = o; MH[g] = T.H[i]; ML[g] = T.L[i]; MC[g] = c;
+          for(const h of local)if(!holdOk(h,MO,MH,ML,MC)){own[i]=255;break;}
+        }
+      }
+      // Successive spare counts share a diagonal minimum. This avoids scanning
+      // all possible skips again for each DP cell.
+      const tails = [new Uint8Array(T.n), new Uint8Array(T.n)];
+      for (let spare = 0; spare <= stretch; spare++) {
+        const column = columns[g][spare] = new Uint8Array(T.n).fill(255), tail = tails[spare % 2].fill(255);
+        if (g === n - 1 && spare) continue;
+        const end = T.n - (n - g - 1) - spare;
+        for (let i = 0; i < end; i++) {
+          if ((i & 1023) === 0 && performance.now() >= deadline) {
+            await tick(); if (id !== latest) return null; deadline = performance.now() + WORK_SLICE_MS; report(done / total);
+          }
+          const rest = g === n - 1 ? 0 : Math.min(columns[g + 1][spare][i + 1], spare ? tails[(spare - 1) % 2][i + 1] : 255);
+          tail[i] = rest;
+          if (own[i] !== 255 && rest !== 255) column[i] = rest + own[i];
+        }
+      }
     }
-  };
-  const closest = (g, pos, spare, c0, d0) => {
-    for (let skip = g === n - 1 ? spare : 0; skip <= (g === 0 ? 0 : spare); skip++) {
-      const ok = fits(g, pos, skip);
-      if (ok < 0) return;
-      if (!ok) continue;
-      const last = pos + skip, o = MO[g], cl = MC[g];
-      W[4 * g] = ML[g]; W[4 * g + 1] = o < cl ? o : cl; W[4 * g + 2] = o < cl ? cl : o; W[4 * g + 3] = MH[g];
-      let c = c0, d = d0;
-      if (cq.oriented) { const sg = cl > o ? 1 : cl < o ? -1 : 0, df = sg - cq.D[g]; c += (df < 0 ? -df : df) / 2; }
-      const lv = cq.levels[g];
-      for (let k = 0; k < lv.A.length; k++) { const x = W[lv.A[k]], y = W[lv.B[k]], df = (x < y ? -1 : x > y ? 1 : 0) - lv.R[k]; if (df) d += df < 0 ? -df : df; }
-      const floor = c + FLIP_WEIGHT * (d / 2) / cq.P, limit = Math.min(best.bound(), bestHere ? bestHere.d : Infinity);
-      if (floor > limit) continue;
-      if (g === n - 1) {
-        const score = floor + lookOf(cq, W);
-        if (score < limit) bestHere = { d: score, picks: Array.from(picks), extra: last - s + 1 - n, span: last - s + 1 };
-      } else closest(g + 1, last + 1, spare - skip, c, d);
+    return columns;
+  }
+  // An explicit DFS can suspend inside a single expensive window. Its traversal
+  // order is the original recursive order, including the first admitted picks
+  // used by the cohort, and its score/tie handling is unchanged.
+  const positions = new Int32Array(n), spares = new Int32Array(n), skips = new Int32Array(n);
+  const colours = new Float64Array(n), differences = new Float64Array(n);
+  let depth = 0, nodes = 0;
+  function beginPlacement(extra,prepare=true) {
+    const end=s+n-1+extra;MO[n-1]=T.O[end];MH[n-1]=T.H[end];ML[n-1]=T.L[end];MC[n-1]=T.C[end];
+    if(endLimits&&prepare){
+      endLimits.fill(extra);
+      for(const {g,holds}of endGroups){
+        let last=-1;
+        for(let skip=0;skip<=(g?extra:0);skip++){
+          const at=s+g+skip;MO[g]=T.O[at];MH[g]=T.H[at];ML[g]=T.L[at];MC[g]=T.C[at];
+          let valid=true;for(const h of holds)if(!holdOk(h,MO,MH,ML,MC)){valid=false;break;}
+          if(valid)last=skip;
+        }
+        if(last<0)return false;
+        // Skips cannot be undone. Earlier bars cannot pass the last feasible
+        // position of any later endpoint held against this window's end.
+        for(let before=0;before<=g;before++)endLimits[before]=Math.min(endLimits[before],last);
+      }
     }
-  };
+    depth = 0; positions[0] = s; spares[0] = extra; skips[0] = 0; colours[0] = differences[0] = 0;
+    return true;
+  }
+  function place(scoring) {
+    while (depth >= 0) {
+      if ((++nodes & 127) === 0 && performance.now() >= deadline) return true;
+      const g = depth, spare = spares[g], skip = skips[g]++;
+      if (skip > (g === 0 ? 0 : spare)) { depth--; continue; }
+      const last = positions[g] + skip;
+      if(endLimits&&last-s-g>endLimits[g]){depth--;continue;}
+      if (colourBounds) {
+        const lower = colourBounds[g][spare - skip]?.[last] ?? 255;
+        if (lower === 255 || scoring && colours[g] + lower / 2 + FLIP_WEIGHT * differences[g] / (2 * cq.P) > Math.min(best.bound(), bestHere ? bestHere.d : Infinity)) continue;
+      }
+      const ok = fits(g, positions[g], skip);
+      if (ok < 0) { depth--; continue; }
+      if (!ok) continue;
+      let c = colours[g], d = differences[g];
+      if (scoring) {
+        const o = MO[g], cl = MC[g];
+        W[4 * g] = ML[g]; W[4 * g + 1] = Math.min(o, cl); W[4 * g + 2] = Math.max(o, cl); W[4 * g + 3] = MH[g];
+        if (cq.oriented) c += Math.abs((cl > o ? 1 : cl < o ? -1 : 0) - cq.D[g]) / 2;
+        const lv = cq.levels[g];
+        for (let k = 0; k < lv.A.length; k++) { const x = W[lv.A[k]], y = W[lv.B[k]]; d += Math.abs((x < y ? -1 : x > y ? 1 : 0) - lv.R[k]); }
+        const floor = c + FLIP_WEIGHT * d / (2 * cq.P), limit = Math.min(best.bound(), bestHere ? bestHere.d : Infinity);
+        if (floor > limit) continue;
+        if (g === n - 1) {
+          const score = floor + lookOf(cq, W);
+          if (score < limit) { windowBest.d = score; windowBest.picks.set(picks); windowBest.extra = last - s + 1 - n; windowBest.span = last - s + 1; bestHere = windowBest; }
+          continue;
+        }
+      } else if (g === n - 1) { any = true; depth = -1; return false; }
+      const child = g + 1, remaining = spare - skip;
+      positions[child] = last + 1; spares[child] = remaining;
+      skips[child] = child === n - 1 ? remaining : 0;
+      colours[child] = c; differences[child] = d; depth = child;
+    }
+    return false;
+  }
 
   for (let k = 0; k < BARS.length; k++) {
     T = BARS[k]; on = !!q.tfs[k];
+    colourBounds = null;
+    if (on && held && stretch && n > 2) {
+      colourBounds = await boundColours(); if (id !== latest) return null;
+    }
     for (s = 0; s + n <= T.n; s++) {
-      if (++sinceTick >= 8192) {
-        sinceTick = 0; await tick();
+      if ((++sinceTick & 255) === 0 && performance.now() >= deadline) {
+        await tick(); deadline = performance.now() + WORK_SLICE_MS;
         if (id !== latest) return null;
         report(done / total);
       }
@@ -456,11 +555,13 @@ async function search(q, id, report) {
       }
       // each run from this start to a possible last bar is its own window: it holds when some placement between its
       // ends does, its next bar is the one after that run, and the counts, rates and instance all describe it
+      batchPrefix = firstOnly && on && !!read && stretch > 0; prefixWeight = 0;
       for (let extra = 0; extra <= stretch; extra++) {
         const e = s + n - 1 + extra;
         if (e >= T.n || T.run[e] < e - s + 1) break;
         bestHere = null; any = false;
-        exists(0, s, extra);
+        if(!beginPlacement(extra))continue;
+        while (place(false)) { await tick(); if (id !== latest) return null; deadline = performance.now() + WORK_SLICE_MS; report(done / total); }
         if (!any) continue;
         counts[k]++;
         outcomeInto(T, e, oo);
@@ -469,10 +570,23 @@ async function search(q, id, report) {
         countsF[k]++;
         if (on) {
           addSet(k, T, s, picks, e, oo);
-          closest(0, s, extra, 0, 0);
-          if (bestHere) best.push(bestHere.d, { k, s, picks: bestHere.picks, extra, span: n + extra, end: T.ts[e] });
+          beginPlacement(extra,false);
+          while (place(true)) { await tick(); if (id !== latest) return null; deadline = performance.now() + WORK_SLICE_MS; report(done / total); }
+          if (bestHere) best.push(bestHere.d, { k, s, picks: Array.from(bestHere.picks), extra, span: n + extra, end: T.ts[e] });
         }
       }
+      // With holds only on the first bar, every admitted span chooses the same
+      // unskipped prefix. Accumulate its repeated readings once with that count;
+      // endpoint readings, outcomes, fan sampling and ranking keep traversal order.
+      if (batchPrefix && prefixWeight) {
+        const R = read[k];
+        for (let g = 0; g < n - 1; g++) for (let r = 0; r < NR - 1; r++) {
+          const x = R.features[r][s + g]; if (x !== x) continue;
+          const a = (g * NR + r) * 3;
+          acc[a] += prefixWeight; acc[a + 1] += x * prefixWeight; acc[a + 2] += x * x * prefixWeight;
+        }
+      }
+      batchPrefix = false;
     }
   }
 
@@ -486,7 +600,7 @@ async function search(q, id, report) {
       if (!q.tfs[k]) continue;
       T = BARS[k];
       for (s = 0; s + n <= T.n; s++) {
-        if (++sinceTick >= 8192) { sinceTick = 0; await tick(); if (id !== latest) return null; }
+        if ((++sinceTick & 255) === 0 && performance.now() >= deadline) { await tick(); if (id !== latest) return null; deadline = performance.now() + WORK_SLICE_MS; }
         if (T.run[s + n - 1] < n) continue;
         if (f && !passes(outcomeInto(T, s + n - 1, o0), f)) continue;
         for (let i = 0; i < n; i++) { MO[i] = T.O[s + i]; MH[i] = T.H[s + i]; ML[i] = T.L[s + i]; MC[i] = T.C[s + i]; }
@@ -504,13 +618,13 @@ async function search(q, id, report) {
     for (const r of ranked) { const R = BARS[r.k], e = r.s + r.span - 1; addSet(r.k, R, r.s, r.picks, e, outcomeInto(R, e, oo)); }
     setKind = 'closest';
   }
-  const panes = { kind: setKind, n: setN, readings: !!READ, rows: [], next: null, byTf: setTf.map(([m, k]) => wilson(k, m)), tfN: setTf.map(([m]) => m), after: AFTER, cont: null, near: [] };
-  if (READ) {
+  const panes = { kind: setKind, n: setN, readings: !!read, rows: [], next: null, byTf: setTf.map(([m, k]) => wilson(k, m)), tfN: setTf.map(([m]) => m), after: AFTER, cont: null, near: [] };
+  if (read) {
     for (let g = 0; g < n; g++) for (let r = 0; r < NR; r++) {
       if (r === NR - 1 && g !== n - 1) continue;
       const a = (g * NR + r) * 3, set = tMean(acc[a], acc[a + 1], acc[a + 2]);
       let c = 0, sum = 0, sq = 0;
-      for (let k = 0; k < BARS.length; k++) if (q.tfs[k]) { const b = READ[k].base[r]; c += b[0]; sum += b[1]; sq += b[2]; }
+      for (let k = 0; k < BARS.length; k++) if (q.tfs[k]) { const b = read[k].base[r]; c += b[0]; sum += b[1]; sq += b[2]; }
       const all = tMean(c, sum, sq);
       if (set && all) panes.rows.push({ bar: g, key: READINGS[r], log: AS_LOG[r], set, all, d: all[4] > 0 ? (set[0] - all[0]) / all[4] : 0 });
     }
@@ -566,15 +680,18 @@ async function search(q, id, report) {
 }
 
 if (typeof self !== 'undefined' && typeof self.postMessage === 'function' && typeof window === 'undefined') {
+  const memo = new Map();
   const run = async m => {
+    const key = JSON.stringify([!!READ,m.q]);
+    if (memo.has(key)) { if (m.id === latest) self.postMessage({type:'result',id:m.id,...memo.get(key),ms:0}); return; }
     const r = await search(m.q, m.id, f => self.postMessage({ type: 'progress', id: m.id, f }));
-    if (r) self.postMessage({ type: 'result', id: m.id, ...r });
+    if (r) { if(memo.size>=6)memo.delete(memo.keys().next().value);memo.set(key,r);self.postMessage({ type: 'result', id: m.id, ...r }); }
   };
   self.onmessage = async e => {
     const m = e.data;
     if (m.type === 'bars') {
       try {
-        BARS = decode(m.buffer);
+        BARS = decode(m.buffer); memo.clear();
         self.postMessage({ type: 'ready', bars: BARS.reduce((a, T) => a + T.n, 0), from: BARS[0].ts[0], to: BARS[0].ts[BARS[0].n - 1] + BARS[0].sec });
         if (pendingActivity) { const a = pendingActivity; pendingActivity = null; self.onmessage({ data: { type: 'activity', buffer: a } }); }
         if (pending) { const p = pending; pending = null; run(p); }
@@ -586,7 +703,7 @@ if (typeof self !== 'undefined' && typeof self.postMessage === 'function' && typ
       try {
         const A = decodeActivity(m.buffer);
         if (A.length !== BARS.length) throw new Error('The activity does not cover every timeframe.');
-        READ = BARS.map((T, k) => readings(T, A[k]));
+        READ = BARS.map((T, k) => readings(T, A[k])); memo.clear();
         self.postMessage({ type: 'readings' });
       } catch (err) { self.postMessage({ type: 'readings-error', message: String(err.message || err) }); }
       return;
