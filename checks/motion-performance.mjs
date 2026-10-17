@@ -205,7 +205,7 @@ for(const [name,type,rate] of browsers){
       if(tracing){await cdp.send('Profiler.enable');await cdp.send('Profiler.start');await cdp.send('Tracing.start',{categories:'devtools.timeline,blink.user_timing',transferMode:'ReturnAsStream'});}
       await page.evaluate(()=>{for(const key of ['frames','work','tasks','calls','paints','observers','timers','presentationFrames'])__samples[key]=[];for(const key of ['mutations','clones','measures','frameTime','frameWork','fanRasters','readingMoves'])__samples[key]=0;__samples.presentation={};__samples.actions={};__samples.active=true;});
       await action();await settle(page);
-      const sample=await page.evaluate(()=>{__samples.active=false;if(__samples.frameTime)__samples.work.push(__samples.frameWork);return{...__samples};});
+      const sample=await page.evaluate(()=>{__samples.active=false;if(__samples.frameTime)__samples.work.push(__samples.frameWork);return{...__samples,cameraTarget:[...__perf.Stage.view.tgt]};});
       let trace;
       if(tracing){
         const {profile}=await cdp.send('Profiler.stop'),done=new Promise(resolve=>cdp.once('Tracing.tracingComplete',resolve));
@@ -283,8 +283,8 @@ for(const [name,type,rate] of browsers){
     assert.ok(collapsedWash,'a collapsed drawing must hide the previous composited fan wash');
     await measure('forecast',async()=>{for(const v of ['paths','branches','states']){await call('forecast',v);await settle(page);}await call('fan',false);await settle(page);await call('fan',true);});
     const cameraBefore=await page.evaluate(()=>[...__perf.Stage.view.tgt]);
-    await measure('refresh',async()=>{for(let i=0;i<3;i++){await call('refresh');await settle(page);}});
-    assert.deepEqual(await page.evaluate(()=>[...__perf.Stage.view.tgt]),cameraBefore,'small result quantile updates must not restart camera motion');
+    const refreshed=await measure('refresh',async()=>{for(let i=0;i<3;i++){await call('refresh');await settle(page);}});
+    assert.deepEqual(refreshed.cameraTarget,cameraBefore,'small result quantile updates must not restart camera motion');
     await measure('refresh-replace',async()=>{await call('refresh','replace');});
     const reordered=await measure('refresh-layout',async()=>{await call('refresh','layout');});
     if(n===20)assert.ok(reordered.readingMoves<30,'a large reading reorder must avoid moving every row through individual DOM calls');
