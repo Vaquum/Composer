@@ -2,6 +2,8 @@
 // automated environment; structural guards remain useful on every machine.
 import fs from 'node:fs';
 import http from 'node:http';
+import os from 'node:os';
+import path from 'node:path';
 import assert from 'node:assert/strict';
 import { chromium, webkit } from 'playwright';
 import referenceThumbnail from './thumbnail-reference.mjs';
@@ -40,6 +42,7 @@ const seed=(page,result)=>page.evaluate(r=>{
   A.Match.onmsg({...r,type:'result',id:A.Match.id});
 },result);
 const reports=[],paperProfile=process.argv.includes('--paper-profile');
+const traceDirectory=paperProfile?fs.mkdtempSync(path.join(os.tmpdir(),'composer-paper-trace-')):null;
 const browsers=paperProfile?[['Chromium 4x CPU',chromium,4]]:[['Chromium native',chromium,1],['Chromium 4x CPU',chromium,4],['WebKit',webkit,1]];
 const screens=paperProfile?[[20,1600,2,'scroll'],[20,1600,2,'fixed'],[20,1600,2,'scroll'],[20,1600,2,'fixed']]:[[2,1600,1],[20,1600,2],[20,390,2]];
 // Shared GitHub runners have no controlled display/GPU cadence. Keep application
@@ -182,11 +185,28 @@ for(const [name,type,rate] of browsers){
     });
     const measure=async(label,action)=>{
       await settle(page);
+      const tracing=paperProfile&&label==='refresh-layout'&&cdp;
+      if(tracing){await cdp.send('Profiler.enable');await cdp.send('Profiler.start');await cdp.send('Tracing.start',{categories:'devtools.timeline,blink.user_timing',transferMode:'ReturnAsStream'});}
       await page.evaluate(()=>{for(const key of ['frames','work','tasks','calls','paints','observers','timers','presentationFrames'])__samples[key]=[];for(const key of ['mutations','clones','measures','frameTime','frameWork','fanRasters'])__samples[key]=0;__samples.presentation={};__samples.actions={};__samples.active=true;});
       await action();await settle(page);
       const sample=await page.evaluate(()=>{__samples.active=false;if(__samples.frameTime)__samples.work.push(__samples.frameWork);return{...__samples};});
+      let trace;
+      if(tracing){
+        const {profile}=await cdp.send('Profiler.stop'),done=new Promise(resolve=>cdp.once('Tracing.tracingComplete',resolve));
+        await cdp.send('Tracing.end');const {stream}=await done;let source='';
+        try{for(;;){const chunk=await cdp.send('IO.read',{handle:stream});source+=chunk.data;if(chunk.eof)break;}}
+        finally{await cdp.send('IO.close',{handle:stream});}
+        const stem=path.join(traceDirectory,`${paper}-${reports.length}`),events=JSON.parse(source).traceEvents,totals=new Map();
+        fs.writeFileSync(stem+'.trace.json',source);fs.writeFileSync(stem+'.cpuprofile',JSON.stringify(profile));
+        for(const event of events)if(event.ph==='X'&&event.dur&&/Layout|Paint|Raster|Image|Decode|ParseHTML|Layerize|Composite/.test(event.name)){
+          const value=totals.get(event.name)||{name:event.name,count:0,totalMs:0,maxMs:0};value.count++;value.totalMs+=event.dur/1000;value.maxMs=Math.max(value.maxMs,event.dur/1000);totals.set(event.name,value);
+        }
+        const nodes=new Map(profile.nodes.map(node=>[node.id,node.callFrame])),samples=new Map();
+        for(let i=0;i<(profile.samples?.length||0);i++){const frame=nodes.get(profile.samples[i]),key=`${frame.functionName||'(anonymous)'} ${frame.url}:${frame.lineNumber+1}`;samples.set(key,(samples.get(key)||0)+(profile.timeDeltas?.[i]||0)/1000);}
+        trace={file:stem+'.trace.json',cpu:stem+'.cpuprofile',inclusiveEvents:[...totals.values()].sort((a,b)=>b.totalMs-a.totalMs).slice(0,12),selfSamples:[...samples].sort((a,b)=>b[1]-a[1]).slice(0,12)};
+      }
       const p95=a=>a.length?a.slice().sort((a,b)=>a-b)[Math.floor((a.length-1)*.95)]:0;
-      const report={browser:name,paper,graphics,frameGate:controlledGraphics,bars:n,width,dpr,scenario:label,frames:sample.frames.length,
+      const report={browser:name,paper,trace,graphics,frameGate:controlledGraphics,bars:n,width,dpr,scenario:label,frames:sample.frames.length,
         frameP95:+p95(sample.frames).toFixed(1),workP95:+p95(sample.work).toFixed(1),callMax:+Math.max(0,...sample.calls).toFixed(1),
         paintP95:+p95(sample.paints).toFixed(1),observerMax:+Math.max(0,...sample.observers).toFixed(1),timerMax:+Math.max(0,...sample.timers).toFixed(1),taskMax:Math.max(0,...sample.tasks),presentationMax:Object.fromEntries(Object.entries(sample.presentation).map(([k,v])=>[k,+v.toFixed(1)])),actionMax:Object.fromEntries(Object.entries(sample.actions).map(([k,v])=>[k,+v.toFixed(1)])),measurements:sample.measures,mutations:sample.mutations};
       reports.push(report);console.log(JSON.stringify(report));
