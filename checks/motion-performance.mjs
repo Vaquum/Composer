@@ -114,12 +114,26 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
     await settle(page);
     const painted=()=>page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
     const stillPaper=await page.addStyleTag({content:'*,*::before,*::after{transition:none!important;animation:none!important}'});
-    const documentHeight=await page.evaluate(()=>document.documentElement.scrollHeight),viewportHeight=page.viewportSize().height;
+    const paperScroll=await page.evaluate(()=>{
+      const candidates=[...new Set([document.body,document.scrollingElement])];
+      for(const node of candidates){
+        if(!node||node.scrollHeight<=node.clientHeight)continue;
+        const before=node.scrollTop;node.scrollTop=1;const moves=node.scrollTop>0;node.scrollTop=before;
+        if(moves)return{selector:node===document.body?'body':'html',initial:before,max:node.scrollHeight-node.clientHeight};
+      }
+      return{selector:'body',initial:document.body.scrollTop,max:0};
+    }),viewportHeight=page.viewportSize().height;
+    let previous=-1,tiles=0;
     // Full-page capture can resize a mobile viewport and change the scene itself.
     // Compare fixed viewport tiles instead, covering the complete document.
     for(let top=0;;top+=viewportHeight){
-      const scroll=Math.min(top,Math.max(0,documentHeight-viewportHeight));
-      await page.evaluate(y=>scrollTo(0,y),scroll);await painted();await settle(page);
+      const maximum=await page.evaluate(selector=>{const node=document.querySelector(selector);return node.scrollHeight-node.clientHeight;},paperScroll.selector);
+      const target=Math.min(top,Math.max(0,maximum));
+      await page.evaluate(({selector,target})=>document.querySelector(selector).scrollTo(0,target),{selector:paperScroll.selector,target});await painted();await settle(page);
+      const position=await page.evaluate(selector=>{const node=document.querySelector(selector);return{top:node.scrollTop,max:node.scrollHeight-node.clientHeight,attachment:getComputedStyle(document.body).backgroundAttachment};},paperScroll.selector),scroll=position.top;
+      assert.ok(Math.abs(scroll-Math.min(target,position.max))<1,'paper tiles must reach the requested offset on the actual scroller');
+      assert.ok(scroll>previous,'each paper tile must advance the actual scroll offset');previous=scroll;tiles++;
+      if(scroll>0)assert.equal(position.attachment,'scroll','outer body/document scrolling must restore the original paper attachment');
       const layeredPaper=await page.screenshot();
       const originalPaper=await page.addStyleTag({content:'body{background-attachment:scroll!important}'});
       try{
@@ -134,10 +148,11 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
           assert.ok(difference.max<=2&&difference.mean<.005,`paper cache changed pixels at scroll ${scroll} beyond compositor rounding: ${JSON.stringify(difference)}`);
         }
       }finally{await originalPaper.evaluate(node=>node.remove());}
-      if(scroll>=documentHeight-viewportHeight)break;
+      if(scroll>=position.max-1)break;
     }
+    if(paperScroll.max>0)assert.ok(tiles>1,'tall documents must compare more than the initial viewport');
     await stillPaper.evaluate(node=>node.remove());
-    await page.evaluate(()=>scrollTo(0,0));await painted();await settle(page);
+    await page.evaluate(({selector,initial})=>document.querySelector(selector).scrollTo(0,initial),paperScroll);await painted();await settle(page);
     const graphics=await page.evaluate(()=>{
       const canvas=document.createElement('canvas'),gl=canvas.getContext('webgl');if(!gl)return'unavailable';
       const info=gl.getExtension('WEBGL_debug_renderer_info'),renderer=info?gl.getParameter(info.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER);

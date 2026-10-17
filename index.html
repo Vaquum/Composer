@@ -443,7 +443,10 @@ const calm = () => Flow.reduced();
 // Mac WebKit benefits from its fixed-background cache without moving content
 // into a new compositing group. Preserve document coordinates during scrolling.
 const PAPER_CACHE=navigator.platform.includes('Mac')&&!('filter' in document.createElement('canvas').getContext('2d'));
-if(PAPER_CACHE){const origin=()=>document.documentElement.toggleAttribute('data-paper-cache',scrollY===0);origin();addEventListener('scroll',origin,{passive:true});}
+if(PAPER_CACHE){
+  const origin=()=>document.documentElement.toggleAttribute('data-paper-cache',scrollY===0&&document.body.scrollTop===0);
+  origin();addEventListener('scroll',event=>{if(event.target===document||event.target===document.body||event.target===document.documentElement)origin();},{capture:true,passive:true});
+}
 
 function dense(arr) { const s = Array.from(new Set(arr)).sort((a, b) => a - b), m = new Map(); s.forEach((v, i) => m.set(v, i)); return arr.map(v => m.get(v)); }
 /* ---- the feel of a drag: pure functions of the pointer, checked by checks/drag.mjs ---- */

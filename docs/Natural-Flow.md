@@ -95,9 +95,10 @@ later sibling snapshots do not repeatedly force layout. Desktop grid columns
 contain their layout and paint during the reference track's resize. Mac desktop
 WebKit uses its fixed-background cache for the paper while the document is at
 its origin, retaining the existing paint order. Outer document scrolling restores
-scroll attachment so the texture keeps its original coordinates. Other engines
+scroll attachment for both body and viewport scrollers, preserving texture coordinates. Other engines
 and mobile keep their existing background. Fixed viewport tiles compare the
-complete document within two 8-bit compositor rounding units.
+complete document on its actual scroll element, assert that each tile advances,
+and permit two 8-bit compositor rounding units.
 Retained reading rows in all three designs reuse their verified bindings inside structural
 reconciliation; headers and changed row shapes still use the general path.
 Previously unseen actors receive a fresh observer sample after layout changes,
