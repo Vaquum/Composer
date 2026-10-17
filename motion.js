@@ -13,7 +13,9 @@ const TactileFlow = (() => {
   }
   function advance(values, velocities, targets, seconds, epsilon = .002, immediate = false) {
     let busy = false;
+    const validTime=Number.isFinite(seconds)&&seconds>=0;
     for (let i = 0; i < targets.length; i++) {
+      if(validTime&&values[i]===targets[i]&&velocities[i]===0&&Number.isFinite(values[i]))continue;
       const next = integrate(values[i], velocities[i], targets[i], immediate ? 0 : seconds);
       if (immediate || Math.abs(next.position - targets[i]) <= epsilon && Math.abs(next.velocity) <= epsilon * 10) {
         values[i] = targets[i]; velocities[i] = 0;
@@ -25,6 +27,7 @@ const TactileFlow = (() => {
   function bounds(values, velocities, targets, seconds, immediate = false) {
     const span=values[1]-values[0],targetSpan=targets[1]-targets[0];
     if(!(span>0)||!(targetSpan>0))throw Error('Tactile framing requires ordered bounds.');
+    if(Number.isFinite(seconds)&&seconds>=0&&values[0]===targets[0]&&values[1]===targets[1]&&velocities[0]===0&&velocities[1]===0)return false;
     const center=[(values[0]+values[1])/2],cv=[velocities[0]],zoom=[Math.log(span)],zv=[velocities[1]];
     const p=advance(center,cv,[(targets[0]+targets[1])/2],seconds,targetSpan*1e-4,immediate);
     const z=advance(zoom,zv,[Math.log(targetSpan)],seconds,.00001,immediate);

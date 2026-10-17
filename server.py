@@ -1,8 +1,8 @@
 """Composer's server: the page, its matcher, the bars it searches and what traded in them, on 127.0.0.1 only.
 
 The host's Caddy, deployed from Vaquum/Portal, puts composer.vaquum.fi in front of this server
-behind the portal login, so it checks no credentials of its own. It reads the bars from the Vaquum
-HuggingFace kline files before it starts answering, and looks for newer files every hour. If a
+behind the portal login, so it checks no credentials of its own. It restores a validated local
+snapshot before answering and reads newer Vaquum HuggingFace files in the background every hour. If a
 later read fails, it keeps the bars it has, logs why, and tries again an hour later; /healthz says
 which files it serves and when the last read failed.
 """
