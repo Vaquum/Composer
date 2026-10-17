@@ -56,6 +56,9 @@ async function diagnoseNativePaint(page,label,action,p95){
   const stop=()=>page.evaluate(()=>{__paintDiagnosis.active=false;return __paintDiagnosis.frames;});
   const report=(variant,frames)=>{assert.ok(frames.length>5,'paint diagnosis must collect actual frames');console.log(JSON.stringify({diagnosis:label,variant,frames:frames.length,p95:p95(frames)}));};
   await start();await page.waitForTimeout(1200);report('idle',await stop());
+  // Repeated physical drags change the drawing. Keep the original drag/pixel
+  // assertions meaningful; its measured timing still uses every original gate.
+  if(label==='pointer-drag')return;
   for(const [variant,css]of [['control',''],['paper-none',':root,body{background-image:none!important}'],['control',''],['forced-detail-layer','.flow-detail-content{transform:translateZ(0)!important}'],['control',''],['clipped-detail','.flow-detail-body{contain:paint!important}'],['contained-rows','.pane div.prow{contain:layout!important}'],['control','']]){
     const style=await page.addStyleTag({content:css||'/* native paint control */'});
     try{await settle(page);await start();await action();await settle(page);if(label!=='reference'){await action();await settle(page);}report(variant,await stop());}
