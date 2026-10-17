@@ -75,6 +75,23 @@ for(const [name,type] of [['Chromium',chromium],['WebKit',webkit]]){
     detail.open=false;A.Flow.finish();return state;
   });
   assert.deepEqual(retainedDetails,{open:true,detailRetained:true,bodyRetained:true,available:true},`${name}: an open disclosure stays accessible on data refresh`);
+  const largeReadings=await page.evaluate(()=>{
+    const F=window.__motionProbe.Flow,root=document.createElement('div'),order=Array.from({length:96},(_,i)=>i);
+    root.className='flow-detail-content';root.style.cssText='position:fixed;left:-10000px;top:0;width:240px';document.body.append(root);
+    const markup=(items,control=false)=>items.map(i=>`<div class="prow" data-reading="${i}">${control&&i===0?'<input id="large-row-control" value="draft">':`<span>Reading ${i}</span>`}</div>`).join('');
+    try{
+      F.patch(root,markup(order));F.finish(root);const nodes=new Map([...root.children].map(node=>[node.dataset.reading,node]));
+      F.patch(root,markup(order.toReversed()));F.finish(root);
+      const identity=[...root.children].every(node=>nodes.get(node.dataset.reading)===node),rank=[...root.children].map(node=>Number(node.dataset.reading));
+      F.patch(root,markup(order));F.finish(root);
+      const text=nodes.get('0').firstChild.firstChild,range=document.createRange(),selection=getSelection();range.selectNodeContents(text);selection.removeAllRanges();selection.addRange(range);
+      F.patch(root,markup(order.toReversed()));F.finish(root);const selected=selection.toString();selection.removeAllRanges();
+      F.patch(root,markup(order,true));F.finish(root);const input=root.querySelector('input');input.value='typed draft';input.focus();input.setSelectionRange(2,5);
+      F.patch(root,markup(order.toReversed(),true));F.finish(root);
+      return{identity,rank,selected,focused:document.activeElement===input,value:input.value,selection:[input.selectionStart,input.selectionEnd]};
+    }finally{getSelection().removeAllRanges();F.finish(root);root.remove();}
+  });
+  assert.deepEqual(largeReadings,{identity:true,rank:Array.from({length:96},(_,i)=>95-i),selected:'Reading 0',focused:true,value:'typed draft',selection:[2,5]},`${name}: large reading reorders preserve nodes, selected text, focus and live input state`);
   const reference=await page.evaluate(async()=>{
     const A=window.__motionProbe,width=A.Stage.wrap.clientWidth;document.querySelector('#reftoggle').focus();A.Ref.open();const initial=A.Stage.wrap.clientWidth,textInitial=document.querySelector('#ref-body').clientWidth;
     for(let i=0;i<6;i++)await new Promise(requestAnimationFrame);

@@ -73,7 +73,7 @@ for(const [name,type,rate] of browsers){
     page.on('pageerror',e=>errors.push(e.message));
     await page.addInitScript(()=>{
       window.Worker=class{postMessage(){} terminate(){}};
-      window.__samples={frames:[],work:[],tasks:[],calls:[],paints:[],observers:[],timers:[],presentation:{},frameTime:0,frameWork:0,mutations:0,clones:0,measures:0};
+      window.__samples={frames:[],work:[],tasks:[],calls:[],paints:[],observers:[],timers:[],presentation:{},frameTime:0,frameWork:0,mutations:0,clones:0,measures:0,readingMoves:0};
       const raf=window.requestAnimationFrame;
       window.requestAnimationFrame=callback=>raf.call(window,now=>{
         if(__samples.active&&now!==__samples.frameTime){if(__samples.frameTime){__samples.work.push(__samples.frameWork);__samples.frameWork=0;}__samples.frameTime=now;}
@@ -93,6 +93,8 @@ for(const [name,type,rate] of browsers){
       Node.prototype.cloneNode=function(...args){__samples.clones++;return clone.apply(this,args);};
       const append=Element.prototype.append;
       Element.prototype.append=function(...nodes){__samples.measures+=nodes.filter(n=>n.nodeType===1&&n.hasAttribute('data-flow-measuring')).length;return append.apply(this,nodes);};
+      const insert=Node.prototype.insertBefore;
+      Node.prototype.insertBefore=function(node,...args){if(__samples.active&&node.nodeType===1&&node.hasAttribute('data-reading')&&this.nodeType===1&&this.classList.contains('flow-detail-content'))__samples.readingMoves++;return insert.call(this,node,...args);};
     });
     await page.route('https://fonts.**/**',r=>r.abort());await page.goto(base);await settle(page);
     await page.evaluate(n=>{while(__perf.S.bars.length<n)__perf.Ops.add();},n);
@@ -201,7 +203,7 @@ for(const [name,type,rate] of browsers){
       await settle(page);
       const tracing=paperProfile&&label==='refresh-layout'&&cdp;
       if(tracing){await cdp.send('Profiler.enable');await cdp.send('Profiler.start');await cdp.send('Tracing.start',{categories:'devtools.timeline,blink.user_timing',transferMode:'ReturnAsStream'});}
-      await page.evaluate(()=>{for(const key of ['frames','work','tasks','calls','paints','observers','timers','presentationFrames'])__samples[key]=[];for(const key of ['mutations','clones','measures','frameTime','frameWork','fanRasters'])__samples[key]=0;__samples.presentation={};__samples.actions={};__samples.active=true;});
+      await page.evaluate(()=>{for(const key of ['frames','work','tasks','calls','paints','observers','timers','presentationFrames'])__samples[key]=[];for(const key of ['mutations','clones','measures','frameTime','frameWork','fanRasters','readingMoves'])__samples[key]=0;__samples.presentation={};__samples.actions={};__samples.active=true;});
       await action();await settle(page);
       const sample=await page.evaluate(()=>{__samples.active=false;if(__samples.frameTime)__samples.work.push(__samples.frameWork);return{...__samples};});
       let trace;
@@ -223,7 +225,7 @@ for(const [name,type,rate] of browsers){
       const paintState=await page.evaluate(()=>({attachment:getComputedStyle(document.body).backgroundAttachment,rootAttachment:getComputedStyle(document.documentElement).backgroundAttachment,rootImage:getComputedStyle(document.documentElement).backgroundImage!=='none',bodyTop:document.body.scrollTop,windowTop:scrollY}));
       const report={browser:name,paper,trace,paintState,graphics,frameGate:controlledGraphics,bars:n,width,dpr,scenario:label,frames:sample.frames.length,
         frameP95:+p95(sample.frames).toFixed(1),workP95:+p95(sample.work).toFixed(1),callMax:+Math.max(0,...sample.calls).toFixed(1),
-        paintP95:+p95(sample.paints).toFixed(1),observerMax:+Math.max(0,...sample.observers).toFixed(1),timerMax:+Math.max(0,...sample.timers).toFixed(1),taskMax:Math.max(0,...sample.tasks),presentationMax:Object.fromEntries(Object.entries(sample.presentation).map(([k,v])=>[k,+v.toFixed(1)])),actionMax:Object.fromEntries(Object.entries(sample.actions).map(([k,v])=>[k,+v.toFixed(1)])),measurements:sample.measures,mutations:sample.mutations};
+        paintP95:+p95(sample.paints).toFixed(1),observerMax:+Math.max(0,...sample.observers).toFixed(1),timerMax:+Math.max(0,...sample.timers).toFixed(1),taskMax:Math.max(0,...sample.tasks),presentationMax:Object.fromEntries(Object.entries(sample.presentation).map(([k,v])=>[k,+v.toFixed(1)])),actionMax:Object.fromEntries(Object.entries(sample.actions).map(([k,v])=>[k,+v.toFixed(1)])),measurements:sample.measures,mutations:sample.mutations,readingMoves:sample.readingMoves};
       reports.push(report);console.log(JSON.stringify(report));
       const presentationFrames=new Map();for(const step of sample.presentationFrames){if(!presentationFrames.has(step.cohort))presentationFrames.set(step.cohort,new Set());const frames=presentationFrames.get(step.cohort);assert.ok(!frames.has(step.frame),'large result parts must commit in separate paint frames');frames.add(step.frame);}
       // CI contention can stretch rAF intervals, so timing gates use measured application
@@ -247,6 +249,7 @@ for(const [name,type,rate] of browsers){
       if(kind==='fan'){A.Forecast.fan=value;A.Forecast.remember();A.App.redraw();}
       if(kind==='refresh'){
         const r=A.Match.result,layout=value==='layout',replace=value==='replace'||layout,refreshSerial=(r.refreshSerial||0)+1;
+        if(layout)window.__reorderRows=new Map([...document.querySelectorAll('#lrows div.prow[data-reading]')].map(node=>[node.dataset.reading,{node,parent:node.parentNode}]));
         A.Match.onmsg({...r,type:'result',id:A.Match.id,refreshSerial,results:r.results.map(x=>({...x,start:x.start+(replace?1e6:900),raw:x.raw.map((b,j)=>b.map((v,k)=>v+(k===1?(j%3+1)*.013*refreshSerial:0))),drawn:x.drawn.map((b,j)=>b.map((v,k)=>v+(k===3?(j%3+1)*.013*refreshSerial:0)))})),
           panes:{...r.panes,rows:r.panes.rows.map((w,i)=>({...w,d:layout?(i+1)/r.panes.rows.length:w.d,set:w.set.map(v=>v+(layout?1:.001))})),cont:{...r.panes.cont,fan:r.panes.cont.fan.map(q=>q.map(v=>v+.001))}}});
       }
@@ -281,13 +284,15 @@ for(const [name,type,rate] of browsers){
     await measure('forecast',async()=>{for(const v of ['paths','branches','states']){await call('forecast',v);await settle(page);}await call('fan',false);await settle(page);await call('fan',true);});
     await measure('refresh',async()=>{for(let i=0;i<3;i++){await call('refresh');await settle(page);}});
     await measure('refresh-replace',async()=>{await call('refresh','replace');});
-    await measure('refresh-layout',async()=>{await call('refresh','layout');});
+    const reordered=await measure('refresh-layout',async()=>{await call('refresh','layout');});
+    if(n===20)assert.ok(reordered.readingMoves<30,'a large reading reorder must avoid moving every row through individual DOM calls');
     const reorderedParity=await page.evaluate(()=>{
       const A=__perf,expected=document.createElement('div');expected.innerHTML=A.PaneDesigns.left('signal',A.Match.result,{barCount:A.S.bars.length});
       const fields=root=>[...root.querySelectorAll('[data-reading]')].map(node=>({key:node.dataset.reading,text:node.textContent,aria:node.querySelector('.trk')?.getAttribute('aria-label'),styles:[...node.querySelectorAll('.trk i')].map(i=>i.getAttribute('style'))}));
-      return JSON.stringify(fields(document.querySelector('#lrows')))===JSON.stringify(fields(expected));
+      const root=document.querySelector('#lrows'),identity=[...root.querySelectorAll('div.prow[data-reading]')].every(node=>{const before=__reorderRows.get(node.dataset.reading);return !before||before.parent!==node.parentNode||before.node===node;});
+      return{fields:JSON.stringify(fields(root))===JSON.stringify(fields(expected)),identity};
     });
-    assert.ok(reorderedParity,'retained reordered reading updates must match the full renderer in text, order, semantics and chart geometry');
+    assert.deepEqual(reorderedParity,{fields:true,identity:true},'retained reordered reading updates must preserve nodes and match full-render text, order, semantics and chart geometry');
     if(n===20){
       const queued=await page.evaluate(async()=>{
         const A=__perf,r=A.Match.result,shown=document.querySelector('#emaki .card').dataset.motionKey,send=offset=>A.Match.onmsg({...r,type:'result',id:A.Match.id,results:r.results.map(x=>({...x,start:x.start+offset}))});
