@@ -332,11 +332,14 @@ async function search(q, id, report) {
   let fan = new Float32Array(SAMPLE * AFTER), cont = [0, 0, 0, 0], seed = 0x9e3779b9;
   let sequences = new Map();
   const rand = () => { seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  let batchPrefix = false, prefixWeight = 0;
+  const firstOnly = cq.holds.every(h => h.color ? h.bar === 0 : h.a[0] === 0 && h.b[0] === 0);
   const addSet = (k, T, s, ps, e, o) => {
-    setN++;
+    setN++; if (batchPrefix) prefixWeight++;
     const R = READ && READ[k];
     if (R) {
       for (let g = 0; g < n; g++) {
+        if (batchPrefix && g < n - 1) continue;
         const j = s + (ps ? ps[g] : g);
         for (let r = 0; r < NR; r++) {
           // where a window closed in the prior day's range is read on its last bar only
@@ -400,21 +403,32 @@ async function search(q, id, report) {
     const columns = Array.from({ length: n }, () => Array(stretch + 1));
     for (let g = n - 1; g >= 0; g--) {
       const local = cq.byBar[g].filter(h => h.color || h.a[0] === h.b[0]);
+      const own = new Uint8Array(T.n);
+      for (let i = 0; i < T.n; i++) {
+        if ((i & 1023) === 0 && performance.now() >= deadline) {
+          await tick(); if (id !== latest) return null; deadline = performance.now() + 8; report(done / total);
+        }
+        const o = T.O[i], c = T.C[i];
+        own[i] = cq.oriented ? Math.abs((c > o ? 1 : c < o ? -1 : 0) - cq.D[g]) : 0;
+        if (local.length) {
+          MO[g] = o; MH[g] = T.H[i]; ML[g] = T.L[i]; MC[g] = c;
+          if (local.some(h => !holdOk(h, MO, MH, ML, MC))) own[i] = 255;
+        }
+      }
+      // Successive spare counts share a diagonal minimum. This avoids scanning
+      // all possible skips again for each DP cell.
+      const tails = [new Uint8Array(T.n), new Uint8Array(T.n)];
       for (let spare = 0; spare <= stretch; spare++) {
-        const column = columns[g][spare] = new Uint8Array(T.n).fill(255);
+        const column = columns[g][spare] = new Uint8Array(T.n).fill(255), tail = tails[spare % 2].fill(255);
         if (g === n - 1 && spare) continue;
         const end = T.n - (n - g - 1) - spare;
         for (let i = 0; i < end; i++) {
           if ((i & 1023) === 0 && performance.now() >= deadline) {
-            await tick(); if (id !== latest) return null;
-            deadline = performance.now() + 8; report(done / total);
+            await tick(); if (id !== latest) return null; deadline = performance.now() + 8; report(done / total);
           }
-          let rest = g === n - 1 ? 0 : 255;
-          if (g < n - 1) for (let skip = 0; skip <= spare; skip++) rest = Math.min(rest, columns[g + 1][spare - skip][i + skip + 1]);
-          if (rest === 255) continue;
-          MO[g] = T.O[i]; MH[g] = T.H[i]; ML[g] = T.L[i]; MC[g] = T.C[i];
-          if (local.some(h => !holdOk(h, MO, MH, ML, MC))) continue;
-          column[i] = rest + (cq.oriented ? Math.abs((MC[g] > MO[g] ? 1 : MC[g] < MO[g] ? -1 : 0) - cq.D[g]) : 0);
+          const rest = g === n - 1 ? 0 : Math.min(columns[g + 1][spare][i + 1], spare ? tails[(spare - 1) % 2][i + 1] : 255);
+          tail[i] = rest;
+          if (own[i] !== 255 && rest !== 255) column[i] = rest + own[i];
         }
       }
     }
@@ -506,6 +520,7 @@ async function search(q, id, report) {
       }
       // each run from this start to a possible last bar is its own window: it holds when some placement between its
       // ends does, its next bar is the one after that run, and the counts, rates and instance all describe it
+      batchPrefix = firstOnly && on && !!READ && stretch > 0; prefixWeight = 0;
       for (let extra = 0; extra <= stretch; extra++) {
         const e = s + n - 1 + extra;
         if (e >= T.n || T.run[e] < e - s + 1) break;
@@ -525,6 +540,18 @@ async function search(q, id, report) {
           if (bestHere) best.push(bestHere.d, { k, s, picks: bestHere.picks, extra, span: n + extra, end: T.ts[e] });
         }
       }
+      // With holds only on the first bar, every admitted span chooses the same
+      // unskipped prefix. Accumulate its repeated readings once with that count;
+      // endpoint readings, outcomes, fan sampling and ranking keep traversal order.
+      if (batchPrefix && prefixWeight) {
+        const R = READ[k];
+        for (let g = 0; g < n - 1; g++) for (let r = 0; r < NR - 1; r++) {
+          const x = R.features[r][s + g]; if (x !== x) continue;
+          const a = (g * NR + r) * 3;
+          acc[a] += prefixWeight; acc[a + 1] += x * prefixWeight; acc[a + 2] += x * x * prefixWeight;
+        }
+      }
+      batchPrefix = false;
     }
   }
 
