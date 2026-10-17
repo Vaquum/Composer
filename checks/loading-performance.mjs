@@ -32,7 +32,7 @@ try{
   });
   for(const kind of ['cold','warm']){
     await page.goto(`http://127.0.0.1:${server.address().port}`,{waitUntil:'domcontentloaded'});
-    await page.waitForFunction(()=>window.__loading&&__loading.Match.fresh()&&__loading.Panes.readings==='ready'&&!__loading.App.running&&!__loading.Flow.active(),{},{timeout:20000});
+    await page.waitForFunction(()=>window.__loading&&__loading.Match.fresh()&&__loading.Match.result?.panes.readings&&__loading.Panes.readings==='ready'&&!__loading.App.running&&!__loading.Flow.active(),{},{timeout:20000});
     const result=await page.evaluate(()=>({first:__loadEvents[0]?.at,complete:__loadEvents.find(e=>e.readings)?.at,cls:__loadShifts.reduce((a,b)=>a+b,0),resources:performance.getEntriesByType('resource').filter(e=>/\/(bars|activity)$/.test(e.name)).map(e=>({path:e.name.split('/').at(-1),start:e.startTime,end:e.responseEnd,bytes:e.transferSize}))}));
     console.log(JSON.stringify({kind,...result}));
     assert.ok(result.first<(kind==='cold'?4000:2000),`${kind}: first matches exceeded their loading budget (${result.first})`);
