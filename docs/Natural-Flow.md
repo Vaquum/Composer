@@ -58,9 +58,13 @@ in their original paint order. Scene opacity is composited by the browser; an
 interrupted scene is captured once at the next scene change. Offscreen capacity
 grows in chunks. Wide reference layouts retain reading-pane widths where space
 allows and composite those scrolling panes, avoiding repeated Retina text/track
-repainting. The blurred fan wash uses bounded low-density pixels and may
-reuse projections within half a CSS pixel; quantile contours remain exact and
-render at native density. Forecast semantics and hit geometry update only when
+repainting. The blurred fan wash uses bounded low-density pixels and reprojects
+its retained texture during framing, then redraws the settled projection. Engines
+with canvas filters composite that texture separately to avoid repeated blur
+readback; other engines keep it in the forecast surface. Quantile contours remain
+exact and render at native density. Foreground pixels and forecast glyphs are
+retained until drawing, camera, palette, display density or fonts change.
+Forecast semantics and hit geometry update only when
 their state or geometry changes. Pointer drawing remains direct.
 
 Pane geometry is reused only when structure, identity/order and text width
