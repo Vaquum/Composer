@@ -308,6 +308,9 @@ class Best {
 
 let tickChannel = null, tickWaiters = [];
 function tick() {
+  // Node's MessagePort can drain its own queue ahead of timers; its native
+  // check-phase yield preserves the same replacement opportunity as a worker task.
+  if (typeof setImmediate === 'function') return new Promise(resolve => setImmediate(resolve));
   if (!tickChannel) { tickChannel = new MessageChannel(); tickChannel.port1.onmessage = () => { const w = tickWaiters.shift(); if (w) w(); }; }
   return new Promise(r => { tickWaiters.push(r); tickChannel.port2.postMessage(0); });
 }

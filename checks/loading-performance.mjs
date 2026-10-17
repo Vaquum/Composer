@@ -27,7 +27,7 @@ try{
   await cdp.send('Network.emulateNetworkConditions',{offline:false,latency:80,downloadThroughput:1250000,uploadThroughput:500000});
   await page.addInitScript(()=>{
     window.__loadEvents=[];window.__loadShifts=[];const Native=Worker;
-    window.Worker=class extends Native{constructor(...a){super(...a);this.addEventListener('message',e=>{if(e.data.type==='result')__loadEvents.push({at:performance.now(),readings:e.data.panes.readings});});}};
+    window.Worker=class extends Native{constructor(...a){super(...a);window.__loadWorker=this;this.addEventListener('message',e=>{if(e.data.type==='result')__loadEvents.push({id:e.data.id,at:performance.now(),readings:e.data.panes.readings});});}};
     new PerformanceObserver(list=>__loadShifts.push(...list.getEntries().filter(e=>!e.hadRecentInput).map(e=>e.value))).observe({type:'layout-shift',buffered:true});
   });
   for(const kind of ['cold','warm']){
@@ -42,5 +42,16 @@ try{
     assert.ok(activity.start>=bars.end,'activity must not compete with the first matching payload');
   }
   assert.deepEqual(requests.slice(-2).map(r=>r.status),[304,304],'warm reload must revalidate both large payloads without downloading them');
+  const cancelled=await page.evaluate(async()=>{
+    let c=42;const bars=Array.from({length:20},(_,i)=>{const o=c;c+=i%3===1?-18:14;return[o,Math.max(o,c)+12,Math.min(o,c)-12,c];});
+    __loadWorker.postMessage({type:'query',id:999,q:{bars,holds:[{color:true,bar:0,dir:1}],stretch:4,tfs:[1,1,1,1,1],oriented:true,x:48}});
+    await new Promise(r=>setTimeout(r,20));const at=performance.now();
+    __loadWorker.postMessage({type:'query',id:1000,q:{bars:bars.slice(0,2),holds:[],stretch:0,tfs:[0,0,0,0,1],oriented:true,x:12}});
+    return at;
+  });
+  await page.waitForFunction(()=>__loadEvents.some(e=>e.id===1000));
+  const replacement=await page.evaluate(at=>({ms:__loadEvents.find(e=>e.id===1000).at-at,obsolete:__loadEvents.some(e=>e.id===999)}),cancelled);
+  console.log(JSON.stringify({kind:'worker-cancellation',...replacement}));
+  assert.ok(!replacement.obsolete&&replacement.ms<250,'a real worker must replace an expensive query promptly');
   console.log('Real loading: prioritized first matches, cached reload, complete readings and stable controls passed.');
 }finally{await browser.close();await new Promise(r=>server.close(r));}
