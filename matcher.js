@@ -358,19 +358,21 @@ async function search(q, id, report) {
     for (let g = 0; g < n; g++) { const j = s + (ps ? ps[g] : g); if (T.L[j] < lo) lo = T.L[j]; if (T.H[j] > hi) hi = T.H[j]; }
     if (!(hi > lo)) return;
     const m = ++cont[0];
-    let up = false, down = false, key = '';
+    let up = false, down = false, sequenceCode = 0;
     for (let j = 1; j <= AFTER; j++) {
       if (T.H[e + j] > hi) up = true;
       if (T.L[e + j] < lo) down = true;
       // Classify exact integer prices before scaling: a close on either boundary is inside.
-      key += T.C[e + j] > hi ? 'U' : T.C[e + j] < lo ? 'D' : 'I';
+      sequenceCode = sequenceCode * 3 + (T.C[e + j] > hi ? 0 : T.C[e + j] < lo ? 2 : 1);
     }
-    let sequence = sequences.get(key);
+    let sequence = sequences.get(sequenceCode);
     if (!sequence) {
+      let code = sequenceCode, key = '';
+      for (let j = 0; j < AFTER; j++) { key = 'UID'[code % 3] + key; code = Math.floor(code / 3); }
       const scale = v => (v - lo) / (hi - lo);
       const bars = Array.from({ length: AFTER }, (_, j) => [T.O[e + j + 1], T.H[e + j + 1], T.L[e + j + 1], T.C[e + j + 1]].map(scale));
       sequence = { key, n: 0, bars, start: scale(T.C[e]) };
-      sequences.set(key, sequence);
+      sequences.set(sequenceCode, sequence);
     }
     sequence.n++;
     if (up) cont[1]++;
@@ -384,6 +386,7 @@ async function search(q, id, report) {
 
   // held relations, with stretch: drawn bar g takes bar pos + skip, and the skipped bars are ignored.
   let T = null, s = 0, bestHere = null, on = false, any = false;
+  const windowBest = { d: Infinity, picks: new Int32Array(n), extra: 0, span: 0 };
   const fits = (g, pos, skip) => {
     const last = pos + skip;
     if (last >= T.n || T.run[last] < last - s + 1) return -1;
@@ -468,7 +471,7 @@ async function search(q, id, report) {
         if (floor > limit) continue;
         if (g === n - 1) {
           const score = floor + lookOf(cq, W);
-          if (score < limit) bestHere = { d: score, picks: Array.from(picks), extra: last - s + 1 - n, span: last - s + 1 };
+          if (score < limit) { windowBest.d = score; windowBest.picks.set(picks); windowBest.extra = last - s + 1 - n; windowBest.span = last - s + 1; bestHere = windowBest; }
           continue;
         }
       } else if (g === n - 1) { any = true; depth = -1; return false; }
@@ -538,7 +541,7 @@ async function search(q, id, report) {
           addSet(k, T, s, picks, e, oo);
           beginPlacement(extra);
           while (place(true)) { await tick(); if (id !== latest) return null; deadline = performance.now() + 8; report(done / total); }
-          if (bestHere) best.push(bestHere.d, { k, s, picks: bestHere.picks, extra, span: n + extra, end: T.ts[e] });
+          if (bestHere) best.push(bestHere.d, { k, s, picks: Array.from(bestHere.picks), extra, span: n + extra, end: T.ts[e] });
         }
       }
       // With holds only on the first bar, every admitted span chooses the same
