@@ -1691,7 +1691,7 @@ const Match = {
     if (m.type === 'ready') { this.ready = true; this.until = m.to; if (!this.result) $('#mmsg').textContent = `Searching the BTCUSDT history, ${day(m.from)} to ${day(m.to)}…`; return; }
     if (m.type === 'error') { this.fail(`The BTCUSDT klines could not be read: ${m.message}`); return; }
     if (m.type === 'progress') { if (m.id === this.id) { $('#prog').hidden = false; $('#prog i').style.width = `${(m.f * 100).toFixed(1)}%`; } return; }
-    if (m.type === 'readings') { Panes.readings = 'ready'; if (this.result) { this.sentKey = ''; this.send(); } return; }
+    if (m.type === 'readings') { Panes.readings = 'ready'; if (this.sent) { this.sentKey = ''; this.send(); } return; }
     if (m.type === 'readings-error') { Panes.readings = 'failed'; Panes.note = m.message; if (this.result) Panes.render(this.result); return; }
     if (m.type === 'result' && m.id === this.id) {
       this.result = m; this.resultSent=this.sent;this.resultKey = this.sentKey;

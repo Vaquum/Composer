@@ -313,6 +313,7 @@ function tick() {
 }
 
 async function search(q, id, report) {
+  const read = READ;
   const t0 = Date.now(), cq = compile(q), n = cq.n, held = q.holds.length > 0, stretch = held ? q.stretch : 0;
   const MO = new Float64Array(n), MH = new Float64Array(n), ML = new Float64Array(n), MC = new Float64Array(n), W = new Float64Array(4 * n);
   const picks = new Int32Array(n), exact = TF_NAMES.map(() => 0), counts = TF_NAMES.map(() => 0);
@@ -336,7 +337,7 @@ async function search(q, id, report) {
   const firstOnly = cq.holds.every(h => h.color ? h.bar === 0 : h.a[0] === 0 && h.b[0] === 0);
   const addSet = (k, T, s, ps, e, o) => {
     setN++; if (batchPrefix) prefixWeight++;
-    const R = READ && READ[k];
+    const R = read && read[k];
     if (R) {
       for (let g = 0; g < n; g++) {
         if (batchPrefix && g < n - 1) continue;
@@ -520,7 +521,7 @@ async function search(q, id, report) {
       }
       // each run from this start to a possible last bar is its own window: it holds when some placement between its
       // ends does, its next bar is the one after that run, and the counts, rates and instance all describe it
-      batchPrefix = firstOnly && on && !!READ && stretch > 0; prefixWeight = 0;
+      batchPrefix = firstOnly && on && !!read && stretch > 0; prefixWeight = 0;
       for (let extra = 0; extra <= stretch; extra++) {
         const e = s + n - 1 + extra;
         if (e >= T.n || T.run[e] < e - s + 1) break;
@@ -544,7 +545,7 @@ async function search(q, id, report) {
       // unskipped prefix. Accumulate its repeated readings once with that count;
       // endpoint readings, outcomes, fan sampling and ranking keep traversal order.
       if (batchPrefix && prefixWeight) {
-        const R = READ[k];
+        const R = read[k];
         for (let g = 0; g < n - 1; g++) for (let r = 0; r < NR - 1; r++) {
           const x = R.features[r][s + g]; if (x !== x) continue;
           const a = (g * NR + r) * 3;
@@ -583,13 +584,13 @@ async function search(q, id, report) {
     for (const r of ranked) { const R = BARS[r.k], e = r.s + r.span - 1; addSet(r.k, R, r.s, r.picks, e, outcomeInto(R, e, oo)); }
     setKind = 'closest';
   }
-  const panes = { kind: setKind, n: setN, readings: !!READ, rows: [], next: null, byTf: setTf.map(([m, k]) => wilson(k, m)), tfN: setTf.map(([m]) => m), after: AFTER, cont: null, near: [] };
-  if (READ) {
+  const panes = { kind: setKind, n: setN, readings: !!read, rows: [], next: null, byTf: setTf.map(([m, k]) => wilson(k, m)), tfN: setTf.map(([m]) => m), after: AFTER, cont: null, near: [] };
+  if (read) {
     for (let g = 0; g < n; g++) for (let r = 0; r < NR; r++) {
       if (r === NR - 1 && g !== n - 1) continue;
       const a = (g * NR + r) * 3, set = tMean(acc[a], acc[a + 1], acc[a + 2]);
       let c = 0, sum = 0, sq = 0;
-      for (let k = 0; k < BARS.length; k++) if (q.tfs[k]) { const b = READ[k].base[r]; c += b[0]; sum += b[1]; sq += b[2]; }
+      for (let k = 0; k < BARS.length; k++) if (q.tfs[k]) { const b = read[k].base[r]; c += b[0]; sum += b[1]; sq += b[2]; }
       const all = tMean(c, sum, sq);
       if (set && all) panes.rows.push({ bar: g, key: READINGS[r], log: AS_LOG[r], set, all, d: all[4] > 0 ? (set[0] - all[0]) / all[4] : 0 });
     }
@@ -645,15 +646,18 @@ async function search(q, id, report) {
 }
 
 if (typeof self !== 'undefined' && typeof self.postMessage === 'function' && typeof window === 'undefined') {
+  const memo = new Map();
   const run = async m => {
+    const key = JSON.stringify([!!READ,m.q]);
+    if (memo.has(key)) { if (m.id === latest) self.postMessage({type:'result',id:m.id,...memo.get(key),ms:0}); return; }
     const r = await search(m.q, m.id, f => self.postMessage({ type: 'progress', id: m.id, f }));
-    if (r) self.postMessage({ type: 'result', id: m.id, ...r });
+    if (r) { if(memo.size>=6)memo.delete(memo.keys().next().value);memo.set(key,r);self.postMessage({ type: 'result', id: m.id, ...r }); }
   };
   self.onmessage = async e => {
     const m = e.data;
     if (m.type === 'bars') {
       try {
-        BARS = decode(m.buffer);
+        BARS = decode(m.buffer); memo.clear();
         self.postMessage({ type: 'ready', bars: BARS.reduce((a, T) => a + T.n, 0), from: BARS[0].ts[0], to: BARS[0].ts[BARS[0].n - 1] + BARS[0].sec });
         if (pendingActivity) { const a = pendingActivity; pendingActivity = null; self.onmessage({ data: { type: 'activity', buffer: a } }); }
         if (pending) { const p = pending; pending = null; run(p); }
@@ -665,7 +669,7 @@ if (typeof self !== 'undefined' && typeof self.postMessage === 'function' && typ
       try {
         const A = decodeActivity(m.buffer);
         if (A.length !== BARS.length) throw new Error('The activity does not cover every timeframe.');
-        READ = BARS.map((T, k) => readings(T, A[k]));
+        READ = BARS.map((T, k) => readings(T, A[k])); memo.clear();
         self.postMessage({ type: 'readings' });
       } catch (err) { self.postMessage({ type: 'readings-error', message: String(err.message || err) }); }
       return;
