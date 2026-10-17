@@ -16,7 +16,10 @@ function fixture(n){
   const count=sequences.reduce((sum,[,n])=>sum+n,0),raw=Array.from({length:n},()=>[30,68,18,56]);
   return{mode:'nearest',exact:[0,0,0,0,0],exactF:[0,0,0,0,0],filter:null,stretch:0,base:{n:20000,up:10000},
     counts:[12,0,0,0,0],countsF:[12,0,0,0,0],ms:10,
-    results:Array.from({length:12},(_,i)=>({tf:'15m',start:1700000000+i*900,raw,drawn:raw.map(()=>[18,30,56,68]),picks:Array.from({length:n},(_,j)=>j),broken:[],flips:0,off:i*.01,next:null,nextWhy:'end'})),
+    results:Array.from({length:12},(_,i)=>{
+      const run=raw.map(([o,h,l,c],j)=>[o,h+(i+1)*(j%3+1)*.07,l,c]);
+      return{tf:'15m',start:1700000000+i*900,raw:run,drawn:run.map(([o,h,l,c])=>[l,Math.min(o,c),Math.max(o,c),h]),picks:Array.from({length:n},(_,j)=>j),broken:[],flips:0,off:i*.01,next:null,nextWhy:'end'};
+    }),
     panes:{kind:'closest',n:count,readings:true,after:6,near:[],next:[.43,.38,.48],byTf:Array.from({length:5},()=>[.43,.38,.48]),tfN:Array(5).fill(count),
       rows:Array.from({length:7*n},(_,i)=>({bar:Math.floor(i/7),key:keys[i%7],set:[1.4,1.3,1.5],all:[.5,.48,.52],d:3-i*.01,log:i%7<3})),
       cont:{n:count,sampled:count,aboveHigh:[.82,.78,.86],belowLow:[.27,.23,.31],aboveClose:[.52,.47,.57],
@@ -108,6 +111,11 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
       assert.ok(image.max<=1,`thumbnail pixels changed beyond one 8-bit raster rounding unit: ${JSON.stringify(image)}`);
       if(image.count>=20)assert.ok(image.after<=image.before/2,'large thumbnails must remove at least half their SVG nodes');
     }
+    await settle(page);
+    const layeredPaper=await page.screenshot({fullPage:true});
+    const originalPaper=await page.addStyleTag({content:'body{background-image:var(--tex)!important}body>.app::before{display:none!important}'});
+    try{assert.ok(layeredPaper.equals(await page.screenshot({fullPage:true})),'isolating the paper texture must preserve full-page pixels');}
+    finally{await originalPaper.evaluate(node=>node.remove());}
     const graphics=await page.evaluate(()=>{
       const canvas=document.createElement('canvas'),gl=canvas.getContext('webgl');if(!gl)return'unavailable';
       const info=gl.getExtension('WEBGL_debug_renderer_info'),renderer=info?gl.getParameter(info.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER);
@@ -160,8 +168,8 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
       if(kind==='disclosure')document.querySelector('#lrows details summary').click();
       if(kind==='fan'){A.Forecast.fan=value;A.Forecast.remember();A.App.redraw();}
       if(kind==='refresh'){
-        const r=A.Match.result,layout=value==='layout',replace=value==='replace'||layout;
-        A.Match.onmsg({...r,type:'result',id:A.Match.id,results:r.results.map(x=>({...x,start:x.start+(replace?1e6:900),raw:x.raw.map(b=>b.slice())})),
+        const r=A.Match.result,layout=value==='layout',replace=value==='replace'||layout,refreshSerial=(r.refreshSerial||0)+1;
+        A.Match.onmsg({...r,type:'result',id:A.Match.id,refreshSerial,results:r.results.map(x=>({...x,start:x.start+(replace?1e6:900),raw:x.raw.map((b,j)=>b.map((v,k)=>v+(k===1?(j%3+1)*.013*refreshSerial:0))),drawn:x.drawn.map((b,j)=>b.map((v,k)=>v+(k===3?(j%3+1)*.013*refreshSerial:0)))})),
           panes:{...r.panes,rows:r.panes.rows.map((w,i)=>({...w,d:layout?(i+1)/r.panes.rows.length:w.d,set:w.set.map(v=>v+(layout?1:.001))})),cont:{...r.panes.cont,fan:r.panes.cont.fan.map(q=>q.map(v=>v+.001))}}});
       }
       const elapsed=performance.now()-t;__samples.calls.push(elapsed);

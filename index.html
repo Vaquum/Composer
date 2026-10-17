@@ -44,13 +44,16 @@
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 html, body { height: 100%; }
-body { margin: 0; overflow-x: hidden; overflow-y: auto; background-color: var(--paper); background-image: var(--tex); color: var(--ink); font: 14px/1.6 var(--font-ui); -webkit-font-smoothing: antialiased; }
+body { margin: 0; overflow-x: hidden; overflow-y: auto; background-color: var(--paper); color: var(--ink); font: 14px/1.6 var(--font-ui); -webkit-font-smoothing: antialiased; }
 button { font: inherit; color: inherit; cursor: pointer; background: none; border: 0; padding: 0; }
 button:disabled { cursor: default; }
 :focus-visible { outline: 1.5px solid var(--ai); outline-offset: 3px; border-radius: 4px; }
 [lang="ja"] { font-family: var(--font-mincho); }
 .ja { font-family: var(--font-mincho); color: var(--ink-3); font-size: .92em; margin-inline-start: .35em; letter-spacing: .04em; }
 
+/* Keep the filtered paper independent of changing cards, readings and canvases. */
+body > .app { position: relative; isolation: isolate; }
+body > .app::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; background-image: var(--tex); transform: translateZ(0); }
 .app { min-height: 100%; display: flex; flex-direction: column; padding-inline: 16px; padding-block: 0 14px; }
 .top { display: flex; align-items: center; gap: 22px; padding-block: 14px 12px; border-bottom: 1px solid var(--hair); flex-wrap: wrap; }
 .brand { display: flex; align-items: center; gap: 12px; min-width: 0; margin-inline-end: auto; }
