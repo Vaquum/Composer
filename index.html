@@ -1844,6 +1844,7 @@ const Match = {
     this.setTrace(this.sticky);
   },
   resultKeyOf(r){return `${r.tf}:${r.start}:${r.picks.join(',')}`;},
+  thumbLayouts:new Map(),
   card(r, i, held) {
     const d = new Date(r.start * 1000), when = `${calendarDay.format(d)} ${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
     const broken = r.broken.map(i2 => held[i2].label);
@@ -1864,12 +1865,14 @@ const Match = {
     const lo = Math.min(...bars.map(b => b[2])), hi = Math.max(...bars.map(b => b[1]));
     const pitch = (w - 2 * pad) / n, bw = Math.max(1.4, pitch * 0.6), ww = Math.max(0.8, Math.min(1.4, pitch * 0.08));
     const X = i => pad + pitch * (i + 0.5), Y = v => pad + (hi - v) / (hi - lo || 1) * (h - 2 * pad - 5);
+    let layout=this.thumbLayouts.get(n);
+    if(!layout){layout={wick:ww.toFixed(2),body:bw.toFixed(2),xs:bars.map((_,i)=>({wick:(X(i)-ww/2).toFixed(2),body:(X(i)-bw/2).toFixed(2)}))};this.thumbLayouts.set(n,layout);}
     let s = `<svg viewBox="0 0 ${w} ${h}" aria-hidden="true">`;
     // bars the drawing skipped stay visible but faint, so the run reads as it happened
     const kept = new Set(r.picks);
     bars.forEach(([o, hh, l, c], i) => {
       const cls = (c > o ? 'cu' : c < o ? 'cd' : 'cz') + (kept.has(i) ? '' : ' skip'), t = Y(Math.max(o, c)), b = Y(Math.min(o, c));
-      s += `<rect class="${cls}" x="${(X(i) - ww / 2).toFixed(2)}" y="${Y(hh).toFixed(2)}" width="${ww.toFixed(2)}" height="${Math.max(0.6, Y(l) - Y(hh)).toFixed(2)}"/><rect class="${cls}" x="${(X(i) - bw / 2).toFixed(2)}" y="${t.toFixed(2)}" width="${bw.toFixed(2)}" height="${Math.max(1, b - t).toFixed(2)}" rx="0.6"/>`;
+      s += `<rect class="${cls}" x="${layout.xs[i].wick}" y="${Y(hh).toFixed(2)}" width="${layout.wick}" height="${Math.max(0.6, Y(l) - Y(hh)).toFixed(2)}"/><rect class="${cls}" x="${layout.xs[i].body}" y="${t.toFixed(2)}" width="${layout.body}" height="${Math.max(1, b - t).toFixed(2)}" rx="0.6"/>`;
     });
     for (const bi of r.broken) {
       const hd = held[bi].h;
@@ -1884,7 +1887,7 @@ const Match = {
     // live cards and their departure snapshots instead of cloning every candle.
     const palette=`<style>.cu{fill:${COL.up}}.cd{fill:${COL.down}}.cz{fill:${COL.flat}}.skip{fill-opacity:.22}.mk{fill:none;stroke:${COL.shu};stroke-width:1.3}.mkl{fill:none;stroke:${COL.shu};stroke-width:1;stroke-dasharray:2 2}</style>`;
     const source=s.replace('aria-hidden="true"',`xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"`).replace('>',`>${palette}`);
-    return `<svg viewBox="0 0 ${w} ${h}" aria-hidden="true"><image width="${w}" height="${h}" href="data:image/svg+xml,${encodeURIComponent(source)}"/></svg>`;
+    return `<svg viewBox="0 0 ${w} ${h}" aria-hidden="true"><image width="${w}" height="${h}" href="data:image/svg+xml;base64,${btoa(source)}"/></svg>`;
   },
   retint(){
     const held=this.presentedSent?.held;

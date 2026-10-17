@@ -206,7 +206,8 @@ for(const [name,type,rate] of browsers){
         trace={file:stem+'.trace.json',cpu:stem+'.cpuprofile',inclusiveEvents:[...totals.values()].sort((a,b)=>b.totalMs-a.totalMs).slice(0,12),selfSamples:[...samples].sort((a,b)=>b[1]-a[1]).slice(0,12)};
       }
       const p95=a=>a.length?a.slice().sort((a,b)=>a-b)[Math.floor((a.length-1)*.95)]:0;
-      const report={browser:name,paper,trace,graphics,frameGate:controlledGraphics,bars:n,width,dpr,scenario:label,frames:sample.frames.length,
+      const paintState=await page.evaluate(()=>({attachment:getComputedStyle(document.body).backgroundAttachment,bodyTop:document.body.scrollTop,windowTop:scrollY}));
+      const report={browser:name,paper,trace,paintState,graphics,frameGate:controlledGraphics,bars:n,width,dpr,scenario:label,frames:sample.frames.length,
         frameP95:+p95(sample.frames).toFixed(1),workP95:+p95(sample.work).toFixed(1),callMax:+Math.max(0,...sample.calls).toFixed(1),
         paintP95:+p95(sample.paints).toFixed(1),observerMax:+Math.max(0,...sample.observers).toFixed(1),timerMax:+Math.max(0,...sample.timers).toFixed(1),taskMax:Math.max(0,...sample.tasks),presentationMax:Object.fromEntries(Object.entries(sample.presentation).map(([k,v])=>[k,+v.toFixed(1)])),actionMax:Object.fromEntries(Object.entries(sample.actions).map(([k,v])=>[k,+v.toFixed(1)])),measurements:sample.measures,mutations:sample.mutations};
       reports.push(report);console.log(JSON.stringify(report));
