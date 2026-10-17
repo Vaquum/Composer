@@ -123,9 +123,12 @@ function readings(T, A) {
     const h = days.get(Math.floor(T.ts[i] / 86400) - 1);
     if (h && h[0] > h[1]) R.day[i] = (T.C[i] - h[1]) / (h[0] - h[1]);
   }
+  // Keep the exact log of each Float32 reading once, rather than repeating it
+  // for every admitted placement in every search.
+  R.features = READINGS.map((key, f) => AS_LOG[f] ? Float64Array.from(R[key], Math.log) : R[key]);
   R.base = READINGS.map((key, f) => {
     let c = 0, sum = 0, sq = 0;
-    for (const v of R[key]) { if (v !== v) continue; const x = AS_LOG[f] ? Math.log(v) : v; c++; sum += x; sq += x * x; }
+    for (const x of R.features[f]) { if (x !== x) continue; c++; sum += x; sq += x * x; }
     return [c, sum, sq];
   });
   return R;
@@ -318,7 +321,7 @@ async function search(q, id, report) {
   const base = { n: 0, up: 0, down: 0, flat: 0, pass: 0 }, split = { n: 0, up: 0, down: 0, flat: 0, none: 0 };
   const best = new Best(Math.max(400, q.x * 40));
   const total = BARS.reduce((a, T) => a + T.n, 0);
-  let done = 0, sinceTick = 0;
+  let done = 0, sinceTick = 0, deadline = performance.now() + 8;
 
   // The panes: the set of windows that match (exact twins with nothing held, the windows that hold otherwise, on the
   // timeframes shown and through the next-bar filter), summed as they are found. For each drawn bar, the readings of the
@@ -338,9 +341,9 @@ async function search(q, id, report) {
         for (let r = 0; r < NR; r++) {
           // where a window closed in the prior day's range is read on its last bar only
           if (r === NR - 1 && g !== n - 1) continue;
-          const v = R[READINGS[r]][j];
-          if (v !== v) continue;
-          const x = AS_LOG[r] ? Math.log(v) : v, a = (g * NR + r) * 3;
+          const x = R.features[r][j];
+          if (x !== x) continue;
+          const a = (g * NR + r) * 3;
           acc[a]++; acc[a + 1] += x; acc[a + 2] += x * x;
         }
       }
@@ -389,41 +392,88 @@ async function search(q, id, report) {
   // `closest` then finds the closest-looking placement. Colours and flips are counted bar by bar while placing and
   // only add to the score, so a placement already past the best it could still beat is dropped there; shape and
   // sizes are added once all bars are placed.
-  const exists = (g, pos, spare) => {
-    for (let skip = g === n - 1 ? spare : 0; skip <= (g === 0 ? 0 : spare); skip++) {
-      const ok = fits(g, pos, skip);
-      if (ok < 0) return;
-      if (!ok) continue;
-      if (g === n - 1) { any = true; return; }
-      exists(g + 1, pos + skip + 1, spare - skip);
-      if (any) return;
+  // Minimum remaining colour cost over every legal skipped-bar placement.
+  // This is an admissible bound: cross-bar holds and shape costs only add work
+  // or nonnegative score. Store half-colour units in compact byte columns.
+  let colourBounds = null;
+  async function boundColours() {
+    const columns = Array.from({ length: n }, () => Array(stretch + 1));
+    for (let g = n - 1; g >= 0; g--) {
+      const local = cq.byBar[g].filter(h => h.color || h.a[0] === h.b[0]);
+      for (let spare = 0; spare <= stretch; spare++) {
+        const column = columns[g][spare] = new Uint8Array(T.n).fill(255);
+        if (g === n - 1 && spare) continue;
+        const end = T.n - (n - g - 1) - spare;
+        for (let i = 0; i < end; i++) {
+          if ((i & 1023) === 0 && performance.now() >= deadline) {
+            await tick(); if (id !== latest) return null;
+            deadline = performance.now() + 8;
+          }
+          let rest = g === n - 1 ? 0 : 255;
+          if (g < n - 1) for (let skip = 0; skip <= spare; skip++) rest = Math.min(rest, columns[g + 1][spare - skip][i + skip + 1]);
+          if (rest === 255) continue;
+          MO[g] = T.O[i]; MH[g] = T.H[i]; ML[g] = T.L[i]; MC[g] = T.C[i];
+          if (local.some(h => !holdOk(h, MO, MH, ML, MC))) continue;
+          column[i] = rest + (cq.oriented ? Math.abs((MC[g] > MO[g] ? 1 : MC[g] < MO[g] ? -1 : 0) - cq.D[g]) : 0);
+        }
+      }
     }
-  };
-  const closest = (g, pos, spare, c0, d0) => {
-    for (let skip = g === n - 1 ? spare : 0; skip <= (g === 0 ? 0 : spare); skip++) {
-      const ok = fits(g, pos, skip);
-      if (ok < 0) return;
+    return columns;
+  }
+  // An explicit DFS can suspend inside a single expensive window. Its traversal
+  // order is the original recursive order, including the first admitted picks
+  // used by the cohort, and its score/tie handling is unchanged.
+  const positions = new Int32Array(n), spares = new Int32Array(n), skips = new Int32Array(n);
+  const colours = new Float64Array(n), differences = new Float64Array(n);
+  let depth = 0, nodes = 0;
+  function beginPlacement(extra) {
+    depth = 0; positions[0] = s; spares[0] = extra; skips[0] = 0; colours[0] = differences[0] = 0;
+  }
+  function place(scoring) {
+    while (depth >= 0) {
+      if ((++nodes & 127) === 0 && performance.now() >= deadline) return true;
+      const g = depth, spare = spares[g], skip = skips[g]++;
+      if (skip > (g === 0 ? 0 : spare)) { depth--; continue; }
+      const last = positions[g] + skip;
+      if (colourBounds) {
+        const lower = colourBounds[g][spare - skip]?.[last] ?? 255;
+        if (lower === 255 || scoring && colours[g] + lower / 2 + FLIP_WEIGHT * differences[g] / (2 * cq.P) > Math.min(best.bound(), bestHere ? bestHere.d : Infinity)) continue;
+      }
+      const ok = fits(g, positions[g], skip);
+      if (ok < 0) { depth--; continue; }
       if (!ok) continue;
-      const last = pos + skip, o = MO[g], cl = MC[g];
-      W[4 * g] = ML[g]; W[4 * g + 1] = o < cl ? o : cl; W[4 * g + 2] = o < cl ? cl : o; W[4 * g + 3] = MH[g];
-      let c = c0, d = d0;
-      if (cq.oriented) { const sg = cl > o ? 1 : cl < o ? -1 : 0, df = sg - cq.D[g]; c += (df < 0 ? -df : df) / 2; }
-      const lv = cq.levels[g];
-      for (let k = 0; k < lv.A.length; k++) { const x = W[lv.A[k]], y = W[lv.B[k]], df = (x < y ? -1 : x > y ? 1 : 0) - lv.R[k]; if (df) d += df < 0 ? -df : df; }
-      const floor = c + FLIP_WEIGHT * (d / 2) / cq.P, limit = Math.min(best.bound(), bestHere ? bestHere.d : Infinity);
-      if (floor > limit) continue;
-      if (g === n - 1) {
-        const score = floor + lookOf(cq, W);
-        if (score < limit) bestHere = { d: score, picks: Array.from(picks), extra: last - s + 1 - n, span: last - s + 1 };
-      } else closest(g + 1, last + 1, spare - skip, c, d);
+      let c = colours[g], d = differences[g];
+      if (scoring) {
+        const o = MO[g], cl = MC[g];
+        W[4 * g] = ML[g]; W[4 * g + 1] = Math.min(o, cl); W[4 * g + 2] = Math.max(o, cl); W[4 * g + 3] = MH[g];
+        if (cq.oriented) c += Math.abs((cl > o ? 1 : cl < o ? -1 : 0) - cq.D[g]) / 2;
+        const lv = cq.levels[g];
+        for (let k = 0; k < lv.A.length; k++) { const x = W[lv.A[k]], y = W[lv.B[k]]; d += Math.abs((x < y ? -1 : x > y ? 1 : 0) - lv.R[k]); }
+        const floor = c + FLIP_WEIGHT * d / (2 * cq.P), limit = Math.min(best.bound(), bestHere ? bestHere.d : Infinity);
+        if (floor > limit) continue;
+        if (g === n - 1) {
+          const score = floor + lookOf(cq, W);
+          if (score < limit) bestHere = { d: score, picks: Array.from(picks), extra: last - s + 1 - n, span: last - s + 1 };
+          continue;
+        }
+      } else if (g === n - 1) { any = true; depth = -1; return false; }
+      const child = g + 1, remaining = spare - skip;
+      positions[child] = last + 1; spares[child] = remaining;
+      skips[child] = child === n - 1 ? remaining : 0;
+      colours[child] = c; differences[child] = d; depth = child;
     }
-  };
+    return false;
+  }
 
   for (let k = 0; k < BARS.length; k++) {
     T = BARS[k]; on = !!q.tfs[k];
+    colourBounds = null;
+    if (on && held && stretch && n > 2) {
+      colourBounds = await boundColours(); if (id !== latest) return null;
+    }
     for (s = 0; s + n <= T.n; s++) {
-      if (++sinceTick >= 8192) {
-        sinceTick = 0; await tick();
+      if ((++sinceTick & 255) === 0 && performance.now() >= deadline) {
+        await tick(); deadline = performance.now() + 8;
         if (id !== latest) return null;
         report(done / total);
       }
@@ -460,7 +510,8 @@ async function search(q, id, report) {
         const e = s + n - 1 + extra;
         if (e >= T.n || T.run[e] < e - s + 1) break;
         bestHere = null; any = false;
-        exists(0, s, extra);
+        beginPlacement(extra);
+        while (place(false)) { await tick(); if (id !== latest) return null; deadline = performance.now() + 8; report(done / total); }
         if (!any) continue;
         counts[k]++;
         outcomeInto(T, e, oo);
@@ -469,7 +520,8 @@ async function search(q, id, report) {
         countsF[k]++;
         if (on) {
           addSet(k, T, s, picks, e, oo);
-          closest(0, s, extra, 0, 0);
+          beginPlacement(extra);
+          while (place(true)) { await tick(); if (id !== latest) return null; deadline = performance.now() + 8; report(done / total); }
           if (bestHere) best.push(bestHere.d, { k, s, picks: bestHere.picks, extra, span: n + extra, end: T.ts[e] });
         }
       }
@@ -486,7 +538,7 @@ async function search(q, id, report) {
       if (!q.tfs[k]) continue;
       T = BARS[k];
       for (s = 0; s + n <= T.n; s++) {
-        if (++sinceTick >= 8192) { sinceTick = 0; await tick(); if (id !== latest) return null; }
+        if ((++sinceTick & 255) === 0 && performance.now() >= deadline) { await tick(); if (id !== latest) return null; deadline = performance.now() + 8; }
         if (T.run[s + n - 1] < n) continue;
         if (f && !passes(outcomeInto(T, s + n - 1, o0), f)) continue;
         for (let i = 0; i < n; i++) { MO[i] = T.O[s + i]; MH[i] = T.H[s + i]; ML[i] = T.L[s + i]; MC[i] = T.C[s + i]; }
