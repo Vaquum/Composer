@@ -395,6 +395,7 @@ async function search(q, id, report) {
   // through all intervening combinations. The normal final hold check remains.
   const endHolds=Array.from({length:n},()=>[]);
   for(const h of cq.holds)if(!h.color){const a=h.a[0],b=h.b[0];if(Math.max(a,b)===n-1&&a!==b)endHolds[Math.min(a,b)].push(h);}
+  const endGroups=endHolds.flatMap((holds,g)=>holds.length?[{g,holds}]:[]),endLimits=endGroups.length?new Int32Array(n):null;
   const fits = (g, pos, skip) => {
     const last = pos + skip;
     if (last >= T.n || T.run[last] < last - s + 1) return -1;
@@ -453,9 +454,24 @@ async function search(q, id, report) {
   const positions = new Int32Array(n), spares = new Int32Array(n), skips = new Int32Array(n);
   const colours = new Float64Array(n), differences = new Float64Array(n);
   let depth = 0, nodes = 0;
-  function beginPlacement(extra) {
+  function beginPlacement(extra,prepare=true) {
     const end=s+n-1+extra;MO[n-1]=T.O[end];MH[n-1]=T.H[end];ML[n-1]=T.L[end];MC[n-1]=T.C[end];
+    if(endLimits&&prepare){
+      endLimits.fill(extra);
+      for(const {g,holds}of endGroups){
+        let last=-1;
+        for(let skip=0;skip<=(g?extra:0);skip++){
+          const at=s+g+skip;MO[g]=T.O[at];MH[g]=T.H[at];ML[g]=T.L[at];MC[g]=T.C[at];
+          if(holds.every(h=>holdOk(h,MO,MH,ML,MC)))last=skip;
+        }
+        if(last<0)return false;
+        // Skips cannot be undone. Earlier bars cannot pass the last feasible
+        // position of any later endpoint held against this window's end.
+        for(let before=0;before<=g;before++)endLimits[before]=Math.min(endLimits[before],last);
+      }
+    }
     depth = 0; positions[0] = s; spares[0] = extra; skips[0] = 0; colours[0] = differences[0] = 0;
+    return true;
   }
   function place(scoring) {
     while (depth >= 0) {
@@ -463,6 +479,7 @@ async function search(q, id, report) {
       const g = depth, spare = spares[g], skip = skips[g]++;
       if (skip > (g === 0 ? 0 : spare)) { depth--; continue; }
       const last = positions[g] + skip;
+      if(endLimits&&last-s-g>endLimits[g]){depth--;continue;}
       if (colourBounds) {
         const lower = colourBounds[g][spare - skip]?.[last] ?? 255;
         if (lower === 255 || scoring && colours[g] + lower / 2 + FLIP_WEIGHT * differences[g] / (2 * cq.P) > Math.min(best.bound(), bestHere ? bestHere.d : Infinity)) continue;
@@ -539,7 +556,7 @@ async function search(q, id, report) {
         const e = s + n - 1 + extra;
         if (e >= T.n || T.run[e] < e - s + 1) break;
         bestHere = null; any = false;
-        beginPlacement(extra);
+        if(!beginPlacement(extra))continue;
         while (place(false)) { await tick(); if (id !== latest) return null; deadline = performance.now() + 8; report(done / total); }
         if (!any) continue;
         counts[k]++;
@@ -549,7 +566,7 @@ async function search(q, id, report) {
         countsF[k]++;
         if (on) {
           addSet(k, T, s, picks, e, oo);
-          beginPlacement(extra);
+          beginPlacement(extra,false);
           while (place(true)) { await tick(); if (id !== latest) return null; deadline = performance.now() + 8; report(done / total); }
           if (bestHere) best.push(bestHere.d, { k, s, picks: Array.from(bestHere.picks), extra, span: n + extra, end: T.ts[e] });
         }
