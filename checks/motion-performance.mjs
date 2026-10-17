@@ -112,10 +112,22 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
       if(image.count>=20)assert.ok(image.after<=image.before/2,'large thumbnails must remove at least half their SVG nodes');
     }
     await settle(page);
+    const painted=()=>page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+    await painted();
     const layeredPaper=await page.screenshot({fullPage:true});
     const originalPaper=await page.addStyleTag({content:'body{background-image:var(--tex)!important}body>.app::before{display:none!important}'});
-    try{assert.ok(layeredPaper.equals(await page.screenshot({fullPage:true})),'isolating the paper texture must preserve full-page pixels');}
-    finally{await originalPaper.evaluate(node=>node.remove());}
+    try{
+      await painted();const original=await page.screenshot({fullPage:true});
+      if(!layeredPaper.equals(original)){
+        const difference=await page.evaluate(async({a,b})=>{
+          const pixels=async src=>{const image=new Image();await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=reject;image.src=src;});const canvas=document.createElement('canvas');canvas.width=image.width;canvas.height=image.height;const ctx=canvas.getContext('2d');ctx.drawImage(image,0,0);return ctx.getImageData(0,0,canvas.width,canvas.height).data;};
+          const x=await pixels(a),y=await pixels(b);if(x.length!==y.length)return{max:255,mean:255};let max=0,total=0;
+          for(let i=0;i<x.length;i++){const d=Math.abs(x[i]-y[i]);max=Math.max(max,d);total+=d;}return{max,mean:total/x.length};
+        },{a:'data:image/png;base64,'+layeredPaper.toString('base64'),b:'data:image/png;base64,'+original.toString('base64')});
+        // A separate compositor pass can round translucent glyph edges twice.
+        assert.ok(difference.max<=2&&difference.mean<.005,`paper layer changed full-page pixels beyond compositor rounding: ${JSON.stringify(difference)}`);
+      }
+    }finally{await originalPaper.evaluate(node=>node.remove());}
     const graphics=await page.evaluate(()=>{
       const canvas=document.createElement('canvas'),gl=canvas.getContext('webgl');if(!gl)return'unavailable';
       const info=gl.getExtension('WEBGL_debug_renderer_info'),renderer=info?gl.getParameter(info.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER);

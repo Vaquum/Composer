@@ -93,8 +93,9 @@ and disconnected targets are released. Active scenes retain live measurements.
 Reconciliation prepares all nested retirements before retained DOM writes, so
 later sibling snapshots do not repeatedly force layout. Desktop grid columns
 contain their layout and paint during the reference track's resize. The filtered
-paper texture has one independent static layer instead of being repainted beneath
-changing readings, cards and canvases; full-page pixels match the body background.
+desktop paper texture has one independent static layer instead of being repainted
+beneath changing readings, cards and canvases. Full-page pixels stay within two
+8-bit compositor rounding units; mobile retains the full-document body texture.
 Retained reading rows in all three designs reuse their verified bindings inside structural
 reconciliation; headers and changed row shapes still use the general path.
 Previously unseen actors receive a fresh observer sample after layout changes,
