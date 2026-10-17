@@ -288,7 +288,7 @@ const TactileFlow = (() => {
     // Twice the travel includes the shared spring's small overshoot.
     const room=model.information*2,top=box.top-room,height=box.height+room*2;
     ghost.style.cssText=`position:fixed;left:${box.left}px;top:${top}px;width:${box.width}px;height:${height}px;margin:0;translate:none;transform:none;pointer-events:none;z-index:90;clip-path:inset(${Math.max(0,bounds.top-top)}px ${Math.max(0,box.right-bounds.right)}px ${Math.max(0,top+height-bounds.bottom)}px ${Math.max(0,bounds.left-box.left)}px)`;
-    content.style.cssText=`position:absolute;left:0;top:${room}px;width:${box.width}px;height:${box.height}px;will-change:translate;pointer-events:none`;
+    content.style.cssText=`position:absolute;left:0;top:${room}px;width:${box.width}px;height:${box.height}px;overflow:hidden;will-change:translate;pointer-events:none`;
     const commit=()=>{
     settle(); document.body.append(ghost);
     spring(ghost, 'retirement', { from: { opacity, y: 0 }, to: { opacity: 0, y: -model.information },

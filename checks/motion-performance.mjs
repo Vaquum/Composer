@@ -265,6 +265,19 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
       await page.evaluate(async()=>{for(let i=0;i<24;i++){__perf.Forecast.sync(__perf.Stage.geom());await new Promise(requestAnimationFrame);}});
     });
     assert.equal(quiet.mutations,0,'stationary forecast frames must not rewrite semantic or hit-target DOM');
+    if(cdp){
+      const density=dpr===1?2:1;
+      await cdp.send('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:density,mobile:false});
+      await page.evaluate(()=>__perf.App.redraw());await settle(page);
+      assert.equal(await page.evaluate(()=>__perf.Stage.forecastSurface.flowDpr),density,'a display-density change must repaint the forecast at native density');
+      await cdp.send('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:dpr,mobile:false});
+      await page.evaluate(()=>__perf.App.redraw());await settle(page);
+    }
+    const fontPaint=await page.evaluate(()=>{
+      const A=__perf,version=A.Stage.paintVersion||0;document.fonts.dispatchEvent(new Event('loadingdone'));
+      return (A.Stage.paintVersion||0)>version;
+    });
+    assert.ok(fontPaint,'late font loading must invalidate cached forecast glyphs');
     await page.locator('#emaki .card').first().scrollIntoViewIfNeeded();
     const retiring=await page.evaluate(()=>{
       const A=__perf,card=document.querySelector('#emaki .card'),read=node=>{
