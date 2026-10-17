@@ -1430,7 +1430,7 @@ const Stage = {
     if(!c||this.fanA<.01||this.fanWeight<.01||G.w<1||G.h<1||G.fanStep<4){if(composite&&this.washRoot)this.washRoot.hidden=true;return;}
     let lo=Infinity,hi=-Infinity;
     for(const b of S.bars){lo=Math.min(lo,b.dv[0]);hi=Math.max(hi,b.dv[3]);}
-    if(!(hi>lo))return;
+    if(!(hi>lo)){if(composite&&this.washRoot)this.washRoot.hidden=true;return;}
     const last=S.bars[G.N-1],lx=G.forecastLeft;
     const xs=G.futureXs,end=xs.at(-1);
     const Y=u=>this.Y(lo+u*(hi-lo),G),y0=this.Y(closeOf(last.dv,last.d),G);

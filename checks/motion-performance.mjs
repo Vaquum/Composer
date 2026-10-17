@@ -143,6 +143,12 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
       return{same,aligned,snapshot};
     });
     assert.deepEqual(fanParity,{same:true,aligned:true,snapshot:true},'composited fan pixels, projected layers and departure snapshots must match a fresh native render');
+    const collapsedWash=await page.evaluate(()=>{
+      const A=__perf,saved=A.S.bars.map(b=>b.dv.slice());
+      try{for(const b of A.S.bars)b.dv.fill(42);A.Stage.draw();return !A.Stage.washState&&(!A.Stage.washRoot||A.Stage.washRoot.hidden);}
+      finally{A.S.bars.forEach((b,i)=>b.dv.set(saved[i]));A.Stage.draw();}
+    });
+    assert.ok(collapsedWash,'a collapsed drawing must hide the previous composited fan wash');
     await measure('forecast',async()=>{for(const v of ['paths','branches','states']){await call('forecast',v);await settle(page);}await call('fan',false);await settle(page);await call('fan',true);});
     await measure('refresh',async()=>{for(let i=0;i<3;i++){await call('refresh');await settle(page);}});
     await measure('refresh-replace',async()=>{await call('refresh','replace');});
