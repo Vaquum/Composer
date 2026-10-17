@@ -57,8 +57,8 @@ async function diagnoseNativePaint(page,label,action,p95){
   const report=(variant,frames)=>{assert.ok(frames.length>5,'paint diagnosis must collect actual frames');console.log(JSON.stringify({diagnosis:label,variant,frames:frames.length,p95:p95(frames)}));};
   await start();await page.waitForTimeout(1200);report('idle',await stop());
   for(const [variant,css]of [['control',''],['paper-none',':root,body{background-image:none!important}'],['control',''],['forced-detail-layer','.flow-detail-content{transform:translateZ(0)!important}'],['control',''],['clipped-detail','.flow-detail-body{contain:paint!important}'],['contained-rows','.pane div.prow{contain:layout!important}'],['control','']]){
-    const style=await page.addStyleTag({content:css});
-    try{await settle(page);await start();await action();await settle(page);await action();await settle(page);report(variant,await stop());}
+    const style=await page.addStyleTag({content:css||'/* native paint control */'});
+    try{await settle(page);await start();await action();await settle(page);if(label!=='reference'){await action();await settle(page);}report(variant,await stop());}
     finally{await style.evaluate(node=>node.remove());await settle(page);}
   }
 }
@@ -233,7 +233,7 @@ for(const [name,type,rate] of browsers){
       assert.ok(report.callMax<100,`${label}: an input/result task exceeded 100 ms (${report.callMax})`);
       assert.ok(report.workP95<16.7*rate,`${label}: application work exceeded its native-frame budget scaled by ${rate}× CPU (${report.workP95})`);
       // Diagnostic ablations never replace or waive the original native gate.
-      if(nativeProfile&&controlledGraphics&&label!=='reduced-motion'&&report.frameP95>=25)await diagnoseNativePaint(page,label,action,p95);
+      if(nativeProfile&&controlledGraphics&&label!=='reduced-motion'&&(label==='reference'||report.frameP95>=25))await diagnoseNativePaint(page,label,action,p95);
       if(controlledGraphics&&rate===1&&label!=='reduced-motion')assert.ok(report.frameP95<25,`${label}: native frame delivery exceeded its budget (${report.frameP95})`);
       if(controlledGraphics)assert.ok(report.paintP95<100,`${label}: pointer input waited more than 100 ms for its next paint (${report.paintP95})`);
       return sample;
