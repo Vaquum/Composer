@@ -33,11 +33,14 @@ const PaneDesigns = (() => {
       aria:`Selected mean ${selectedDisplay}; 95% interval ${displayed(w,lo)} to ${displayed(w,hi)}; all-window mean ${baselineDisplay}`,band:`left:${at(lo)}%;width:${at(hi)-at(lo)}%`,dot:`left:${at(mean)}%`,reference:`left:${at(ref)}%`};
     formattedReadings.set(w,{key:w.key,log:w.log,mean,lo,hi,ref,fields});return fields;
   }
-  function track(w) {
-    const f=trackFields(w);
+  function track(w, f=trackFields(w)) {
     return `<div class="trk" role="img" aria-label="${f.aria}"><i class="bd" style="${f.band}"></i><i class="dt" style="${f.dot}"></i><i class="tk" style="${f.reference}"></i></div>`;
   }
-  const reading = (w, showBar = true, retained = null, destination = '') => retained?.has(`${destination}|${w.bar}-${w.key}`) ? `<div class="prow" data-reading="${w.bar}-${w.key}"></div>` : `<div class="prow" data-reading="${w.bar}-${w.key}"><div class="pl"><span>${showBar ? 'Bar '+(w.bar+1)+' · ' : ''}${label(w)}</span><b>${trackFields(w).selectedDisplay}</b></div><div class="pane-reading-bottom">${track(w)}<span class="pane-baseline">All ${trackFields(w).baselineDisplay}</span></div></div>`;
+  function reading(w, showBar = true, retained = null, destination = '') {
+    if(retained?.has(`${destination}|${w.bar}-${w.key}`))return `<div class="prow" data-reading="${w.bar}-${w.key}"></div>`;
+    const f=trackFields(w);
+    return `<div class="prow" data-reading="${w.bar}-${w.key}"><div class="pl"><span>${showBar ? 'Bar '+(w.bar+1)+' · ' : ''}${label(w)}</span><b>${f.selectedDisplay}</b></div><div class="pane-reading-bottom">${track(w,f)}<span class="pane-baseline">All ${f.baselineDisplay}</span></div></div>`;
+  }
   const difference = w => {
     if (w.key === 'maker' || w.key === 'day') { const d = (w.set[0]-w.all[0])*100; return `${d > 0 ? '+' : ''}${d.toFixed(1).replace('-','−')} pp`; }
     const ratio = w.log ? Math.exp(w.set[0]-w.all[0]) : w.all[0] > 0 ? w.set[0]/w.all[0] : null;

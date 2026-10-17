@@ -865,12 +865,12 @@ const Forecast = {
       const other=c?c.n-leaders.reduce((n,[,k])=>n+k,0):0;
       html+=`<span class="forecast-note" data-kind="other" ${tip(c?`${c.sequences.length-leaders.length} other complete sequences: ${V.interval(other,c.n)}. Together with the displayed rows these mutually exclusive sequences account for every complete window.`:note)}></span>`;
     }else{
-      const prefix=this.view==='branches'?this.prefix:'',set=c?V.outcomes(c,prefix):null;
+      const prefix=this.view==='branches'?this.prefix:'',set=c?this.outcomes(prefix):null;
       html+=Array.from({length:6},(_,j)=>V.states.map((s,k)=>{
         const prior=this.view==='branches'&&j<prefix.length,n=set?.grid[j][k]||0;
         const actionable=this.view==='branches'&&j===prefix.length&&n&&set.n>=30;
         const selected=prior&&prefix[j]===s;
-        const text=c?(prior?(selected?`Bar +${j+1}, ${V.names[s]} is an earlier chosen closing state. Click to return before this bar and choose again.`:`Bar +${j+1}, ${V.names[s]} is excluded by your earlier choices.`):V.stateTip(c,prefix,j,s)+(this.view==='states'?' This coloured portion occupies that share of a column totaling 100%.':actionable?' Choose this outcome to update the following bars.':' Later columns describe the current cohort; they are not independent path odds.')):note;
+        const text=c?(prior?(selected?`Bar +${j+1}, ${V.names[s]} is an earlier chosen closing state. Click to return before this bar and choose again.`:`Bar +${j+1}, ${V.names[s]} is excluded by your earlier choices.`):V.stateTip(c,prefix,j,s,set)+(this.view==='states'?' This coloured portion occupies that share of a column totaling 100%.':actionable?' Choose this outcome to update the following bars.':' Later columns describe the current cohort; they are not independent path odds.')):note;
         const explanation=text+(c&&prefix.length===6?' '+V.pathTip(c,prefix):'');
         return `<button type="button" class="forecast-cell-hit" data-kind="${this.view}" data-step="${j}" data-state="${s}" data-state-index="${k}" data-key="${this.view}-${j}-${s}" ${actionable?`data-prefix="${prefix+s}"`:selected?`data-prefix="${prefix.slice(0,j)}"`:''} aria-label="${escape(explanation)}" aria-disabled="${!this.current}" ${this.view==='branches'?`aria-pressed="${!!selected}"`:''} ${tip(explanation)}></button>`;
       }).join('')).join('');
