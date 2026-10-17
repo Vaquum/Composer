@@ -969,7 +969,9 @@ const Stage = {
       box.w=Math.max(C.x+C.w,O?O.x+O.w:0)-box.x;box.h=Math.max(C.y+C.h,O?O.y+O.h:0)-box.y;
       const snapshot=document.createElement('canvas'),ctx=fitCanvas(snapshot,box.w,box.h);ctx.translate(-box.x,-box.y);
       const opacity=canvas=>{const n=parseFloat(canvas.style.opacity);return Number.isFinite(n)?n:1;};
-      ctx.globalAlpha=opacity(current);paintCanvas(ctx,current,C.x,C.y,C.w,C.h);
+      ctx.globalAlpha=opacity(current);
+      if(this.washState)this.paintWash(ctx,this.washState);
+      paintCanvas(ctx,current,C.x,C.y,C.w,C.h);
       if(old){ctx.globalCompositeOperation='destination-over';ctx.globalAlpha=opacity(old);paintCanvas(ctx,old,O.x,O.y,O.w,O.h);}
       old?.remove();current.remove();this.departingForecast=snapshot;this.forecastSurface=null;this.layer(snapshot,box);snapshot.style.opacity='1';
       this.scene = 0;
@@ -1386,15 +1388,41 @@ const Stage = {
       const layer=fitCanvas(this.forecastSurface,box.w,box.h,Math.min(2,devicePixelRatio||1),true);
       layer.clearRect(0,0,this.forecastSurface.width/this.forecastSurface.flowDpr,this.forecastSurface.height/this.forecastSurface.flowDpr);layer.translate(-x,-y);
       this.layer(this.forecastSurface,box);
-      this.drawFan(layer,G);
+      this.drawFan(layer,G,true);
       if(Forecast.source){this.drawStates(layer,G);this.drawPaths(layer,G);this.drawBranches(layer,G);}else this.drawForecastEmpty(layer,G);
       this.forecastPaint = { source: Forecast.source, key, canvas: this.forecastSurface };
     }
+    if(this.washRoot)this.washRoot.style.opacity=String(this.departingForecast?this.scene:1);
     if(this.departingForecast){
       this.forecastSurface.style.opacity=String(this.scene);this.departingForecast.style.opacity=String(1-this.scene);
     }else this.forecastSurface.style.opacity='1';
   },
-  drawFan(ctx, G) {
+  paintWash(ctx,state){
+    const {surface,width,height,texture,top,scaleY,pieces,weight,clip}=state,alpha=ctx.globalAlpha;
+    ctx.save();ctx.beginPath();ctx.rect(0,clip.top,clip.width,clip.height);ctx.clip();ctx.globalAlpha=alpha*weight;
+    for(const [left,right,start,finish]of pieces)ctx.drawImage(surface,(left-texture.x)/texture.w*width,0,(right-left)/texture.w*width,height,start,top,finish-start,texture.h*scaleY);
+    ctx.restore();
+  },
+  composeWash(state){
+    if(!this.washRoot){
+      this.washRoot=document.createElement('div');this.washRoot.inert=true;this.washRoot.setAttribute('aria-hidden','true');
+      this.washRoot.style.cssText='position:absolute;inset:0;pointer-events:none';
+      for(let i=0;i<2;i++){const part=document.createElement('div'),canvas=document.createElement('canvas');part.style.cssText='position:absolute;left:0;top:0;overflow:hidden;transform-origin:0 0;will-change:transform';canvas.style.cssText='position:absolute;top:0;right:auto;bottom:auto;pointer-events:none';part.append(canvas);this.washRoot.append(part);}
+    }
+    this.paintRoot.insertBefore(this.washRoot,this.forecastSurface);this.washRoot.hidden=false;
+    const {cache,surface,width,height,texture,top,scaleY,pieces,weight,clip}=state;
+    const clipping=`inset(${clip.top}px 0 ${Math.max(0,this.geom().h-clip.top-clip.height)}px 0)`;
+    if(this.washRoot.style.clipPath!==clipping)this.washRoot.style.clipPath=clipping;
+    for(let i=0;i<2;i++){
+      const part=this.washRoot.children[i],canvas=part.firstElementChild,[left,right,start,finish]=pieces[i];
+      if(canvas.washCache!==cache){canvas.width=width;canvas.height=height;canvas.getContext('2d').drawImage(surface,0,0,width,height,0,0,width,height);canvas.washCache=cache;canvas.style.width=`${texture.w}px`;canvas.style.height=`${texture.h}px`;}
+      const styles={width:`${right-left}px`,height:`${texture.h}px`,transform:`matrix(${(finish-start)/(right-left)},0,0,${scaleY},${start},${top})`,opacity:String(weight)};
+      for(const [key,value]of Object.entries(styles))if(part.style[key]!==value)part.style[key]=value;
+      const offset=`${texture.x-left}px`;if(canvas.style.left!==offset)canvas.style.left=offset;
+    }
+  },
+  drawFan(ctx, G, composite=false) {
+    if(composite){this.washState=null;if(this.washRoot)this.washRoot.hidden=true;}
     const c=Forecast.source;
     if(!c||this.fanA<.01||this.fanWeight<.01||G.w<1||G.h<1||G.fanStep<4)return;
     let lo=Infinity,hi=-Infinity;
@@ -1441,17 +1469,15 @@ const Stage = {
     blur.filter=`blur(${6*FAN_OPTIONS.softness*density}px)`;paintCanvas(blur,this.fanSurface,0,0,box.w*density,box.h*density);blur.filter='none';
     this.fanCache={source:c,key,projection,box,root:lx,first:xs[0],end,zero:Y(0),one:Y(1)};
     }
-    ctx.save();ctx.beginPath();ctx.rect(0,G.plotTop-24,G.w,G.plotH+48);ctx.clip();ctx.globalAlpha=weight;
     const cached=this.fanCache,texture=cached.box,surface=this.fanBlurSurface;
     const scaleY=(Y(1)-Y(0))/(cached.one-cached.zero),top=Y(0)+(texture.y-cached.zero)*scaleY;
     // The first interval and the five equally spaced future columns resize
     // independently. Two image slices preserve all six quantile positions.
-    if(cached.projection===projection)paintCanvas(ctx,surface,texture.x,texture.y,texture.w,texture.h);
-    else for(const [left,right,start,finish]of [[texture.x,cached.first,lx+(texture.x-cached.root)*(xs[0]-lx)/(cached.first-cached.root),xs[0]],
-      [cached.first,texture.x+texture.w,xs[0],xs[0]+(texture.x+texture.w-cached.first)*(end-xs[0])/(cached.end-cached.first)]]){
-      const sourceX=(left-texture.x)/texture.w*surface.flowWidth,sourceW=(right-left)/texture.w*surface.flowWidth;
-      ctx.drawImage(surface,sourceX,0,sourceW,surface.flowHeight,start,top,finish-start,texture.h*scaleY);
-    }
+    const pieces=[[texture.x,cached.first,lx+(texture.x-cached.root)*(xs[0]-lx)/(cached.first-cached.root),xs[0]],
+      [cached.first,texture.x+texture.w,xs[0],xs[0]+(texture.x+texture.w-cached.first)*(end-xs[0])/(cached.end-cached.first)]];
+    const state={cache:cached,surface,width:surface.flowWidth,height:surface.flowHeight,texture,top,scaleY,pieces,weight,clip:{top:G.plotTop-24,width:G.w,height:G.plotH+48}};
+    if(composite){this.washState=state;this.composeWash(state);}else this.paintWash(ctx,state);
+    ctx.save();ctx.beginPath();ctx.rect(0,G.plotTop-24,G.w,G.plotH+48);ctx.clip();ctx.globalAlpha=weight;
     const line=ctx.createLinearGradient(lx,0,end,0);
     line.addColorStop(0,rgbStr(pigment,0));line.addColorStop(.08,paint);
     line.addColorStop(.94,paint);line.addColorStop(1,rgbStr(pigment,0));
