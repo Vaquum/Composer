@@ -120,7 +120,7 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
       const scroll=Math.min(top,Math.max(0,documentHeight-viewportHeight));
       await page.evaluate(y=>scrollTo(0,y),scroll);await painted();await settle(page);
       const layeredPaper=await page.screenshot();
-      const originalPaper=await page.addStyleTag({content:'body{background-image:var(--tex)!important}body>.app::before{display:none!important}'});
+      const originalPaper=await page.addStyleTag({content:'body{background-attachment:scroll!important}'});
       try{
         await painted();const original=await page.screenshot();
         if(!layeredPaper.equals(original)){
@@ -130,7 +130,7 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
             for(let i=0;i<x.length;i++){const d=Math.abs(x[i]-y[i]);max=Math.max(max,d);total+=d;}return{max,mean:total/x.length};
           },{a:'data:image/png;base64,'+layeredPaper.toString('base64'),b:'data:image/png;base64,'+original.toString('base64')});
           // A separate compositor pass can round translucent glyph edges twice.
-          assert.ok(difference.max<=2&&difference.mean<.005,`paper layer changed pixels at scroll ${scroll} beyond compositor rounding: ${JSON.stringify(difference)}`);
+          assert.ok(difference.max<=2&&difference.mean<.005,`paper cache changed pixels at scroll ${scroll} beyond compositor rounding: ${JSON.stringify(difference)}`);
         }
       }finally{await originalPaper.evaluate(node=>node.remove());}
       if(scroll>=documentHeight-viewportHeight)break;

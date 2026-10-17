@@ -51,12 +51,8 @@ button:disabled { cursor: default; }
 [lang="ja"] { font-family: var(--font-mincho); }
 .ja { font-family: var(--font-mincho); color: var(--ink-3); font-size: .92em; margin-inline-start: .35em; letter-spacing: .04em; }
 
-/* Keep the filtered paper independent of changing cards, readings and canvases. */
-@media (min-width: 1181px) {
-  body { background-image: none; }
-  body > .app { position: relative; }
-  body > .app::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; background-image: var(--tex); transform: translateZ(0); }
-}
+/* Cache the native paper while its document origin is stationary. */
+@media (min-width: 1181px) { :root[data-paper-cache] body { background-attachment: fixed; } }
 .app { min-height: 100%; display: flex; flex-direction: column; padding-inline: 16px; padding-block: 0 14px; }
 .top { display: flex; align-items: center; gap: 22px; padding-block: 14px 12px; border-bottom: 1px solid var(--hair); flex-wrap: wrap; }
 .brand { display: flex; align-items: center; gap: 12px; min-width: 0; margin-inline-end: auto; }
@@ -444,6 +440,11 @@ const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(
 const sgn = x => (x > 0 ? 1 : x < 0 ? -1 : 0);
 const Flow = TactileFlow;
 const calm = () => Flow.reduced();
+// Mac WebKit benefits from its fixed-background cache without moving content
+// into a new compositing group. Preserve document coordinates during scrolling.
+const PAPER_CACHE=navigator.platform.includes('Mac')&&!('filter' in document.createElement('canvas').getContext('2d'));
+if(PAPER_CACHE){const origin=()=>document.documentElement.toggleAttribute('data-paper-cache',scrollY===0);origin();addEventListener('scroll',origin,{passive:true});}
+
 function dense(arr) { const s = Array.from(new Set(arr)).sort((a, b) => a - b), m = new Map(); s.forEach((v, i) => m.set(v, i)); return arr.map(v => m.get(v)); }
 /* ---- the feel of a drag: pure functions of the pointer, checked by checks/drag.mjs ---- */
 // A press barely moves what it holds until it is clearly a drag, then the part catches up with the pointer within a few px:
