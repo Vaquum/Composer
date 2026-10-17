@@ -11,7 +11,7 @@ const TactileFlow = (() => {
     }
     return { position, velocity };
   }
-  function advance(values, velocities, targets, seconds, epsilon = .0008, immediate = false) {
+  function advance(values, velocities, targets, seconds, epsilon = .002, immediate = false) {
     let busy = false;
     for (let i = 0; i < targets.length; i++) {
       const next = integrate(values[i], velocities[i], targets[i], immediate ? 0 : seconds);
@@ -98,7 +98,7 @@ const TactileFlow = (() => {
       for (const [key, goal] of Object.entries(target)) {
         const next = integrate(channel.value[key], channel.velocity[key] || 0, goal, dt);
         channel.value[key] = next.position; channel.velocity[key] = next.velocity;
-        if (Math.abs(next.position - goal) > channel.range[key] * .0008 || Math.abs(next.velocity) > channel.range[key] * .008) resting = false;
+        if (Math.abs(next.position - goal) > channel.range[key] * .002 || Math.abs(next.velocity) > channel.range[key] * .02) resting = false;
       }
       if (resting || reduced()) complete(channel); else channel.write({ ...channel.value });
     }
@@ -518,7 +518,7 @@ const TactileFlow = (() => {
     spring(input, 'switch', { from: { x: parseFloat(input.style.getPropertyValue('--flow-switch-x')) }, to: { x: target }, write: ({ x }) => input.style.setProperty('--flow-switch-x', `${x}px`) });
   }
   let position = 0, velocity = 0; const samples = [0];
-  do { const next = integrate(position, velocity, 1, .008); position = next.position; velocity = next.velocity; samples.push(position); } while (Math.abs(position - 1) > .0008 || Math.abs(velocity) > .008);
+  do { const next = integrate(position, velocity, 1, .008); position = next.position; velocity = next.velocity; samples.push(position); } while (Math.abs(position - 1) > .002 || Math.abs(velocity) > .02);
   samples[samples.length - 1] = 1;
   const css = document.documentElement.style;
   css.setProperty('--flow-settle', `${(samples.length - 1) * 8}ms`); css.setProperty('--flow-spring', `linear(${samples.map(n => n.toFixed(5)).join(',')})`);

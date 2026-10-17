@@ -61,5 +61,7 @@ jobs:
         run: python checks/with_bars.py checks/similarity-equivalence.mjs
       - name: The panes against an independent recomputation
         run: python checks/with_bars.py checks/panes.mjs
+      - name: Real-history search latency and cancellation work slices
+        run: python checks/with_bars.py checks/search-performance.mjs
       - name: The container builds
         run: python checks/container.py

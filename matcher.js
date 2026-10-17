@@ -407,7 +407,7 @@ async function search(q, id, report) {
         for (let i = 0; i < end; i++) {
           if ((i & 1023) === 0 && performance.now() >= deadline) {
             await tick(); if (id !== latest) return null;
-            deadline = performance.now() + 8;
+            deadline = performance.now() + 8; report(done / total);
           }
           let rest = g === n - 1 ? 0 : 255;
           if (g < n - 1) for (let skip = 0; skip <= spare; skip++) rest = Math.min(rest, columns[g + 1][spare - skip][i + skip + 1]);

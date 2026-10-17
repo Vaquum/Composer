@@ -7,6 +7,7 @@ import fs from 'node:fs';
 const [matcherFile, barsFile] = process.argv.slice(2);
 const source = fs.readFileSync(matcherFile, 'utf8');
 const BOUNDS = [
+  [' || scoring && colours[g] + lower / 2 + FLIP_WEIGHT * differences[g] / (2 * cq.P) > Math.min(best.bound(), bestHere ? bestHere.d : Infinity)', ''],
   ['      if (floor > limit) continue;\n', ''],
   ['closeness(cq, MO, MH, ML, MC, W, best.bound())', 'closeness(cq, MO, MH, ML, MC, W, Infinity)'],
   ['closeness(cq, MO, MH, ML, MC, W, near.bound())', 'closeness(cq, MO, MH, ML, MC, W, Infinity)'],

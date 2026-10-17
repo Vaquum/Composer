@@ -78,8 +78,10 @@ pip install -r requirements.txt
 python3 server.py --port 8488
 ```
 
-Open [127.0.0.1:8488](http://127.0.0.1:8488). The server reads the five files (about 40 MB) before
-it answers.
+Open [127.0.0.1:8488](http://127.0.0.1:8488). The page answers immediately. A checksummed history snapshot in `~/.cache/composer`
+(or `COMPOSER_CACHE_DIR`) serves data across restarts while newer files load in the background.
+On a first start the page remains usable while history loads; data endpoints report readiness.
+Bars download before activity so the first matches need only the matching payload.
 
 ## Files
 
@@ -118,7 +120,7 @@ python3 checks/with_bars.py checks/panes.mjs
 ## Deploy
 
 Composer runs on the Origo host as the Compose project `composer` in `/opt/composer`: it builds the
-`Dockerfile` and serves on `127.0.0.1:8488` only, as a non-root user on a read-only filesystem. It
+`Dockerfile` and serves on `127.0.0.1:8488` only, as a non-root user on a read-only filesystem with a named volume for its validated history snapshot. It
 checks no credentials of its own: TLS and the login are the host's Caddy, deployed from
 [Vaquum/Portal](https://github.com/Vaquum/Portal), whose `composer.vaquum.fi` site passes a request
 on to `127.0.0.1:8488` only after the Vaquum portal login. `composer.vaquum.fi` is a DNS-only A

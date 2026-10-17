@@ -27,7 +27,7 @@ keeps an ordered, positive frame.
 | Reference | The left-anchored panel reverses continuously; desktop columns move with its width. Mobile keeps the native fixed overlay. Close and focus return are immediate. Topics resize; spotlight visibility settles while its bounds follow the live target directly. |
 | Menus and tooltips | Local entry/exit reverses without resetting momentum. Close immediately removes pointer, keyboard and accessibility availability. Hover intent remains 500 ms; focus and touch explanations remain immediate. |
 | Controls | Hover, selection, disabled and progress feedback use 100 ms ease-out. Threshold and clear-pin disclosures resize continuously. |
-| Stationary behavior | Drawing, candle width, selection indicators, pin threads, statistical text, footer identity, native scroll, theme and font/viewport geometry remain direct. Copy acknowledges immediately and expires after its existing 1.4 s. Search retains its existing 140 ms debounce. |
+| Stationary behavior | Drawing, candle width, selection indicators, pin threads, statistical text, footer identity, native scroll, theme and font/viewport geometry remain direct. Copy acknowledges immediately and expires after its existing 1.4 s. Discrete searches post immediately; pointer drawing still waits until release. |
 
 ## Lifecycle and proof
 

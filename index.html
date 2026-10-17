@@ -5,7 +5,7 @@
 <title>Composer</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=M+PLUS+1+Code:wght@400;500&family=Shippori+Mincho:wght@500;600&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
+<link rel="stylesheet" media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=M+PLUS+1+Code:wght@400;500&family=Shippori+Mincho:wght@500;600&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
 <style>
 :root {
   /* Layout: one sheet of paper. The composition sits in the middle with wide ma; the closest instances in BTCUSDT history answer in a scroll beneath it; its identity is written last. */
@@ -68,7 +68,7 @@ button:disabled { cursor: default; }
 .icon:disabled { opacity: .3; }
 
 .stage { flex: 1; display: flex; flex-direction: column; }
-.cvwrap { position: relative; flex: 1; min-height: max(360px, var(--forecast-min-height, 0px)); }
+.cvwrap { overflow: hidden; position: relative; flex: 1; min-height: max(360px, var(--forecast-min-height, 0px)); }
 .cvwrap canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; outline: none; }
 .hint { position: absolute; left: 28px; top: 56px; right: 24px; margin: 0; font-size: 12px; color: var(--ink-3); pointer-events: auto; }
 /* the paper narrows beside the panes and the reference: the hint then goes under the dock instead of into a thin column */
@@ -98,7 +98,7 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
 .bars .nb b { font: 500 15px/1 var(--font-mincho); color: var(--ink); margin-inline-end: 4px; }
 
 .forecast-controls { position: absolute; top: 14px; left: 24px; display: flex; align-items: center; gap: 8px; }
-.forecast-controls .chip { height: 30px; }
+.forecast-controls .chip { min-width: 76px; justify-content: center; height: 30px; }
 .forecast-mode-picker { display:flex; gap:2px; padding:2px; border-radius:7px; background:var(--paper-2); }
 .forecast-mode-picker button { width:32px; height:30px; padding:6px; border-radius:5px; color:var(--ink-3); }
 .forecast-mode-picker button[aria-checked="true"] { color:var(--ink); background:var(--paper); box-shadow:0 0 0 1px var(--hair); }
@@ -150,7 +150,7 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
 .nval input { width: 54px; height: 24px; border: 0; border-radius: 6px; padding: 0 6px; background: var(--paper); box-shadow: inset 0 0 0 1px var(--hair); font: 12px/1 var(--font-code); color: var(--ink); }
 .nval input:focus-visible { outline: 1.5px solid var(--ai); outline-offset: 1px; }
 .tfs { display: inline-flex; flex-wrap: wrap; gap: 4px; }
-.chip { height: 30px; padding: 0 9px; border-radius: 8px; font-size: 12px; color: var(--ink-3); box-shadow: inset 0 0 0 1px var(--hair); white-space: nowrap; }
+.chip { min-width: 76px; justify-content: center; height: 30px; padding: 0 9px; border-radius: 8px; font-size: 12px; color: var(--ink-3); box-shadow: inset 0 0 0 1px var(--hair); white-space: nowrap; }
 .chip b { font: 500 12px/1 var(--font-code); color: var(--ink-2); margin-inline-start: 5px; font-variant-numeric: tabular-nums; }
 .chip[aria-pressed="true"] { background: var(--paper-2); color: var(--ink); box-shadow: none; }
 .chip[aria-pressed="true"] b { color: var(--ink); }
@@ -302,7 +302,7 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
     <div class="ref-targets" id="ref-targets"></div>
     <p class="ref-status" id="ref-status" role="status" aria-live="polite"></p>
   </aside>
-  <aside class="pane lpane" data-side="left" aria-label="What sets the matching windows apart">
+  <aside class="pane lpane" data-side="left" data-loading="true" aria-label="What sets the matching windows apart">
     <div class="pane-switch" role="group" aria-label="Left pane layout">
       <button type="button" class="pane-step" data-step="-1" aria-label="Previous left pane design">‹</button>
       <button type="button" class="pane-current" aria-haspopup="menu" aria-expanded="false" aria-controls="left-design-menu"><span aria-live="polite">Signal first</span><i aria-hidden="true">⌄</i></button>
@@ -311,7 +311,7 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
     </div>
     <header class="pane-header">
       <h2>What differs</h2>
-      <div class="pane-context" id="lcap">Loading the matching windows…</div>
+      <div class="pane-context" id="lcap"><strong>Matching windows</strong><span class="pane-meta">Loading BTCUSDT history…</span></div>
     </header>
     <div class="pane-body">
       <div class="pane-section pane-flow prows" id="lrows"></div>
@@ -395,7 +395,7 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
       <div class="codebox"><code id="code"></code><button type="button" class="link" id="copy">Copy</button><span class="dom" id="dom"></span></div>
     </footer>
   </main>
-  <aside class="pane rpane" data-side="right" aria-label="What the shape became">
+  <aside class="pane rpane" data-side="right" data-loading="true" aria-label="What the shape became">
     <div class="pane-switch" role="group" aria-label="Right pane layout">
       <button type="button" class="pane-step" data-step="-1" aria-label="Previous right pane design">‹</button>
       <button type="button" class="pane-current" aria-haspopup="menu" aria-expanded="false" aria-controls="right-design-menu"><span aria-live="polite">Signal first</span><i aria-hidden="true">⌄</i></button>
@@ -947,7 +947,7 @@ const Stage = {
   retire(b) {
     if (!calm() && b.x !== null && b.a > 0) this.ghosts.push({ dv: Float64Array.from(b.dv), x: b.x, col: b.col.slice(), a: b.a, va: b.va, startX: b.x, vx: b.vx });
   },
-  scalar(key, target, dt, epsilon = .0008) {
+  scalar(key, target, dt, epsilon = .002) {
     const values = [this[key]], velocities = [this.scalarVelocity[key] || 0];
     const busy = Flow.advance(values, velocities, [target], dt, epsilon, calm());
     this[key] = clamp(values[0], 0, 1); this.scalarVelocity[key] = velocities[0];
@@ -989,7 +989,7 @@ const Stage = {
     for (const [key,target] of [['modeMix',Forecast.view === 'paths' ? 1 : 0],['fanWeight',Forecast.fan ? 1 : 0],['tracePresence',this.trace ? 1 : 0],['fanA',Match.fresh() && !Match.failed ? 1 : Forecast.source ? .35 : 0]]) if (this.scalar(key,target,dt)) busy = true;
     if (this.departingForecast) {
       const x=[this.scene],v=[this.sceneVelocity];
-      if (Flow.advance(x,v,[1],dt,.0008,calm())) busy=true;
+      if (Flow.advance(x,v,[1],dt,.002,calm())) busy=true;
       else{this.departingForecast.remove();this.departingForecast=null;}
       this.scene=clamp(x[0],0,1);this.sceneVelocity=v[0];
     }
@@ -1001,17 +1001,17 @@ const Stage = {
       if (!(this.drag && this.drag.bar === i) && Flow.advance(b.dv,b.vv,b.v,dt,span*1e-4,calm())) busy=true;
       // A spring may overshoot a collapsed shadow; the visual must still be a candle.
       for(let k=1;k<4;k++)if(b.dv[k]<b.dv[k-1]){b.dv[k]=b.dv[k-1];b.vv[k]=0;}
-      const alpha=[b.a],av=[b.va];if(Flow.advance(alpha,av,[1],dt,.0008,calm()))busy=true;
+      const alpha=[b.a],av=[b.va];if(Flow.advance(alpha,av,[1],dt,.002,calm()))busy=true;
       b.a=clamp(alpha[0],0,1);b.va=av[0];b.col=(S.colored?COL.rgb[id.d[i]]:COL.rgb.z).slice();
     });
     for(const g of this.ghosts){
       const x=[g.x],v=[g.vx],a=[g.a],av=[g.va];
-      Flow.advance(x,v,[g.startX+Flow.model.travel],dt,.05,calm());Flow.advance(a,av,[0],dt,.0008,calm());
+      Flow.advance(x,v,[g.startX+Flow.model.travel],dt,.05,calm());Flow.advance(a,av,[0],dt,.002,calm());
       g.x=x[0];g.vx=v[0];g.a=clamp(a[0],0,1);g.va=av[0];
     }
     this.ghosts=this.ghosts.filter(g=>g.a>.001);if(this.ghosts.length)busy=true;
     for(const trace of [...this.traces,...(this.trace?[this.trace]:[])]){
-      const a=[trace.a],v=[trace.va||0];if(Flow.advance(a,v,[trace.retiring?0:1],dt,.0008,calm()))busy=true;
+      const a=[trace.a],v=[trace.va||0];if(Flow.advance(a,v,[trace.retiring?0:1],dt,.002,calm()))busy=true;
       trace.a=clamp(a[0],0,1);trace.va=v[0];
     }
     this.traces=this.traces.filter(t=>t.a>.001);
@@ -1241,8 +1241,13 @@ const Stage = {
   },
   draw() {
     const G = this.geom(); if (!G.w || !G.h) return;
-    const ctx = fitCanvas(this.cv, G.w, G.h), id = identity();
-    ctx.clearRect(0, 0, G.w, G.h);
+    const ctx = fitCanvas(this.cv, G.w, G.h, Math.min(2, devicePixelRatio || 1), true), id = identity();
+    // Preserve a native-density backing store across reference-panel pixels.
+    // The wrapper clips spare capacity; CSS never scales the drawn coordinates.
+    const width = `${this.cv.width / this.cv.flowDpr}px`, height = `${this.cv.height / this.cv.flowDpr}px`;
+    if (this.cv.style.width !== width) this.cv.style.width = width;
+    if (this.cv.style.height !== height) this.cv.style.height = height;
+    ctx.clearRect(0, 0, this.cv.width / this.cv.flowDpr, this.cv.height / this.cv.flowDpr);
     if(!this.guideSurface)this.guideSurface=document.createElement('canvas');
     const guide=fitCanvas(this.guideSurface,G.w,G.h,Math.min(2,devicePixelRatio||1),true);this.layer(this.guideSurface,{x:0,y:0,w:G.w,h:G.h},true);
     guide.clearRect(0,0,this.guideSurface.width/this.guideSurface.flowDpr,this.guideSurface.height/this.guideSurface.flowDpr);
@@ -1356,10 +1361,18 @@ const Stage = {
     if(!this.forecastSurface)this.forecastSurface=document.createElement('canvas');
     const x=Math.max(0,Math.floor(G.forecastLeft-24)),y=Math.max(0,Math.floor(G.plotTop-24));
     const box={x,y,w:G.w-x,h:Math.min(G.h,Math.ceil(G.plotBottom+24))-y};
-    const layer=fitCanvas(this.forecastSurface,box.w,box.h,Math.min(2,devicePixelRatio||1),true);layer.clearRect(0,0,this.forecastSurface.width/this.forecastSurface.flowDpr,this.forecastSurface.height/this.forecastSurface.flowDpr);layer.translate(-x,-y);
-    this.layer(this.forecastSurface,box);
-    this.drawFan(layer,G);
-    if(Forecast.source){this.drawStates(layer,G);this.drawPaths(layer,G);this.drawBranches(layer,G);}else this.drawForecastEmpty(layer,G);
+    const key = [G.w,G.h,G.plotTop,G.plotBottom,G.forecastLeft,G.forecastWidth,...G.futureXs,
+      this.view.lo,this.view.hi,this.modeMix,this.fanA,this.fanWeight,this.tracePresence,
+      Forecast.view,Forecast.prefix,Forecast.selected,Forecast.current,COL.paper,COL.up,COL.down,COL.ai,COL['ink-2'],
+      ...S.bars.flatMap(b=>[b.d,...b.dv])].join('|');
+    if (this.forecastPaint?.source !== Forecast.source || this.forecastPaint?.key !== key || this.forecastPaint?.canvas !== this.forecastSurface) {
+      const layer=fitCanvas(this.forecastSurface,box.w,box.h,Math.min(2,devicePixelRatio||1),true);
+      layer.clearRect(0,0,this.forecastSurface.width/this.forecastSurface.flowDpr,this.forecastSurface.height/this.forecastSurface.flowDpr);layer.translate(-x,-y);
+      this.layer(this.forecastSurface,box);
+      this.drawFan(layer,G);
+      if(Forecast.source){this.drawStates(layer,G);this.drawPaths(layer,G);this.drawBranches(layer,G);}else this.drawForecastEmpty(layer,G);
+      this.forecastPaint = { source: Forecast.source, key, canvas: this.forecastSurface };
+    }
     if(this.departingForecast){
       this.forecastSurface.style.opacity=String(this.scene);this.departingForecast.style.opacity=String(1-this.scene);
     }else this.forecastSurface.style.opacity='1';
@@ -1646,12 +1659,15 @@ const Match = {
     worker.onmessage = e => { if (this.worker === worker) this.onmsg(e.data); };
     worker.onerror = e => { if (this.worker === worker) this.fail(`The matcher stopped: ${e.message || 'unknown error'}.`); };
     loadBars()
-      .then(buffer => { if (this.worker === worker) worker.postMessage({ type: 'bars', buffer }, [buffer]); })
+      .then(buffer => {
+        if (this.worker !== worker) return;
+        worker.postMessage({ type: 'bars', buffer }, [buffer]);
+        // Give matching data the whole connection first. Activity can fill the
+        // reserved readings after the first useful match, without doubling its wait.
+        loadPayload('activity').then(buffer => { if (this.worker === worker) worker.postMessage({ type: 'activity', buffer }, [buffer]); })
+          .catch(err => { if (this.worker !== worker) return; Panes.readings = 'failed'; Panes.note = err.message; if (this.result) Panes.render(this.result); });
+      })
       .catch(err => { if (this.worker === worker) this.fail(`The BTCUSDT klines could not be loaded (${err.message}).`); });
-    // what traded in each bar, for the left pane; matching never waits for it
-    fetch('activity').then(r => { if (!r.ok) throw new Error(`the server answered ${r.status}`); return r.arrayBuffer(); })
-      .then(buffer => { if (this.worker === worker) worker.postMessage({ type: 'activity', buffer }, [buffer]); })
-      .catch(err => { if (this.worker !== worker) return; Panes.readings = 'failed'; Panes.note = err.message; if (this.result) Panes.render(this.result); });
     this.schedule(true);
   },
   // the result on screen answers the drawing as it stands
@@ -1705,7 +1721,7 @@ const Match = {
     if (this.failed || !this.worker) return;
     clearTimeout(this.timer);
     if (Stage.drag) { if (Stage.drag.moved) $('#emaki').classList.add('stale'); return; }
-    this.timer = setTimeout(() => this.send(), now ? 0 : 140);
+    this.timer = setTimeout(() => this.send(), 0);
   },
   send() {
     const { held, q } = this.query(), key = JSON.stringify(q);
@@ -1809,10 +1825,17 @@ function nextWords(f) {
 }
 // The bars come from Composer's server, which reads them from the Vaquum HuggingFace kline files;
 // the payload is accepted only if it starts with its own marker.
+async function loadPayload(path) {
+  for (let attempt = 0; ; attempt++) {
+    const response = await fetch(path);
+    if (response.status === 503 && attempt < 60) { await new Promise(resolve => setTimeout(resolve, 1000)); continue; }
+    if (!response.ok) throw new Error(`the server answered ${response.status}`);
+    return response.arrayBuffer();
+  }
+}
 async function loadBars() {
-  const r = await fetch('bars');
-  if (!r.ok) throw new Error(`the server answered ${r.status}`);
-  const bytes = new Uint8Array(await r.arrayBuffer());
+  const buffer = await loadPayload('bars');
+  const bytes = new Uint8Array(buffer);
   if (!(bytes.length > 5 && String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3], bytes[4]) === 'CBAR1')) throw new Error('the server sent something other than bars');
   return bytes.buffer;
 }
@@ -1886,6 +1909,7 @@ const Panes = {
     for (const side of onlySide ? [onlySide] : ['left','right']) {
       this.remember(side);
       const pane = $(`.pane[data-side="${side}"]`), variant = this.views[side];
+      pane.dataset.loading = String(side === 'left' ? !P.readings : !P.cont && !Match.result);
       const markup=side==='left'?{
         lcap:PaneDesigns.caption(r,ctx),lrows:PaneDesigns.left(variant,r,ctx),lnext:PaneDesigns.next(r,ctx),lmethod:PaneDesigns.leftMethod(ctx.barCount)
       }:{
@@ -2267,7 +2291,7 @@ refresh();
 Match.start();
 Flow.onSettle(()=>{if(Match.presentation){Match.flushPresentation();Flow.finish();}Stage.settle(!Stage.frameBox);App.redraw();});
 Flow.reveal($('.top'),0);Flow.reveal($('.stage'),0);Flow.reveal($('.lpane'));Flow.reveal($('.rpane'));
-if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => {Flow.finish();App.redraw();});
+if (document.fonts) { const fontsReady=()=>{Flow.finish();App.redraw();}; document.fonts.ready.then(fontsReady); document.fonts.addEventListener('loadingdone',fontsReady); }
 })();
 </script>
 
