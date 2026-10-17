@@ -7,10 +7,12 @@ ROOT = Path(__file__).resolve().parent.parent
 checks = [
     [sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-v'],
     *[['node', f'checks/{name}.mjs'] for name in
-      ('page', 'pane-designs', 'forecast', 'forecast-ux', 'drag', 'chain', 'motion-model', 'motion-browser', 'motion-performance')],
+      ('page', 'pane-designs', 'forecast', 'forecast-ux', 'drag', 'chain', 'motion-model', 'motion-browser')],
     *[[sys.executable, 'checks/with_bars.py', f'checks/{name}.mjs'] for name in
       ('similarity-windows', 'similarity-look', 'similarity-equivalence', 'panes', 'search-performance', 'loading-performance')],
     [sys.executable, 'checks/container.py'],
+    [sys.executable, 'checks/lint_workflows.py'],
+    ['node', 'checks/motion-performance.mjs'],
 ]
 for argv in checks:
     print('Checking ' + ' '.join(argv[1:]), flush=True)
