@@ -282,7 +282,9 @@ for(const [name,type,rate] of browsers){
     });
     assert.ok(collapsedWash,'a collapsed drawing must hide the previous composited fan wash');
     await measure('forecast',async()=>{for(const v of ['paths','branches','states']){await call('forecast',v);await settle(page);}await call('fan',false);await settle(page);await call('fan',true);});
+    const cameraBefore=await page.evaluate(()=>[...__perf.Stage.view.tgt]);
     await measure('refresh',async()=>{for(let i=0;i<3;i++){await call('refresh');await settle(page);}});
+    assert.deepEqual(await page.evaluate(()=>[...__perf.Stage.view.tgt]),cameraBefore,'small result quantile updates must not restart camera motion');
     await measure('refresh-replace',async()=>{await call('refresh','replace');});
     const reordered=await measure('refresh-layout',async()=>{await call('refresh','layout');});
     if(n===20)assert.ok(reordered.readingMoves<30,'a large reading reorder must avoid moving every row through individual DOM calls');

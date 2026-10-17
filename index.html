@@ -953,8 +953,8 @@ const Stage = {
     let mn = Infinity, mx = -Infinity;
     for (const b of S.bars) for (let k = 0; k < 4; k++) { mn = Math.min(mn, b.v[k]); mx = Math.max(mx, b.v[k]); }
     let lo = mn - Math.max(mx - mn, 1) * 0.22, hi = mx + Math.max(mx - mn, 1) * 0.22;
-    const c = Match.result && Match.result.panes && Match.result.panes.cont;
-    if (c && mx > mn) {
+    const c = Match.result && Match.result.panes && Match.result.panes.cont,hasFan=!!c&&mx>mn;
+    if (hasFan) {
       // the fan's closes are in the shape's own scale: 0 is the drawing's low, 1 its high
       let a = Infinity, z = -Infinity;
       for (const q of c.fan) { a = Math.min(a, q[0]); z = Math.max(z, q[4]); }
@@ -962,7 +962,10 @@ const Stage = {
       lo = Math.min(lo, fLo - pad); hi = Math.max(hi, fHi + pad); mn = Math.min(mn, fLo); mx = Math.max(mx, fHi);
     }
     const span = Math.max(mx - mn, 1);
-    const cur = this.view.thi - this.view.tlo, inLo = this.view.tlo + cur * 0.07, inHi = this.view.thi - cur * 0.07;
+    // The inset must fit inside the fan's 6% padding. A 7% inset
+    // immediately refitted even tiny updates and repainted every candle.
+    const cur = this.view.thi - this.view.tlo,inset=hasFan?.04:.07;
+    const inLo = this.view.tlo + cur * inset, inHi = this.view.thi - cur * inset;
     if (force || !this.ready || mn < inLo || mx > inHi || span < cur * 0.4) { this.view.tgt[0] = lo; this.view.tgt[1] = hi; }
     if (!this.ready || calm()) { this.view.cur.set(this.view.tgt); this.view.vel.fill(0); this.ready = true; }
   },
