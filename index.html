@@ -1699,7 +1699,8 @@ Stage.cv.addEventListener('wheel', e => { if (!e.ctrlKey) return; e.preventDefau
 const canvasResize=new ResizeObserver(entries => {
   Stage.measureBox();
   if(entries.some(entry=>entry.target===Stage.wrap)&&!Flow.value($('#ref'),'reference'))Stage.resizePending=true;
-  App.redraw();
+  if(innerWidth>700&&Flow.value($('#ref'),'reference'))App.tick(performance.now(),true);
+  else App.redraw();
 });
 canvasResize.observe(Stage.wrap);canvasResize.observe(Stage.hint);
 
@@ -2265,20 +2266,27 @@ $('#copy').addEventListener('click', e => {
 
 /* ================= the app ================= */
 const App = {
-  running: false, lastT: 0, dirty: false,
-  kick() { if (this.running) return; this.running = true; this.lastT = performance.now(); requestAnimationFrame(t => this.tick(t)); },
+  running: false, lastT: 0, dirty: false, frame:0, framing:false,
+  kick() { if (this.running) return; this.running = true;if(!this.framing)this.lastT=performance.now();this.framing=innerWidth>700&&!!Flow.value($('#ref'),'reference');this.frame=requestAnimationFrame(t => this.tick(t)); },
   redraw() { this.dirty = true; this.kick(); },
-  tick(now) {
+  tick(now,afterLayout=false) {
+    if(afterLayout){if(this.frame)cancelAnimationFrame(this.frame);this.running=true;}
+    this.frame=0;
+    // Grid springs change the paper's width. Paint from its native resize
+    // observation after layout, rather than forcing that layout inside rAF.
+    const framing=innerWidth>700&&!!Flow.value($('#ref'),'reference');
+    if(framing&&!afterLayout){this.running=false;return;}
     const dt = Math.min(0.032, Math.max(0, (now - this.lastT) / 1000)); this.lastT = now; this.dirty = false;
     let busy = false;
     // one bad frame must never stop the paper for good
     try {
-      Stage.frameBox=Stage.box&&!Flow.value(Ref.pane,'reference')?Stage.box:Stage.measureBox();
+      Stage.frameBox=Stage.box||Stage.measureBox();
       if(Stage.resizePending){Stage.resizePending=false;if(!Flow.value(Ref.pane,'reference')){Stage.plot.ready=false;Flow.finish();}}
       busy = Stage.step(dt); Stage.draw();
     } catch (err) { console.error(err); }
     finally{Stage.frameBox=null;}
-    if (busy || this.dirty) requestAnimationFrame(t => this.tick(t)); else this.running = false;
+    if(framing)this.running=false;
+    else if (busy || this.dirty) this.frame=requestAnimationFrame(t => this.tick(t)); else this.running = false;
   },
 };
 function refresh() {
