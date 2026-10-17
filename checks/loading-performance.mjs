@@ -28,12 +28,12 @@ try{
   await page.addInitScript(()=>{
     window.__loadEvents=[];window.__loadShifts=[];const Native=Worker;
     window.Worker=class extends Native{constructor(...a){super(...a);window.__loadWorker=this;this.addEventListener('message',e=>{if(e.data.type==='result')__loadEvents.push({id:e.data.id,at:performance.now(),readings:e.data.panes.readings});});}};
-    new PerformanceObserver(list=>__loadShifts.push(...list.getEntries().filter(e=>!e.hadRecentInput).map(e=>e.value))).observe({type:'layout-shift',buffered:true});
+    new PerformanceObserver(list=>__loadShifts.push(...list.getEntries().filter(e=>!e.hadRecentInput).map(e=>({value:e.value,at:e.startTime,sources:e.sources.map(s=>({node:s.node?.id||s.node?.className,before:s.previousRect.toJSON(),after:s.currentRect.toJSON()}))})))).observe({type:'layout-shift',buffered:true});
   });
   for(const kind of ['cold','warm']){
     await page.goto(`http://127.0.0.1:${server.address().port}`,{waitUntil:'domcontentloaded'});
     await page.waitForFunction(()=>window.__loading&&__loading.Match.fresh()&&__loading.Match.result?.panes.readings&&__loading.Panes.readings==='ready'&&!__loading.App.running&&!__loading.Flow.active(),{},{timeout:20000});
-    const result=await page.evaluate(()=>({first:__loadEvents[0]?.at,complete:__loadEvents.find(e=>e.readings)?.at,cls:__loadShifts.reduce((a,b)=>a+b,0),resources:performance.getEntriesByType('resource').filter(e=>/\/(bars|activity)$/.test(e.name)).map(e=>({path:e.name.split('/').at(-1),start:e.startTime,end:e.responseEnd,bytes:e.transferSize}))}));
+    const result=await page.evaluate(()=>({first:__loadEvents[0]?.at,complete:__loadEvents.find(e=>e.readings)?.at,cls:__loadShifts.reduce((a,b)=>a+b.value,0),shifts:__loadShifts,resources:performance.getEntriesByType('resource').filter(e=>/\/(bars|activity)$/.test(e.name)).map(e=>({path:e.name.split('/').at(-1),start:e.startTime,end:e.responseEnd,bytes:e.transferSize}))}));
     console.log(JSON.stringify({kind,...result}));
     assert.ok(result.first<(kind==='cold'?4000:2000),`${kind}: first matches exceeded their loading budget (${result.first})`);
     assert.ok(result.complete<(kind==='cold'?7500:2500),`${kind}: complete results exceeded their loading budget (${result.complete})`);
