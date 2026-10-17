@@ -41,10 +41,10 @@ const seed=(page,result)=>page.evaluate(r=>{
   const A=__perf;A.Match.ready=true;A.Match.failed=false;A.Match.sent=A.Match.query();A.Match.sentKey=A.Match.key();
   A.Match.onmsg({...r,type:'result',id:A.Match.id});
 },result);
-const reports=[],paperProfile=process.argv.includes('--paper-profile'),nativeProfile=process.argv.includes('--native-profile');
+const reports=[],paperProfile=process.argv.includes('--paper-profile'),nativeRetina=process.argv.includes('--native-retina-profile'),nativeProfile=nativeRetina||process.argv.includes('--native-profile');
 const traceDirectory=paperProfile?fs.mkdtempSync(path.join(os.tmpdir(),'composer-paper-trace-')):null;
 const browsers=nativeProfile?[['WebKit',webkit,1]]:paperProfile?[['Chromium 4x CPU',chromium,4]]:[['Chromium native',chromium,1],['Chromium 4x CPU',chromium,4],['WebKit',webkit,1]];
-const screens=nativeProfile?[[2,1600,1]]:paperProfile?[[20,1600,2,'scroll'],[20,1600,2,'fixed'],[20,1600,2,'scroll'],[20,1600,2,'fixed']]:[[2,1600,1],[20,1600,2],[20,390,2]];
+const screens=nativeProfile?[nativeRetina?[20,1600,2]:[2,1600,1]]:paperProfile?[[20,1600,2,'scroll'],[20,1600,2,'fixed'],[20,1600,2,'scroll'],[20,1600,2,'fixed']]:[[2,1600,1],[20,1600,2],[20,390,2]];
 // Shared GitHub runners have no controlled display/GPU cadence. Keep application
 // and input budgets there; native frame delivery is enforced on the local host.
 const controlledGraphics=process.env.GITHUB_ACTIONS!=='true';
