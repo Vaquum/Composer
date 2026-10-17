@@ -426,7 +426,7 @@ async function search(q, id, report) {
         own[i] = cq.oriented ? Math.abs((c > o ? 1 : c < o ? -1 : 0) - cq.D[g]) : 0;
         if (local.length) {
           MO[g] = o; MH[g] = T.H[i]; ML[g] = T.L[i]; MC[g] = c;
-          if (local.some(h => !holdOk(h, MO, MH, ML, MC))) own[i] = 255;
+          for(const h of local)if(!holdOk(h,MO,MH,ML,MC)){own[i]=255;break;}
         }
       }
       // Successive spare counts share a diagonal minimum. This avoids scanning
@@ -462,7 +462,8 @@ async function search(q, id, report) {
         let last=-1;
         for(let skip=0;skip<=(g?extra:0);skip++){
           const at=s+g+skip;MO[g]=T.O[at];MH[g]=T.H[at];ML[g]=T.L[at];MC[g]=T.C[at];
-          if(holds.every(h=>holdOk(h,MO,MH,ML,MC)))last=skip;
+          let valid=true;for(const h of holds)if(!holdOk(h,MO,MH,ML,MC)){valid=false;break;}
+          if(valid)last=skip;
         }
         if(last<0)return false;
         // Skips cannot be undone. Earlier bars cannot pass the last feasible
