@@ -1924,7 +1924,7 @@ const Panes = {
     for (const side of onlySide ? [onlySide] : ['left','right']) {
       this.remember(side);
       const pane = $(`.pane[data-side="${side}"]`), variant = this.views[side];
-      pane.dataset.loading = String(side === 'left' ? !P.readings : !P.cont && !Match.result);
+      pane.dataset.loading = String(side === 'left' ? !P.readings && this.readings === 'loading' : !P.cont && !Match.result);
       const markup=side==='left'?{
         lcap:PaneDesigns.caption(r,ctx),lrows:PaneDesigns.left(variant,r,ctx),lnext:PaneDesigns.next(r,ctx),lmethod:PaneDesigns.leftMethod(ctx.barCount)
       }:{

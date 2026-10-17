@@ -53,5 +53,10 @@ try{
   const replacement=await page.evaluate(at=>({ms:__loadEvents.find(e=>e.id===1000).at-at,obsolete:__loadEvents.some(e=>e.id===999)}),cancelled);
   console.log(JSON.stringify({kind:'worker-cancellation',...replacement}));
   assert.ok(!replacement.obsolete&&replacement.ms<250,'a real worker must replace an expensive query promptly');
+  await cdp.send('Network.setBlockedURLs',{urls:['*fonts.googleapis.com*','*fonts.gstatic.com*','*/activity']});
+  await page.reload({waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>window.__loading&&__loading.Match.fresh()&&__loading.Panes.readings==='failed'&&!__loading.Match.presentation&&!__loading.App.running&&!__loading.Flow.active());
+  assert.equal(await page.locator('.lpane').getAttribute('data-loading'),'false','failed activity must release the loading presentation');
+  assert.ok(await page.locator('.lpane [data-detail="left-method"]').isVisible(),'activity failure must retain the available statistics and method');
   console.log('Real loading: prioritized first matches, cached reload, complete readings and stable controls passed.');
 }finally{await browser.close();await new Promise(r=>server.close(r));}
