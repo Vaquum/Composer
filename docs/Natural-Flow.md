@@ -100,8 +100,11 @@ so arrivals retain their entry spring without synchronous offscreen reads.
 Arrival samples use a separate one-shot observer rather than comparing browser
 timestamps with cached samples. Retirement shells apply their frozen styles in
 one declaration rather than repeated CSS property setters.
-Large result presentation yields between the left pane, right pane and cards,
-so one result cannot monopolize an input task. Each actual presentation task is
+Large result presentation coalesces one animation-frame callback and commits
+the left pane, right pane and cards in separate paint frames. Superseding results
+reuse the pending callback; forced settlement cancels it and commits the accepted
+cohort. Large thumbnails group wick and body geometry by fill class, preserving
+skip overlap opacity and held annotations with far fewer SVG nodes. Each actual presentation task is
 timed by the performance guard, and settlement waits for the complete queue.
 New accepted results replace queued work. A new search retains the last accepted
 cohort, including when its presentation has not started. That cohort finishes
@@ -140,7 +143,7 @@ so native scrolling and ancestor movement remain direct before that first paint.
 `npm run test:performance` exercises native Chromium, Chromium at 4× CPU and
 WebKit at 390/1600 px, DPR 1/2 and 2/20 bars, with 140 readings and all 729 six-bar
 sequences in the largest synthetic fixture. It reports frame delivery, application
-work across all animation-frame and resize-observer callbacks, input/result
+work across animation-frame, timer and resize-observer callbacks, input/result
 handler time, pointer-to-paint latency and long tasks. Observer tasks also obey
 the input/result task budget. Guards
 require local native p95 frame intervals below 25 ms, native p95 application work below

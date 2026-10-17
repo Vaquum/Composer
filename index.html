@@ -1706,7 +1706,7 @@ canvasResize.observe(Stage.wrap);canvasResize.observe(Stage.hint);
 /* ================= the history: one matcher, three ways of holding, mixed as you like ================= */
 const Match = {
   worker: null, ready: false, failed: false, id: 0, shown: 0, sentKey: '', timer: 0, sent: null, result: null, resultSent:null, sticky: -1,
-  drawnKey: '', resultKey: '',
+  drawnKey: '', resultKey: '', presentationFrame:0,
   start() {
     try {
       const el = document.getElementById('matcher-src'), src = el ? el.textContent.trim() : '';
@@ -1755,9 +1755,14 @@ const Match = {
       const sent=this.resultSent,cards=()=>{this.render(sent);Stage.fit();App.redraw();};
       if((m.panes?.rows.length||0)>70){
         this.presentation={result:m,tasks:[()=>Panes.render(m,'left',sent),()=>Panes.render(m,'right',sent),cards]};
-        setTimeout(()=>this.presentResult(),0);
-      }else{this.presentation=null;Panes.render(m);cards();}
+        this.queuePresentation();
+      }else{if(this.presentationFrame)cancelAnimationFrame(this.presentationFrame);this.presentationFrame=0;this.presentation=null;Panes.render(m);cards();}
     }
+  },
+  queuePresentation(){
+    if(Flow.reduced()){this.flushPresentation();return;}
+    if(this.presentationFrame)return;
+    this.presentationFrame=requestAnimationFrame(()=>{this.presentationFrame=0;this.presentResult();});
   },
   presentResult(schedule=true){
     const pending=this.presentation;if(!pending)return;
@@ -1765,9 +1770,9 @@ const Match = {
     pending.tasks.shift()();
     if(this.presentation!==pending)return;
     if(!pending.tasks.length)this.presentation=null;
-    else if(schedule)setTimeout(()=>this.presentResult(),0);
+    else if(schedule)this.queuePresentation();
   },
-  flushPresentation(){while(this.presentation)this.presentResult(false);},
+  flushPresentation(){if(this.presentationFrame)cancelAnimationFrame(this.presentationFrame);this.presentationFrame=0;while(this.presentation)this.presentResult(false);},
   query() {
     const held = heldNow();
     const nx = S.next, next = nx.dir ? { dir: nx.dir, measure: nx.measure, value: nx.measure === 'bps' ? nx.bps : nx.measure === 'atr' ? nx.atr : 0 } : null;
@@ -1848,11 +1853,22 @@ const Match = {
     const X = i => pad + pitch * (i + 0.5), Y = v => pad + (hi - v) / (hi - lo || 1) * (h - 2 * pad - 5);
     let s = `<svg viewBox="0 0 ${w} ${h}" aria-hidden="true">`;
     // bars the drawing skipped stay visible but faint, so the run reads as it happened
-    const kept = new Set(r.picks);
+    const kept = new Set(r.picks),groups=new Map(),number=v=>+v.toFixed(4);
+    const rectangle=(x,y,w,h,round=false)=>{
+      [x,y,w,h]=[x,y,w,h].map(v=>+v.toFixed(2));
+      if(!round)return `M${x} ${y}h${w}v${h}h${-w}z`;
+      const rx=Math.min(.6,w/2),ry=Math.min(.6,h/2),dx=number(w-2*rx),dy=number(h-2*ry);
+      return `M${number(x+rx)} ${y}h${dx}a${rx} ${ry} 0 0 1 ${rx} ${ry}v${dy}a${rx} ${ry} 0 0 1 ${-rx} ${ry}h${-dx}a${rx} ${ry} 0 0 1 ${-rx} ${-ry}v${-dy}a${rx} ${ry} 0 0 1 ${rx} ${-ry}z`;
+    };
     bars.forEach(([o, hh, l, c], i) => {
       const cls = (c > o ? 'cu' : c < o ? 'cd' : 'cz') + (kept.has(i) ? '' : ' skip'), t = Y(Math.max(o, c)), b = Y(Math.min(o, c));
-      s += `<rect class="${cls}" x="${(X(i) - ww / 2).toFixed(2)}" y="${Y(hh).toFixed(2)}" width="${ww.toFixed(2)}" height="${Math.max(0.6, Y(l) - Y(hh)).toFixed(2)}"/><rect class="${cls}" x="${(X(i) - bw / 2).toFixed(2)}" y="${t.toFixed(2)}" width="${bw.toFixed(2)}" height="${Math.max(1, b - t).toFixed(2)}" rx="0.6"/>`;
+      if(n<=4){s+=`<rect class="${cls}" x="${(X(i)-ww/2).toFixed(2)}" y="${Y(hh).toFixed(2)}" width="${ww.toFixed(2)}" height="${Math.max(.6,Y(l)-Y(hh)).toFixed(2)}"/><rect class="${cls}" x="${(X(i)-bw/2).toFixed(2)}" y="${t.toFixed(2)}" width="${bw.toFixed(2)}" height="${Math.max(1,b-t).toFixed(2)}" rx="0.6"/>`;return;}
+      let group=groups.get(cls);if(!group){group={wick:'',body:''};groups.set(cls,group);}
+      group.wick+=rectangle(X(i)-ww/2,Y(hh),ww,Math.max(.6,Y(l)-Y(hh)));
+      group.body+=rectangle(X(i)-bw/2,t,bw,Math.max(1,b-t),true);
     });
+    // Separate wick/body paths preserve the original overlap opacity of skips.
+    for(const [cls,group]of groups)s+=`<path class="${cls}" d="${group.wick}"/><path class="${cls}" d="${group.body}"/>`;
     for (const bi of r.broken) {
       const hd = held[bi].h;
       if (hd.color) { const b = bars[hd.bar], t = Y(Math.max(b[0], b[3])), bt = Y(Math.min(b[0], b[3])); s += `<rect class="mk" x="${(X(hd.bar) - bw / 2 - 2).toFixed(2)}" y="${(t - 2).toFixed(2)}" width="${(bw + 4).toFixed(2)}" height="${(Math.max(1, bt - t) + 4).toFixed(2)}" rx="1.5"/>`; continue; }

@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import assert from 'node:assert/strict';
 import { chromium, webkit } from 'playwright';
+import referenceThumbnail from './thumbnail-reference.mjs';
 
 const html=fs.readFileSync('index.html','utf8').replace('Panes.init();','window.__perf={S,Stage,Match,Panes,Ref,Forecast,Ops,App,Flow,PaneDesigns};\nPanes.init();');
 const assets=new Set(['motion.js','motion.css','panes.css','pane-designs.js','forecast.js','context.js']);
@@ -50,12 +51,17 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
     page.on('pageerror',e=>errors.push(e.message));
     await page.addInitScript(()=>{
       window.Worker=class{postMessage(){} terminate(){}};
-      window.__samples={frames:[],work:[],tasks:[],calls:[],paints:[],observers:[],presentation:{},frameTime:0,frameWork:0,mutations:0,clones:0,measures:0};
+      window.__samples={frames:[],work:[],tasks:[],calls:[],paints:[],observers:[],timers:[],presentation:{},frameTime:0,frameWork:0,mutations:0,clones:0,measures:0};
       const raf=window.requestAnimationFrame;
       window.requestAnimationFrame=callback=>raf.call(window,now=>{
         if(__samples.active&&now!==__samples.frameTime){if(__samples.frameTime){__samples.work.push(__samples.frameWork);__samples.frameWork=0;}__samples.frameTime=now;}
         const t=performance.now();try{return callback(now);}finally{if(__samples.active)__samples.frameWork+=performance.now()-t;}
       });
+      const timeout=window.setTimeout;
+      window.setTimeout=function(callback,delay,...args){
+        if(typeof callback!=='function')return timeout.call(window,callback,delay,...args);
+        return timeout.call(window,function(...values){const t=performance.now();try{return callback.apply(this,values);}finally{if(__samples.active){const ms=performance.now()-t;__samples.timers.push(ms);__samples.calls.push(ms);__samples.frameWork+=ms;}}},delay,...args);
+      };
       const Observer=window.ResizeObserver;
       window.ResizeObserver=class extends Observer{constructor(callback){super((...args)=>{
         const t=performance.now();try{return callback(...args);}finally{if(__samples.active){const ms=performance.now()-t;__samples.observers.push(ms);__samples.calls.push(ms);__samples.frameWork+=ms;}}
@@ -69,6 +75,31 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
     await page.route('https://fonts.**/**',r=>r.abort());await page.goto(base);await settle(page);
     await page.evaluate(n=>{while(__perf.S.bars.length<n)__perf.Ops.add();},n);
     const data=fixture(n);await seed(page,data);await settle(page);
+    const thumbnails=await page.evaluate(async reference=>{
+      const legacy=new Function('return ('+reference+')')(),props=['fill','fill-opacity','stroke','stroke-width','stroke-dasharray'],dpr=Math.min(2,devicePixelRatio);
+      const raster=async markup=>{
+        const host=document.createElement('div');host.inert=true;host.style.cssText='position:fixed;left:-10000px;top:0;width:132px;height:80px';host.innerHTML=markup;document.body.append(host);
+        const svg=host.firstElementChild,nodes=[...svg.querySelectorAll('*')],styles=nodes.map(node=>{const style=getComputedStyle(node);return props.map(key=>[key,style.getPropertyValue(key)]);});
+        nodes.forEach((node,i)=>styles[i].forEach(([key,value])=>node.style.setProperty(key,value)));
+        svg.setAttribute('xmlns','http://www.w3.org/2000/svg');svg.setAttribute('width','132');svg.setAttribute('height','80');
+        const count=nodes.length,url=URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(svg)],{type:'image/svg+xml'}));host.remove();
+        try{const img=new Image();await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=reject;img.src=url;});const canvas=document.createElement('canvas');canvas.width=132*dpr;canvas.height=80*dpr;const ctx=canvas.getContext('2d');ctx.drawImage(img,0,0,canvas.width,canvas.height);return{pixels:ctx.getImageData(0,0,canvas.width,canvas.height).data,count};}
+        finally{URL.revokeObjectURL(url);}
+      };
+      const report=[];
+      for(const [count,flat]of [[2,false],[20,false],[24,false],[20,true]]){
+        let close=50;const raw=Array.from({length:count},(_,i)=>{const open=close;close=flat?50:open+[7,-5,0][i%3];return flat?[50,50,50,50]:[open,Math.max(open,close)+8,Math.min(open,close)-6,close];});
+        const result={raw,picks:Array.from({length:count},(_,i)=>i).filter(i=>![2,7,12,17].includes(i)),broken:[0,1]},held=[{h:{color:true,bar:0}},{h:{a:[0,3],b:[1,2]}}];
+        const before=await raster(legacy(result,held)),after=await raster(__perf.Match.thumb(result,held));let max=0;
+        for(let i=0;i<before.pixels.length;i++)max=Math.max(max,Math.abs(before.pixels[i]-after.pixels[i]));
+        report.push({count,flat,max,before:before.count,after:after.count});
+      }
+      return report;
+    },referenceThumbnail.toString());
+    for(const image of thumbnails){
+      assert.ok(image.max<=1,`thumbnail pixels changed beyond one 8-bit raster rounding unit: ${JSON.stringify(image)}`);
+      if(image.count>=20)assert.ok(image.after<=image.before/2,'large thumbnails must remove at least half their SVG nodes');
+    }
     const graphics=await page.evaluate(()=>{
       const canvas=document.createElement('canvas'),gl=canvas.getContext('webgl');if(!gl)return'unavailable';
       const info=gl.getExtension('WEBGL_debug_renderer_info'),renderer=info?gl.getParameter(info.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER);
@@ -80,9 +111,11 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
       const A=__perf;__samples.active=false;
       const drawFan=A.Stage.drawFan;
       A.Stage.drawFan=function(...args){const before=this.fanCache;try{return drawFan.apply(this,args);}finally{if(__samples.active&&before!==this.fanCache)__samples.fanRasters++;}};
+      const cohorts=new WeakMap();let cohortId=0;
       for(const [owner,names]of [[A.Stage,['move','down','up']],[A.Match,['presentResult']]])for(const name of names){
         const handler=owner[name];
         owner[name]=function(...args){const t=performance.now(),part=name==='presentResult'?['cards','right','left'][this.presentation?.tasks.length-1]:null;
+          if(__samples.active&&part&&args[0]!==false){const pending=this.presentation;if(!cohorts.has(pending))cohorts.set(pending,++cohortId);__samples.presentationFrames.push({cohort:cohorts.get(pending),frame:__samples.frameTime});}
           try{return handler.apply(this,args);}finally{if(__samples.active){const duration=performance.now()-t;__samples.calls.push(duration);if(part)__samples.presentation[part]=Math.max(__samples.presentation[part]||0,duration);}}};
       }
       let previous=0;
@@ -92,14 +125,15 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
     });
     const measure=async(label,action)=>{
       await settle(page);
-      await page.evaluate(()=>{for(const key of ['frames','work','tasks','calls','paints','observers'])__samples[key]=[];for(const key of ['mutations','clones','measures','frameTime','frameWork','fanRasters'])__samples[key]=0;__samples.presentation={};__samples.actions={};__samples.active=true;});
+      await page.evaluate(()=>{for(const key of ['frames','work','tasks','calls','paints','observers','timers','presentationFrames'])__samples[key]=[];for(const key of ['mutations','clones','measures','frameTime','frameWork','fanRasters'])__samples[key]=0;__samples.presentation={};__samples.actions={};__samples.active=true;});
       await action();await settle(page);
       const sample=await page.evaluate(()=>{__samples.active=false;if(__samples.frameTime)__samples.work.push(__samples.frameWork);return{...__samples};});
       const p95=a=>a.length?a.slice().sort((a,b)=>a-b)[Math.floor((a.length-1)*.95)]:0;
       const report={browser:name,graphics,frameGate:controlledGraphics,bars:n,width,dpr,scenario:label,frames:sample.frames.length,
         frameP95:+p95(sample.frames).toFixed(1),workP95:+p95(sample.work).toFixed(1),callMax:+Math.max(0,...sample.calls).toFixed(1),
-        paintP95:+p95(sample.paints).toFixed(1),observerMax:+Math.max(0,...sample.observers).toFixed(1),taskMax:Math.max(0,...sample.tasks),presentationMax:Object.fromEntries(Object.entries(sample.presentation).map(([k,v])=>[k,+v.toFixed(1)])),actionMax:Object.fromEntries(Object.entries(sample.actions).map(([k,v])=>[k,+v.toFixed(1)])),measurements:sample.measures,mutations:sample.mutations};
+        paintP95:+p95(sample.paints).toFixed(1),observerMax:+Math.max(0,...sample.observers).toFixed(1),timerMax:+Math.max(0,...sample.timers).toFixed(1),taskMax:Math.max(0,...sample.tasks),presentationMax:Object.fromEntries(Object.entries(sample.presentation).map(([k,v])=>[k,+v.toFixed(1)])),actionMax:Object.fromEntries(Object.entries(sample.actions).map(([k,v])=>[k,+v.toFixed(1)])),measurements:sample.measures,mutations:sample.mutations};
       reports.push(report);console.log(JSON.stringify(report));
+      const presentationFrames=new Map();for(const step of sample.presentationFrames){if(!presentationFrames.has(step.cohort))presentationFrames.set(step.cohort,new Set());const frames=presentationFrames.get(step.cohort);assert.ok(!frames.has(step.frame),'large result parts must commit in separate paint frames');frames.add(step.frame);}
       // CI contention can stretch rAF intervals, so timing gates use measured application
       // work and input handlers. Frame delivery is reported, never hidden by idle samples.
       assert.ok(report.callMax<100,`${label}: an input/result task exceeded 100 ms (${report.callMax})`);
@@ -161,11 +195,12 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
     });
     assert.ok(reorderedParity,'retained reordered reading updates must match the full renderer in text, order, semantics and chart geometry');
     if(n===20){
-      const queued=await page.evaluate(()=>{
+      const queued=await page.evaluate(async()=>{
         const A=__perf,r=A.Match.result,shown=document.querySelector('#emaki .card').dataset.motionKey,send=offset=>A.Match.onmsg({...r,type:'result',id:A.Match.id,results:r.results.map(x=>({...x,start:x.start+offset}))});
-        send(1e6);send(2e6);A.Match.setTrace(0);return{keys:A.Match.result.results.map(x=>A.Match.resultKeyOf(x)),shown,trace:A.Stage.trace.key};
+        send(1e6);send(2e6);A.Match.setTrace(0);const trace=A.Stage.trace.key;await new Promise(requestAnimationFrame);return{keys:A.Match.result.results.map(x=>A.Match.resultKeyOf(x)),shown,trace,remaining:A.Match.presentation?.tasks.length};
       });
       assert.equal(queued.trace,queued.shown,'input during queued presentation must address the displayed historical card');
+      assert.equal(queued.remaining,2,'superseding results must share one scheduled presentation callback');
       await settle(page);
       assert.deepEqual(await page.locator('#emaki .card').evaluateAll(nodes=>nodes.map(n=>n.dataset.motionKey)),queued.keys,'queued presentation must apply only the latest result');
       const accepted=await page.evaluate(()=>{const A=__perf,r=A.Match.result;A.Match.onmsg({...r,type:'result',id:A.Match.id,results:r.results.slice(1)});A.Match.sentKey='';A.Match.send();return A.Match.result.results.map(x=>A.Match.resultKeyOf(x));});
