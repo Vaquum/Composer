@@ -113,6 +113,7 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
     }
     await settle(page);
     const painted=()=>page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+    const stillPaper=await page.addStyleTag({content:'*,*::before,*::after{transition:none!important;animation:none!important}'});
     const documentHeight=await page.evaluate(()=>document.documentElement.scrollHeight),viewportHeight=page.viewportSize().height;
     // Full-page capture can resize a mobile viewport and change the scene itself.
     // Compare fixed viewport tiles instead, covering the complete document.
@@ -126,8 +127,8 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
         if(!layeredPaper.equals(original)){
           const difference=await page.evaluate(async({a,b})=>{
             const pixels=async src=>{const image=new Image();await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=reject;image.src=src;});const canvas=document.createElement('canvas');canvas.width=image.width;canvas.height=image.height;const ctx=canvas.getContext('2d');ctx.drawImage(image,0,0);return ctx.getImageData(0,0,canvas.width,canvas.height).data;};
-            const x=await pixels(a),y=await pixels(b);if(x.length!==y.length)return{max:255,mean:255};let max=0,total=0;
-            for(let i=0;i<x.length;i++){const d=Math.abs(x[i]-y[i]);max=Math.max(max,d);total+=d;}return{max,mean:total/x.length};
+            const x=await pixels(a),y=await pixels(b);if(x.length!==y.length)return{max:255,mean:255};let max=0,total=0,worst=null;
+            for(let i=0;i<x.length;i++){const d=Math.abs(x[i]-y[i]);if(d>max){max=d;worst={x:Math.floor(i/4)%Math.round(innerWidth*devicePixelRatio),y:Math.floor(Math.floor(i/4)/Math.round(innerWidth*devicePixelRatio)),channel:i%4,a:x[i],b:y[i]};}total+=d;}return{max,mean:total/x.length,worst};
           },{a:'data:image/png;base64,'+layeredPaper.toString('base64'),b:'data:image/png;base64,'+original.toString('base64')});
           // A separate compositor pass can round translucent glyph edges twice.
           assert.ok(difference.max<=2&&difference.mean<.005,`paper cache changed pixels at scroll ${scroll} beyond compositor rounding: ${JSON.stringify(difference)}`);
@@ -135,6 +136,7 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
       }finally{await originalPaper.evaluate(node=>node.remove());}
       if(scroll>=documentHeight-viewportHeight)break;
     }
+    await stillPaper.evaluate(node=>node.remove());
     await page.evaluate(()=>scrollTo(0,0));await painted();await settle(page);
     const graphics=await page.evaluate(()=>{
       const canvas=document.createElement('canvas'),gl=canvas.getContext('webgl');if(!gl)return'unavailable';
