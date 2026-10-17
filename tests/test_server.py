@@ -67,6 +67,7 @@ class Server(unittest.TestCase):
         self.assertIn(b'TactileFlow', self.get('/motion.js').read())
         self.assertEqual(self.get('/motion.css').headers['Content-Type'], 'text/css; charset=utf-8')
         got = self.get('/bars')
+        self.assertEqual(got.version, 11)
         etag = got.headers['ETag']
         self.assertEqual((got.status, got.read(), got.headers['Cache-Control']), (200, b'CBAR11', 'private, no-cache'))
         self.assertEqual(self.get('/bars', {'If-None-Match': etag}).status, 304)

@@ -97,11 +97,14 @@ def handler(state: Bars, pages: dict[str, tuple[bytes, str]]):
     class Handler(BaseHTTPRequestHandler):
         server_version = 'Composer'
         sys_version = ''
+        # HTTP/1.0 makes Chromium bypass the cache even with valid ETags.
+        protocol_version = 'HTTP/1.1'
 
         def _send(self, status: int, body: bytes, kind: str, extra: dict[str, str] | None = None) -> None:
             self.send_response(status)
             self.send_header('Content-Type', kind)
-            self.send_header('Content-Length', str(len(body)))
+            if status != 304:
+                self.send_header('Content-Length', str(len(body)))
             # every request passes the portal login in front of this server; revalidate rather than reuse
             self.send_header('Cache-Control', 'private, no-cache')
             self.send_header('X-Content-Type-Options', 'nosniff')
