@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { chromium, webkit } from 'playwright';
 import referenceThumbnail from './thumbnail-reference.mjs';
 
-const html=fs.readFileSync('index.html','utf8').replace('Panes.init();','window.__perf={S,Stage,Match,Panes,Ref,Forecast,Ops,App,Flow,PaneDesigns};\nPanes.init();');
+const html=fs.readFileSync('index.html','utf8').replace('Panes.init();','window.__perf={S,Stage,Match,Panes,Ref,Forecast,Ops,App,Flow,PaneDesigns,Paper};\nPanes.init();');
 const assets=new Set(['motion.js','motion.css','panes.css','pane-designs.js','forecast.js','context.js']);
 function fixture(n){
   const keys=['vol','trades','size','maker','range','body','day'];
@@ -117,6 +117,7 @@ for(const [name,type,rate] of browsers){
       if(image.count>=20)assert.ok(image.after<=image.before/2,'large thumbnails must remove at least half their SVG nodes');
     }
     await settle(page);
+    await page.evaluate(()=>__perf.Paper.ready);
     const painted=()=>page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
     const freeze='transition:none!important;animation:none!important',stillPaper=await page.addStyleTag({content:`*,*::before,*::after{${freeze}}input[type=range]::-webkit-slider-thumb{${freeze}}input[type=range]::-moz-range-thumb{${freeze}}`});
     const paperScroll=await page.evaluate(()=>{
@@ -140,7 +141,7 @@ for(const [name,type,rate] of browsers){
       assert.ok(scroll>previous,'each paper tile must advance the actual scroll offset');previous=scroll;tiles++;
       if(scroll>0)assert.equal(position.attachment,'scroll','outer body/document scrolling must restore the original paper attachment');
       const layeredPaper=await page.screenshot();
-      const originalPaper=await page.addStyleTag({content:'body{background-attachment:scroll!important}'});
+      const originalPaper=await page.addStyleTag({content:'body{background-attachment:scroll!important;background-image:var(--tex)!important;background-size:auto!important}'});
       try{
         await painted();const original=await page.screenshot();
         if(!layeredPaper.equals(original)){
