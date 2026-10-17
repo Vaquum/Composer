@@ -2111,9 +2111,9 @@ const Ref = {
     this.render(0);
   },
   transition(open) {
-    const wasHidden=this.pane.hidden;
+    const wasHidden=this.pane.hidden,mobile=innerWidth<=700;
     if(wasHidden&&!open&&!Flow.value(this.pane,'reference'))return;
-    if((open||!wasHidden)&&!Flow.value(this.pane,'reference')){
+    if(!mobile&&(open||!wasHidden)&&!Flow.value(this.pane,'reference')){
       this.work.style.gridTemplateColumns='';this.pane.hidden=false;this.work.dataset.reference='open';
       const columns=getComputedStyle(this.work).gridTemplateColumns.split(' ').map(parseFloat);
       this.columns=columns;
@@ -2123,7 +2123,6 @@ const Ref = {
     this.pane.hidden=!open;this.pane.inert=!open;this.pane.setAttribute('aria-hidden',String(!open));
     this.pane.dataset.flowVisible='';this.pane.style.setProperty('--flow-display','flex');
     this.work.dataset.reference='open';this.pane.style.overflow='hidden';
-    const mobile=innerWidth<=700;
     if(!mobile)this.pane.style.setProperty('--flow-reference-content-width',`${this.contentWidth}px`);
     Flow.spring(this.pane,'reference',{from:{progress:wasHidden?0:1},to:{progress:open?1:0},
       write:({progress})=>{
@@ -2144,9 +2143,9 @@ const Ref = {
     $('#ref-topic').focus({preventScroll:true});
   },
   close() {
+    const to=this.back&&this.back.isConnected&&!this.pane.contains(this.back)&&!this.back.closest('[hidden]')&&this.back.getClientRects().length?this.back:$('#reftoggle');
     this.clear();this.transition(false);
     $('#reftoggle').setAttribute('aria-expanded','false');$('#reftoggle').setAttribute('aria-pressed','false');
-    const to=this.back&&this.back.isConnected&&this.back.getClientRects().length&&!this.back.closest('[hidden]')?this.back:$('#reftoggle');
     to.focus({preventScroll:true});
   },
   render(i) {
