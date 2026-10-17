@@ -1255,7 +1255,7 @@ const Stage = {
     const paintKey=quiet?JSON.stringify([this.paintVersion||0,Math.min(2,devicePixelRatio||1),G.w,G.h,G.plotTop,G.plotBottom,G.bw,
       this.view.lo,this.view.hi,S.sel,S.colored,this.snapV,this.snapA,...S.bars.map(b=>[b.d,b.x,b.a,...b.v,...b.dv])]):null;
     if(paintKey!==null&&this.rootPaintKey===paintKey)return;
-    this.rootPaintKey=paintKey;
+    this.rootPaintKey=null;
     const ctx = fitCanvas(this.cv, G.w, G.h, Math.min(2, devicePixelRatio || 1), true), id = identity();
     // Preserve a native-density backing store across reference-panel pixels.
     // The wrapper clips spare capacity; CSS never scales the drawn coordinates.
@@ -1314,6 +1314,7 @@ const Stage = {
       ctx.fillStyle = COL['paper-2']; ctx.globalAlpha = 0.95; rr(ctx, x - 8, y - 11, tw + 16, 22, 5); ctx.fill(); ctx.globalAlpha = 1;
       ctx.fillStyle = COL.ink; ctx.fillText(t, x, y + 0.5);
     }
+    this.rootPaintKey=paintKey;
   },
   drawCandle(ctx, G, cx, dv, col, a) {
     const Y = v => this.Y(v, G), bw = G.bw, yL = Y(dv[0]), yB = Y(dv[1]), yT = Y(dv[2]), yH = Y(dv[3]);
