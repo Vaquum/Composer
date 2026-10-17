@@ -41,7 +41,7 @@ const seed=(page,result)=>page.evaluate(r=>{
   const A=__perf;A.Match.ready=true;A.Match.failed=false;A.Match.sent=A.Match.query();A.Match.sentKey=A.Match.key();
   A.Match.onmsg({...r,type:'result',id:A.Match.id});
 },result);
-const reports=[],paperProfile=process.argv.includes('--paper-profile'),nativeRetina=process.argv.includes('--native-retina-profile'),nativeProfile=nativeRetina||process.argv.includes('--native-profile');
+const reports=[],frameFailures=[],paperProfile=process.argv.includes('--paper-profile'),nativeRetina=process.argv.includes('--native-retina-profile'),nativeProfile=nativeRetina||process.argv.includes('--native-profile');
 const traceDirectory=paperProfile?fs.mkdtempSync(path.join(os.tmpdir(),'composer-paper-trace-')):null;
 const browsers=nativeProfile?[['WebKit',webkit,1]]:paperProfile?[['Chromium 4x CPU',chromium,4]]:[['Chromium native',chromium,1],['Chromium 4x CPU',chromium,4],['WebKit',webkit,1]];
 const screens=nativeProfile?[nativeRetina?[20,1600,2]:[2,1600,1]]:paperProfile?[[20,1600,2,'scroll'],[20,1600,2,'fixed'],[20,1600,2,'scroll'],[20,1600,2,'fixed']]:[[2,1600,1],[20,1600,2],[20,390,2]];
@@ -234,7 +234,7 @@ for(const [name,type,rate] of browsers){
       assert.ok(report.workP95<16.7*rate,`${label}: application work exceeded its native-frame budget scaled by ${rate}× CPU (${report.workP95})`);
       // Diagnostic ablations never replace or waive the original native gate.
       if(nativeProfile&&controlledGraphics&&label!=='reduced-motion'&&(label==='reference'||report.frameP95>=25))await diagnoseNativePaint(page,label,action,p95);
-      if(controlledGraphics&&rate===1&&label!=='reduced-motion')assert.ok(report.frameP95<25,`${label}: native frame delivery exceeded its budget (${report.frameP95})`);
+      if(controlledGraphics&&rate===1&&label!=='reduced-motion'&&report.frameP95>=25)frameFailures.push(`${name}/${n} bars/${width}px/${dpr}x/${label}: native frame delivery exceeded its budget (${report.frameP95})`);
       if(controlledGraphics)assert.ok(report.paintP95<100,`${label}: pointer input waited more than 100 ms for its next paint (${report.paintP95})`);
       return sample;
     };
@@ -251,7 +251,7 @@ for(const [name,type,rate] of browsers){
         const r=A.Match.result,layout=value==='layout',replace=value==='replace'||layout,refreshSerial=(r.refreshSerial||0)+1;
         if(layout)window.__reorderRows=new Map([...document.querySelectorAll('#lrows div.prow[data-reading]')].map(node=>[node.dataset.reading,{node,parent:node.parentNode}]));
         A.Match.onmsg({...r,type:'result',id:A.Match.id,refreshSerial,results:r.results.map(x=>({...x,start:x.start+(replace?1e6:900),raw:x.raw.map((b,j)=>b.map((v,k)=>v+(k===1?(j%3+1)*.013*refreshSerial:0))),drawn:x.drawn.map((b,j)=>b.map((v,k)=>v+(k===3?(j%3+1)*.013*refreshSerial:0)))})),
-          panes:{...r.panes,rows:r.panes.rows.map((w,i)=>({...w,d:layout?(i+1)/r.panes.rows.length:w.d,set:w.set.map(v=>v+(layout?1:.001))})),cont:{...r.panes.cont,fan:r.panes.cont.fan.map(q=>q.map(v=>v+.001))}}});
+          panes:{...r.panes,rows:r.panes.rows.map((w,i)=>({...w,d:layout?(refreshSerial%2?i+1:r.panes.rows.length-i)/r.panes.rows.length:w.d,set:w.set.map(v=>v+(layout?1:.001))})),cont:{...r.panes.cont,fan:r.panes.cont.fan.map(q=>q.map(v=>v+.001))}}});
       }
       const elapsed=performance.now()-t;__samples.calls.push(elapsed);
       const action=kind+':'+value;__samples.actions[action]=Math.max(__samples.actions[action]||0,elapsed);
@@ -678,5 +678,6 @@ for(const [name,type,rate] of browsers){
   }
   }finally{await browser.close();}
 }
+assert.deepEqual(frameFailures,[],'all native frame-delivery budgets must pass');
 console.log(`Motion performance: ${reports.length} browser/workload samples passed; input/render budgets, bounded measurements/raster area, idle DOM, pixel reuse, retained styling and cleanup.`);
 }finally{await new Promise(resolve=>server.close(resolve));}
