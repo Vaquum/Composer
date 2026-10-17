@@ -65,6 +65,8 @@ jobs:
         run: python checks/with_bars.py checks/panes.mjs
       - name: Real-history search latency and cancellation work slices
         run: python checks/with_bars.py checks/search-performance.mjs
+      - name: Activity preparation yields and publishes complete statistics
+        run: python checks/with_bars.py checks/activity-preparation.mjs
       - name: Real cold and warm loading stability
         run: python checks/with_bars.py checks/loading-performance.mjs
       - name: The container builds

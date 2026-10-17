@@ -12,7 +12,7 @@ checks = [
     *[['node', f'checks/{name}.mjs'] for name in
       ('pane-designs', 'forecast', 'forecast-ux', 'drag', 'chain', 'motion-model', 'motion-browser')],
     *[[sys.executable, 'checks/with_bars.py', f'checks/{name}.mjs'] for name in
-      ('similarity-windows', 'similarity-look', 'similarity-equivalence', 'panes', 'search-performance', 'loading-performance')],
+      ('similarity-windows', 'similarity-look', 'similarity-equivalence', 'panes', 'activity-preparation', 'search-performance', 'loading-performance')],
     [sys.executable, 'checks/container.py'],
     [sys.executable, 'checks/lint_workflows.py'],
 ]
