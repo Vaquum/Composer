@@ -56,7 +56,7 @@ async function diagnoseNativePaint(page,label,action,p95){
   const stop=()=>page.evaluate(()=>{__paintDiagnosis.active=false;return __paintDiagnosis.frames;});
   const report=(variant,frames)=>{assert.ok(frames.length>5,'paint diagnosis must collect actual frames');console.log(JSON.stringify({diagnosis:label,variant,frames:frames.length,p95:p95(frames)}));};
   await start();await page.waitForTimeout(1200);report('idle',await stop());
-  for(const [variant,css]of [['control',''],['paper-none',':root,body{background-image:none!important}'],['control',''],['flat-detail','.flow-detail-content{transform:none!important}'],['control',''],['clipped-detail','.flow-detail-body{contain:paint!important}'],['contained-rows','.pane div.prow{contain:layout!important}'],['control','']]){
+  for(const [variant,css]of [['control',''],['paper-none',':root,body{background-image:none!important}'],['control',''],['forced-detail-layer','.flow-detail-content{transform:translateZ(0)!important}'],['control',''],['clipped-detail','.flow-detail-body{contain:paint!important}'],['contained-rows','.pane div.prow{contain:layout!important}'],['control','']]){
     const style=await page.addStyleTag({content:css});
     try{await settle(page);await start();await action();await settle(page);await action();await settle(page);report(variant,await stop());}
     finally{await style.evaluate(node=>node.remove());await settle(page);}
@@ -154,7 +154,7 @@ for(const [name,type,rate] of browsers){
       assert.ok(scroll>previous,'each paper tile must advance the actual scroll offset');previous=scroll;tiles++;
       if(scroll>0)assert.equal(position.attachment,'scroll','outer body/document scrolling must restore the original paper attachment');
       const layeredPaper=await page.screenshot();
-      const originalPaper=await page.addStyleTag({content:':root{background-image:none!important}body{background-color:var(--paper)!important;background-image:var(--tex)!important;background-attachment:scroll!important;background-size:auto!important}'});
+      const originalPaper=await page.addStyleTag({content:':root{background-image:none!important}body{background-color:var(--paper)!important;background-image:var(--tex)!important;background-attachment:scroll!important;background-size:auto!important}.flow-detail-content{transform:translateZ(0)!important}'});
       try{
         await painted();const original=await page.screenshot();
         if(!layeredPaper.equals(original)){
