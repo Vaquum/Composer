@@ -84,7 +84,7 @@ for(const [name,type,rate] of browsers){
   for(const [n,width,dpr,paper] of screens){
     const context=await browser.newContext({viewport:{width,height:1000},deviceScaleFactor:dpr,hasTouch:width===390});
     try{
-    const page=await context.newPage(),errors=[];
+    const page=await context.newPage(),errors=[],diagnostics=[];
     page.on('pageerror',e=>errors.push(e.message));
     await page.addInitScript(()=>{
       window.Worker=class{postMessage(){} terminate(){}};
@@ -247,8 +247,10 @@ for(const [name,type,rate] of browsers){
       // work and input handlers. Frame delivery is reported, never hidden by idle samples.
       assert.ok(report.callMax<100,`${label}: an input/result task exceeded 100 ms (${report.callMax})`);
       assert.ok(report.workP95<16.7*rate,`${label}: application work exceeded its native-frame budget scaled by ${rate}× CPU (${report.workP95})`);
-      // Diagnostic ablations never replace or waive the original native gate.
-      if(nativeProfile&&controlledGraphics&&label!=='reduced-motion'&&(label==='reference'||report.frameP95>=25))await diagnoseNativePaint(page,label,action,p95);
+      // Finish every gated workload before optional paint experiments. Their
+      // extra updates, image allocations and drawing state must not change a
+      // subsequent production measurement or its correctness assertions.
+      if(nativeProfile&&controlledGraphics&&label!=='reduced-motion'&&(label==='reference'||report.frameP95>=25))diagnostics.push({label,action,p95});
       if(controlledGraphics&&rate===1&&label!=='reduced-motion'&&report.frameP95>=25)frameFailures.push(`${name}/${n} bars/${width}px/${dpr}x/${label}: native frame delivery exceeded its budget (${report.frameP95})`);
       if(controlledGraphics)assert.ok(report.paintP95<100,`${label}: pointer input waited more than 100 ms for its next paint (${report.paintP95})`);
       return sample;
@@ -688,6 +690,20 @@ for(const [name,type,rate] of browsers){
       root.remove();return{updated,reordered};
     });
     assert.deepEqual(stable,{updated:true,reordered:true},'stable readouts must retain nodes and update semantics/styles, with keyed reconciliation on a structure change');
+    if(diagnostics.length){
+      await page.emulateMedia({reducedMotion:'no-preference'});
+      for(const {label,action,p95}of diagnostics){
+        await call('reference',false);await seed(page,data);
+        await call('pane',label==='refresh-bars'?'bars':label==='refresh-ledger'?'ledger':'signal');await call('paneRight','signal');await call('forecast','states');
+        await page.evaluate(label=>{
+          const A=__perf,more=document.querySelector('#lrows details[data-detail="more"]');
+          if(more)more.open=label!=='disclosure'&&label!=='refresh-ledger';
+          A.Flow.details(document.querySelector('#lrows'));A.Stage.ptr=A.Stage.hov=A.Stage.trace=null;A.Stage.fit(true);A.Flow.finish();A.Stage.settle();
+          document.body.scrollTop=0;scrollTo(0,0);A.App.redraw();
+        },label);
+        await settle(page);await diagnoseNativePaint(page,label,action,p95);
+      }
+    }
     assert.deepEqual(errors,[]);
     }finally{await context.close();}
   }
