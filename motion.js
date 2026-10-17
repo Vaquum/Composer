@@ -27,7 +27,7 @@ const TactileFlow = (() => {
   function bounds(values, velocities, targets, seconds, immediate = false) {
     const span=values[1]-values[0],targetSpan=targets[1]-targets[0];
     if(!(span>0)||!(targetSpan>0))throw Error('Tactile framing requires ordered bounds.');
-    if(Number.isFinite(seconds)&&seconds>=0&&values[0]===targets[0]&&values[1]===targets[1]&&velocities[0]===0&&velocities[1]===0)return false;
+    if(Number.isFinite(seconds)&&seconds>=0&&Number.isFinite(span)&&Number.isFinite(targetSpan)&&values[0]===targets[0]&&values[1]===targets[1]&&velocities[0]===0&&velocities[1]===0)return false;
     const center=[(values[0]+values[1])/2],cv=[velocities[0]],zoom=[Math.log(span)],zv=[velocities[1]];
     const p=advance(center,cv,[(targets[0]+targets[1])/2],seconds,targetSpan*1e-4,immediate);
     const z=advance(zoom,zv,[Math.log(targetSpan)],seconds,.00001,immediate);

@@ -20,4 +20,5 @@ const frame=[0,100],speed=[0,0];
 for(let i=0;i<200;i++){flow.bounds(frame,speed,[49.78,50.22],.016);assert.ok(frame[1]>frame[0],'a collapsing composition cannot invert its frame');}
 assert.deepEqual(frame,[49.78,50.22]);
 assert.throws(()=>flow.bounds([10,0],[0,0],[0,1],.016),/ordered/);
+assert.throws(()=>flow.bounds([0,Infinity],[0,0],[0,Infinity],.016),/finite|non-negative/);
 console.log('Tactile model: reversal retains momentum, latest targets settle, reduced motion is exact, invalid input fails.');

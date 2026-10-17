@@ -130,10 +130,19 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
     const framing=await measure('reference',async()=>{for(const topic of [2,3,4]){await call('reference',true);await settle(page);await call('topic',topic);await settle(page);await call('reference',false);await settle(page);}});
     assert.ok(framing.fanRasters<=12,'framing must reuse the blurred fan rather than rebuilding it every spring frame');
     const fanParity=await page.evaluate(()=>{
-      const A=__perf,before=A.Stage.forecastSurface.toDataURL();A.Stage.fanCache=null;A.Stage.forecastPaint=null;A.Stage.draw();
-      return before===A.Stage.forecastSurface.toDataURL();
+      const A=__perf,combined=()=>{
+        const current=A.Stage.forecastSurface,C=current.flowBox,dpr=current.flowDpr,canvas=document.createElement('canvas');canvas.width=Math.round(C.w*dpr);canvas.height=Math.round(C.h*dpr);
+        const ctx=canvas.getContext('2d');ctx.scale(dpr,dpr);ctx.translate(-C.x,-C.y);
+        if(A.Stage.washState)A.Stage.paintWash(ctx,A.Stage.washState);
+        ctx.drawImage(current,0,0,current.flowWidth,current.flowHeight,C.x,C.y,C.w,C.h);return canvas.toDataURL();
+      };
+      const before=combined();A.Stage.fanCache=null;A.Stage.forecastPaint=null;A.Stage.draw();
+      const same=before===combined(),state=A.Stage.washState,origin=A.Stage.wrap.getBoundingClientRect();
+      const aligned=!state||[...A.Stage.washRoot.children].every((part,i)=>{const box=part.getBoundingClientRect(),piece=state.pieces[i];return Math.abs(box.left-origin.left-piece[2])<.1&&Math.abs(box.top-origin.top-state.top)<.1&&Math.abs(box.width-(piece[3]-piece[2]))<.1;});
+      A.Stage.changeForecast();const snapshot=A.Stage.departingForecast.toDataURL()===before;A.Stage.settle();
+      return{same,aligned,snapshot};
     });
-    assert.ok(fanParity,'settled fan pixels must match a fresh native render after texture reprojection');
+    assert.deepEqual(fanParity,{same:true,aligned:true,snapshot:true},'composited fan pixels, projected layers and departure snapshots must match a fresh native render');
     await measure('forecast',async()=>{for(const v of ['paths','branches','states']){await call('forecast',v);await settle(page);}await call('fan',false);await settle(page);await call('fan',true);});
     await measure('refresh',async()=>{for(let i=0;i<3;i++){await call('refresh');await settle(page);}});
     await measure('refresh-replace',async()=>{await call('refresh','replace');});
