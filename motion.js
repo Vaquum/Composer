@@ -538,5 +538,5 @@ const TactileFlow = (() => {
   addEventListener('pageshow', () => { suspended = document.hidden; });
   document.addEventListener('visibilitychange', () => { suspended = document.hidden; if (suspended) finish(); });
   details(document);
-  return { model, integrate, advance, bounds, reduced, spring, value, cancel, finish, reveal, visible, disclosure, resize, layout, batch, patch, update, details, switchControl, onSettle: fn => settlers.add(fn), active: () => moving.size > 0 || arrivals.size > 0 || pendingLayouts.size > 0 };
+  return { model, integrate, advance, bounds, reduced, suspended:()=>suspended||printing, spring, value, cancel, finish, reveal, visible, disclosure, resize, layout, batch, patch, update, details, switchControl, onSettle: fn => settlers.add(fn), active: () => moving.size > 0 || arrivals.size > 0 || pendingLayouts.size > 0 };
 })();
