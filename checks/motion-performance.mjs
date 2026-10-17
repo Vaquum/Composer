@@ -261,6 +261,15 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
     });
     assert.ok(raster.equal&&raster.different,'fan raster reuse must preserve pixels and refresh after camera changes');
     assert.ok(raster.pixels<raster.full*.85,'forecast transitions must not rasterize a full canvas');
+    const retainedRoot=await page.evaluate(()=>{
+      const A=__perf,ptr=A.Stage.ptr,hov=A.Stage.hov;A.Stage.ptr=A.Stage.hov=null;
+      const pixels=()=>A.Stage.cv.getContext('2d').getImageData(0,0,A.Stage.cv.width,A.Stage.cv.height).data;
+      A.Stage.rootPaintKey=null;A.Stage.draw();const fresh=pixels();A.Stage.draw();const cached=pixels();
+      const equal=fresh.every((v,i)=>v===cached[i]),before=A.S.bars[0].dv[0];A.S.bars[0].dv[0]-=1;A.Stage.draw();const changed=pixels();
+      const invalidated=changed.some((v,i)=>v!==fresh[i]);A.S.bars[0].dv[0]=before;A.Stage.ptr=ptr;A.Stage.hov=hov;A.Stage.draw();
+      return{equal,invalidated};
+    });
+    assert.deepEqual(retainedRoot,{equal:true,invalidated:true},'retained root pixels must match a fresh paint and update with drawing geometry');
     const quiet=await measure('stationary-forecast',async()=>{
       await page.evaluate(async()=>{for(let i=0;i<24;i++){__perf.Forecast.sync(__perf.Stage.geom());await new Promise(requestAnimationFrame);}});
     });
