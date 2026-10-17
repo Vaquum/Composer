@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import gzip
 import json
+import os
 import sys
 import threading
 import tempfile
 import unittest
 import urllib.error
 import urllib.request
+from unittest.mock import patch
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
@@ -50,9 +53,9 @@ class Server(unittest.TestCase):
         self.httpd.shutdown()
         self.httpd.server_close()
 
-    def get(self, path: str, headers: dict[str, str] | None = None):
+    def get(self, path: str, headers: dict[str, str] | None = None, method: str = 'GET'):
         try:
-            return urllib.request.urlopen(urllib.request.Request(self.base + path, headers=headers or {}), timeout=5)
+            return urllib.request.urlopen(urllib.request.Request(self.base + path, headers=headers or {}, method=method), timeout=5)
         except urllib.error.HTTPError as err:
             return err
 
@@ -82,6 +85,110 @@ class Server(unittest.TestCase):
         health = json.loads(self.get('/healthz').read())
         self.assertEqual(health['files'][0], 'vaquum/binance_btcusdt_15m_klines/15m-1.parquet')
         self.assertEqual(health['last_failure'], '')
+
+    def large_payloads(self, suffix: bytes = b'') -> tuple[bytes, bytes]:
+        payload, activity = b'CBAR1' + b'bar-values' * 10000 + suffix, b'CACT1' + b'activity-values' * 10000 + suffix
+        self.state._replace(payload, activity, sources('1'))
+        return payload, activity
+
+    def test_gzip_is_cached_and_decodes_to_the_exact_payload(self) -> None:
+        expected = self.large_payloads()
+        with patch.object(server.gzip, 'compress', side_effect=AssertionError('compressed during a request')):
+            for path, raw in zip(('/bars', '/activity'), expected):
+                response = self.get(path, {'Accept-Encoding': 'gzip'})
+                encoded = response.read()
+                self.assertEqual((response.status, response.headers['Content-Encoding']), (200, 'gzip'))
+                self.assertEqual(response.headers['Vary'], 'Accept-Encoding')
+                self.assertEqual(response.headers['Cache-Control'], 'private, no-cache')
+                self.assertEqual(int(response.headers['Content-Length']), len(encoded))
+                self.assertLess(len(encoded), len(raw))
+                self.assertEqual(gzip.decompress(encoded), raw)
+                self.assertEqual(self.get(path).read(), raw)
+
+    def test_encoding_preferences_and_rejection(self) -> None:
+        self.large_payloads()
+        for accept, status, encoding in [
+            ('gzip', 200, 'gzip'), ('GZip; Q=1, br;q=0.5', 200, 'gzip'),
+            ('x-gzip', 200, 'gzip'), ('*', 200, 'gzip'),
+            ('gzip;q=0.5, identity;q=0.2', 200, 'gzip'),
+            ('gzip;q=0.5', 200, None), ('gzip;q=0, *;q=1', 200, None),
+            ('gzip;q=0.3, identity;q=0.7', 200, None), ('br', 200, None),
+            ('', 200, None), ('gzip;q=invalid', 200, None), ('gzip;q=NaN', 200, None),
+            ('gzip;q=2', 200, None), ('*;q=0, identity;q=1', 200, None),
+            ('*;q=0', 406, None), ('gzip;q=0, identity;q=0', 406, None),
+            ('br, identity;q=0', 406, None),
+        ]:
+            with self.subTest(accept=accept):
+                response = self.get('/bars', {'Accept-Encoding': accept})
+                self.assertEqual((response.status, response.headers.get('Content-Encoding')), (status, encoding))
+                self.assertEqual(response.headers['Vary'], 'Accept-Encoding')
+                response.read()
+
+    def test_variant_etags_head_and_conditional_get(self) -> None:
+        self.large_payloads()
+        for path in ('/bars', '/activity'):
+            raw = self.get(path)
+            raw_tag = raw.headers['ETag']
+            raw.read()
+            encoded = self.get(path, {'Accept-Encoding': 'gzip'})
+            tag, length = encoded.headers['ETag'], encoded.headers['Content-Length']
+            encoded.read()
+            self.assertNotEqual(tag, raw_tag)
+            self.assertFalse(tag.startswith('W/'))
+            head = self.get(path, {'Accept-Encoding': 'gzip'}, method='HEAD')
+            self.assertEqual((head.headers['Content-Length'], head.headers['ETag'], head.read()), (length, tag, b''))
+            for condition in (tag, 'W/' + tag, '"other", W/' + tag, '*'):
+                unchanged = self.get(path, {'Accept-Encoding': 'gzip', 'If-None-Match': condition})
+                self.assertEqual((unchanged.status, unchanged.read()), (304, b''))
+                self.assertNotIn('Content-Length', unchanged.headers)
+                self.assertEqual((unchanged.headers['Content-Encoding'], unchanged.headers['ETag'], unchanged.headers['Vary']), ('gzip', tag, 'Accept-Encoding'))
+            changed_variant = self.get(path, {'Accept-Encoding': 'gzip', 'If-None-Match': raw_tag})
+            self.assertEqual(changed_variant.status, 200)
+            changed_variant.read()
+
+    def test_small_or_incompressible_payloads_fall_back_to_identity(self) -> None:
+        for payload in (b'CBAR1small', b'CBAR1' + os.urandom(16384)):
+            self.state._replace(payload, b'CACT1small', sources('1'))
+            response = self.get('/bars', {'Accept-Encoding': 'gzip'})
+            self.assertEqual(response.read(), payload)
+            self.assertNotIn('Content-Encoding', response.headers)
+            self.assertEqual(self.get('/bars', {'Accept-Encoding': 'gzip, identity;q=0'}).status, 406)
+
+    def test_refresh_keeps_a_complete_generation_while_compressing(self) -> None:
+        before = self.large_payloads()
+        entered, release = threading.Event(), threading.Event()
+        compress = gzip.compress
+
+        def paused(data, **kwargs):
+            entered.set()
+            if not release.wait(5):
+                raise TimeoutError('test did not release compression')
+            return compress(data, **kwargs)
+
+        after = tuple(data + b'next' for data in before)
+        with patch.object(server.gzip, 'compress', side_effect=paused):
+            worker = threading.Thread(target=self.state._replace, args=(*after, sources('2')))
+            worker.start()
+            try:
+                self.assertTrue(entered.wait(5))
+                for path, expected in zip(('/bars', '/activity'), before):
+                    self.assertEqual(gzip.decompress(self.get(path, {'Accept-Encoding': 'gzip'}).read()), expected)
+            finally:
+                release.set()
+                worker.join(5)
+            self.assertFalse(worker.is_alive())
+        for path, expected in zip(('/bars', '/activity'), after):
+            self.assertEqual(gzip.decompress(self.get(path, {'Accept-Encoding': 'gzip'}).read()), expected)
+
+    def test_raw_snapshot_restores_the_same_compressed_variants(self) -> None:
+        self.large_payloads()
+        with tempfile.TemporaryDirectory() as directory:
+            self.state.cache_dir = Path(directory)
+            self.state.save()
+            restored = server.Bars(cache_dir=Path(directory))
+            self.assertTrue(restored.restore())
+            for activity in (False, True):
+                self.assertEqual(restored.representation(activity, 'gzip'), self.state.representation(activity, 'gzip'))
 
     def test_bars_are_read_again_only_when_the_files_change(self) -> None:
         self.assertFalse(self.state.refresh())
@@ -122,9 +229,10 @@ class Server(unittest.TestCase):
             self.assertFalse(restored.health()['ready'])
 
     def test_cold_server_answers_the_page_while_data_is_pending(self) -> None:
+        self.large_payloads()
         self.state.payload = self.state.activity = b''
         self.assertEqual(self.get('/').status, 200)
-        response = self.get('/bars')
+        response = self.get('/bars', {'Accept-Encoding': 'gzip'})
         self.assertEqual((response.status, response.headers['Retry-After']), (503, '1'))
         response = self.get('/healthz')
         self.assertEqual(response.status, 503)

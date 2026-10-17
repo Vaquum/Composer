@@ -33,7 +33,7 @@ def main() -> None:
             part.write_bytes(data)
             part.replace(path)
     print('bars: ' + ', '.join(s.file_name for s in sources), flush=True)
-    sys.exit(subprocess.run(['node', check, str(ROOT / 'matcher.js'), str(cached), str(activity)], check=False).returncode)
+    sys.exit(subprocess.run(['node', check, str(ROOT / 'matcher.js'), str(cached), str(activity), sys.executable], check=False).returncode)
 
 
 if __name__ == '__main__':

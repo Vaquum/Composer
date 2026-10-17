@@ -10,6 +10,7 @@ which files it serves and when the last read failed.
 from __future__ import annotations
 
 import argparse
+import gzip
 import hashlib
 import json
 import os
@@ -39,6 +40,33 @@ PAGES = {
 REFRESH_SECONDS = 3600
 
 
+def encoding_weights(value: str) -> tuple[float, float]:
+    """Return gzip and identity preferences; an empty field requests identity."""
+    if not value.strip():
+        return 0, 1
+    weights = {}
+    for item in value.lower().split(','):
+        name, *parameters = item.strip().split(';')
+        weight = 1.0
+        for parameter in parameters:
+            key, _, number = parameter.strip().partition('=')
+            if key.strip() == 'q':
+                try:
+                    weight = float(number)
+                    if not 0 <= weight <= 1:
+                        weight = 0
+                except ValueError:
+                    weight = 0
+        weights['gzip' if name.strip() == 'x-gzip' else name.strip()] = weight
+    return (weights.get('gzip', weights.get('*', 0)),
+            weights.get('identity', 0 if weights.get('*') == 0 else 1))
+
+
+def not_modified(value: str, etag: str) -> bool:
+    # GET/HEAD use weak comparison, but each content coding has its own strong tag.
+    return any(tag.strip().removeprefix('W/') in ('*', etag) for tag in value.split(','))
+
+
 def log(message: str) -> None:
     print(f'{time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())} {message}', file=sys.stderr, flush=True)
 
@@ -53,6 +81,8 @@ class Bars:
         self.etag = ''
         self.activity = b''
         self.activity_etag = ''
+        self._compressed: tuple[bytes, str] | None = None
+        self._activity_compressed: tuple[bytes, str] | None = None
         self.sources: list[bars.Source] = []
         self.failure = ''
         self.cache_dir = cache_dir
@@ -90,10 +120,23 @@ class Bars:
             return False
 
     def _replace(self, payload: bytes, activity: bytes, sources: list[bars.Source]) -> None:
+        def tag(data: bytes) -> str:
+            return '"' + hashlib.sha256(data).hexdigest()[:32] + '"'
+
+        def compressed(data: bytes) -> tuple[bytes, str] | None:
+            if len(data) < 1024:
+                return None
+            encoded = gzip.compress(data, compresslevel=6, mtime=0)
+            return (encoded, tag(encoded)) if len(encoded) < len(data) else None
+
+        # Prepare once per generation, outside the serving lock. Readers retain the
+        # previous complete generation while compression or a refresh is in flight.
+        encoded, activity_encoded = compressed(payload), compressed(activity)
+        etag, activity_etag = tag(payload), tag(activity)
         with self._lock:
             self.payload, self.activity, self.sources, self.failure = payload, activity, sources, ''
-            self.etag = '"' + hashlib.sha256(payload).hexdigest()[:32] + '"'
-            self.activity_etag = '"' + hashlib.sha256(activity).hexdigest()[:32] + '"'
+            self.etag, self.activity_etag = etag, activity_etag
+            self._compressed, self._activity_compressed = encoded, activity_encoded
 
     def save(self) -> None:
         if self.cache_dir is None:
@@ -137,6 +180,15 @@ class Bars:
     def current_activity(self) -> tuple[bytes, str]:
         with self._lock:
             return self.activity, self.activity_etag
+
+    def representation(self, activity: bool, accept_encoding: str) -> tuple[bytes, str, str | None]:
+        gzip_weight, identity_weight = encoding_weights(accept_encoding)
+        with self._lock:
+            payload, etag = (self.activity, self.activity_etag) if activity else (self.payload, self.etag)
+            encoded = self._activity_compressed if activity else self._compressed
+            if payload and encoded and gzip_weight > 0 and gzip_weight >= identity_weight:
+                return *encoded, 'gzip'
+            return payload, etag, '' if identity_weight > 0 else None
 
     def health(self) -> dict:
         with self._lock:
@@ -184,13 +236,19 @@ def handler(state: Bars, pages: dict[str, tuple[bytes, str]]):
                 body, kind = pages[path]
                 self._send(200, body, kind)
             elif path in ('/bars', '/activity'):
-                payload, etag = state.current() if path == '/bars' else state.current_activity()
+                accept = ','.join(self.headers.get_all('Accept-Encoding', []))
+                payload, etag, encoding = state.representation(path == '/activity', accept)
+                headers = {'Vary': 'Accept-Encoding', 'ETag': etag}
+                if encoding:
+                    headers['Content-Encoding'] = encoding
                 if not payload:
-                    self._send(503, b'History is loading\n', 'text/plain; charset=utf-8', {'Retry-After': '1'})
-                elif self.headers.get('If-None-Match') == etag:
-                    self._send(304, b'', 'application/octet-stream', {'ETag': etag})
+                    self._send(503, b'History is loading\n', 'text/plain; charset=utf-8', {'Retry-After': '1', 'Vary': 'Accept-Encoding'})
+                elif encoding is None:
+                    self._send(406, b'No acceptable content encoding\n', 'text/plain; charset=utf-8', {'Vary': 'Accept-Encoding'})
+                elif not_modified(','.join(self.headers.get_all('If-None-Match', [])), etag):
+                    self._send(304, b'', 'application/octet-stream', headers)
                 else:
-                    self._send(200, payload, 'application/octet-stream', {'ETag': etag})
+                    self._send(200, payload, 'application/octet-stream', headers)
             elif path == '/healthz':
                 health = state.health()
                 self._send(200 if health['ready'] else 503, json.dumps(health).encode(), 'application/json')
