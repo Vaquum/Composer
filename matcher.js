@@ -390,11 +390,17 @@ async function search(q, id, report) {
   // held relations, with stretch: drawn bar g takes bar pos + skip, and the skipped bars are ignored.
   let T = null, s = 0, bestHere = null, on = false, any = false;
   const windowBest = { d: Infinity, picks: new Int32Array(n), extra: 0, span: 0 };
+  // Every placement ends at the same candle. A hold against that endpoint can
+  // reject a branch as soon as its other endpoint is placed, without waiting
+  // through all intervening combinations. The normal final hold check remains.
+  const endHolds=Array.from({length:n},()=>[]);
+  for(const h of cq.holds)if(!h.color){const a=h.a[0],b=h.b[0];if(Math.max(a,b)===n-1&&a!==b)endHolds[Math.min(a,b)].push(h);}
   const fits = (g, pos, skip) => {
     const last = pos + skip;
     if (last >= T.n || T.run[last] < last - s + 1) return -1;
     MO[g] = T.O[last]; MH[g] = T.H[last]; ML[g] = T.L[last]; MC[g] = T.C[last]; picks[g] = last - s;
     for (const h of cq.byBar[g]) if (!holdOk(h, MO, MH, ML, MC)) return 0;
+    for (const h of endHolds[g]) if (!holdOk(h, MO, MH, ML, MC)) return 0;
     return 1;
   };
   // A window with stretch runs from start s to a chosen last bar e: the first drawn bar sits on s, the last on e,
@@ -448,6 +454,7 @@ async function search(q, id, report) {
   const colours = new Float64Array(n), differences = new Float64Array(n);
   let depth = 0, nodes = 0;
   function beginPlacement(extra) {
+    const end=s+n-1+extra;MO[n-1]=T.O[end];MH[n-1]=T.H[end];ML[n-1]=T.L[end];MC[n-1]=T.C[end];
     depth = 0; positions[0] = s; spares[0] = extra; skips[0] = 0; colours[0] = differences[0] = 0;
   }
   function place(scoring) {
