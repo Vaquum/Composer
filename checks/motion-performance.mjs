@@ -78,7 +78,6 @@ for(const [name,type,rate] of browsers){
       Element.prototype.append=function(...nodes){__samples.measures+=nodes.filter(n=>n.nodeType===1&&n.hasAttribute('data-flow-measuring')).length;return append.apply(this,nodes);};
     });
     await page.route('https://fonts.**/**',r=>r.abort());await page.goto(base);await settle(page);
-    if(paper)await page.addStyleTag({content:`body{background-attachment:${paper}!important}`});
     await page.evaluate(n=>{while(__perf.S.bars.length<n)__perf.Ops.add();},n);
     const data=fixture(n);await seed(page,data);await settle(page);
     const thumbnails=await page.evaluate(async reference=>{
@@ -156,6 +155,8 @@ for(const [name,type,rate] of browsers){
     if(paperScroll.max>0)assert.ok(tiles>1,'tall documents must compare more than the initial viewport');
     await stillPaper.evaluate(node=>node.remove());
     await page.evaluate(({selector,initial})=>document.querySelector(selector).scrollTo(0,initial),paperScroll);await painted();await settle(page);
+    // Experimental overrides apply only after the production pixel/scroll guard.
+    if(paper)await page.addStyleTag({content:`body{background-attachment:${paper}!important}`});
     const graphics=await page.evaluate(()=>{
       const canvas=document.createElement('canvas'),gl=canvas.getContext('webgl');if(!gl)return'unavailable';
       const info=gl.getExtension('WEBGL_debug_renderer_info'),renderer=info?gl.getParameter(info.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER);

@@ -173,6 +173,7 @@ Their uncontrolled virtual display/GPU cadence is not a native frame-delivery ga
 
 For a bounded two-round Retina desktop comparison under 4× Chromium CPU
 throttling, run `node checks/motion-performance.mjs --paper-profile`.
-It alternates original and fixed paper attachment, reports every scenario, and
+Production pixel/scroll guards run before experimental overrides. Timed scenarios
+alternate original and fixed paper attachment, report every sample, and
 retains the application, input, continuity and cleanup guards. The normal suite
 still runs the complete browser/viewport matrix and unchanged native budgets.
