@@ -307,10 +307,20 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
       await measure(`refresh-${variant}`,async()=>{await call('refresh');await settle(page);await call('refresh','layout');});
       const parity=await page.evaluate(variant=>{
         const A=__perf,expected=document.createElement('div');expected.innerHTML=A.PaneDesigns.left(variant,A.Match.result,{barCount:A.S.bars.length});
-        const fields=root=>[...root.querySelectorAll('[data-reading]')].map(node=>({key:node.dataset.reading,text:node.textContent,aria:node.querySelector('.trk')?.getAttribute('aria-label'),styles:[...node.querySelectorAll('.trk i')].map(i=>i.getAttribute('style'))}));
+        const fields=root=>({readings:[...root.querySelectorAll('[data-reading]')].map(node=>({key:node.dataset.reading,text:node.textContent,aria:node.querySelector('.trk')?.getAttribute('aria-label'),styles:[...node.querySelectorAll('.trk i')].map(i=>i.getAttribute('style'))})),summaries:[...root.querySelectorAll('details > summary')].map(node=>node.textContent)});
         return JSON.stringify(fields(document.querySelector('#lrows')))===JSON.stringify(fields(expected));
       },variant);
       assert.ok(parity,`${variant} refresh must match the full renderer`);
+      if(variant==='bars'){
+        const retainedBars=await page.evaluate(()=>{
+          const A=__perf,r=A.Match.result,root=document.querySelector('#lrows'),row=root.querySelector('[data-reading]'),key=row.dataset.reading;
+          const next={...r,panes:{...r.panes,rows:r.panes.rows.map(w=>w.key==='vol'?{...w,log:!w.log}:w)}};A.Panes.render(next,'left');
+          const expected=document.createElement('div');expected.innerHTML=A.PaneDesigns.left('bars',next,{barCount:A.S.bars.length});
+          const fields=node=>({text:node.textContent,labels:[...node.querySelectorAll('[aria-label]')].map(n=>n.getAttribute('aria-label')),styles:[...node.querySelectorAll('.trk i')].map(n=>n.getAttribute('style'))});
+          const result={retained:row.isConnected&&root.querySelector(`[data-reading="${key}"]`)===row,parity:JSON.stringify(fields(root))===JSON.stringify(fields(expected))};A.Flow.finish();return result;
+        });
+        assert.deepEqual(retainedBars,{retained:true,parity:true},'retained bar rows, summaries and chart semantics must match the full renderer after normalization changes');
+      }
       if(variant==='ledger'){
         const normalization=await page.evaluate(()=>{
           const A=__perf,r=A.Match.result,root=document.querySelector('#lrows'),row=root.querySelector('tr[data-reading="0-vol"]');

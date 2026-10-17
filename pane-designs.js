@@ -115,6 +115,28 @@ const PaneDesigns = (() => {
       };
     };
   }
+  function updateBars(root,r,barCount){
+    const P=r.panes,details=[...root.querySelectorAll(':scope > details[data-detail]')];
+    if(P.n<30||!P.readings||details.length!==barCount)return false;
+    const groups=Array.from({length:barCount},()=>[]),updater=readingUpdater(r),plans=[];
+    for(const w of sorted(P)){if(!groups[w.bar])return false;groups[w.bar].push(w);}
+    for(let bar=0;bar<barCount;bar++){
+      const detail=details[bar],rows=groups[bar],content=detail.querySelector(':scope > .flow-detail-body > .flow-detail-content'),summary=detail.querySelector('.pane-bar-summary');
+      if(detail.dataset.detail!==`bar-${bar}`||!content||!rows.length||summary?.childNodes.length!==3)return false;
+      const nodes=[...content.children],byKey=new Map(nodes.map(node=>[node.dataset.reading,node])),ordered=rows.map(w=>byKey.get(`${w.bar}-${w.key}`));
+      if(nodes.length!==rows.length||byKey.size!==rows.length||ordered.some(node=>!node))return false;
+      const changes=ordered.map(node=>updater(node,node)),[heading,value,baseline]=summary.childNodes;
+      if(changes.some(change=>!change)||heading.nodeType!==3||value.nodeName!=='B'||baseline.nodeType!==3)return false;
+      plans.push({content,ordered,changes,heading,value,baseline,lead:rows[0]});
+    }
+    const text=(node,value)=>{if(node.nodeValue!==value)node.nodeValue=value;};
+    for(const p of plans){
+      for(const change of p.changes)change();
+      let cursor=p.content.firstElementChild;for(const node of p.ordered){if(node!==cursor)p.content.insertBefore(node,cursor);cursor=node.nextElementSibling;}
+      const f=trackFields(p.lead);text(p.heading,label(p.lead)+' ');if(p.value.textContent!==f.selectedDisplay)p.value.textContent=f.selectedDisplay;text(p.baseline,' · all '+f.baselineDisplay);
+    }
+    return {kind:'bars'};
+  }
   function updateLedger(root,r,move){
     const all=sorted(r.panes),tables=[...root.querySelectorAll('.pane-ledger tbody')],intervals=root.querySelector('details[data-detail="intervals"] .flow-detail-content'),note=root.querySelector(':scope > .pane-note');
     if(r.panes.n<30||!r.panes.readings||!all.length||tables.length!==(all.length>10?2:1)||!intervals||!note)return false;
@@ -170,5 +192,5 @@ const PaneDesigns = (() => {
   }
   const leftMethod = barCount => `<ul class="pane-method"><li>All means every ${barCount}-bar window on the selected timeframes. Rows compare selected-window and all-window means.</li><li>Volume, trades and mean trade size: relative to the median of the prior 11 bars; geometric means.</li><li>Body and range: prior-bar Wilder ATR(14). Maker share: share of volume. Last close: position in the prior UTC day's range.</li><li>Every reading track has its own scale. Differences are ranked in standard deviations of all windows.</li><li>95% intervals: t for means, Wilson for rates. No estimate below 30 windows.</li></ul>`;
   const rightMethod = after => `<ul class="pane-method"><li>Each window is scaled from its own low and high to your drawing. The canvas fan shows the median and middle 50% and 80% of closes.</li><li>Breaks count any crossing during the next ${after} bars. Final close compares bar ${after} with the window's last close.</li><li>The terminal band is the middle 50% of closes, not a confidence interval. Outcome rates use all complete continuations, with Wilson 95% intervals.</li></ul>`;
-  return { variants, left, updateSignal, readingUpdater, updateLedger, right, next, terminal, caption, leftMethod, rightMethod };
+  return { variants, left, updateSignal, readingUpdater, updateBars, updateLedger, right, next, terminal, caption, leftMethod, rightMethod };
 })();

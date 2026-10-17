@@ -100,7 +100,9 @@ and mobile keep their existing background. Fixed viewport tiles compare the
 complete document on its actual scroll element, assert that each tile advances,
 and permit two 8-bit compositor rounding units.
 Retained reading rows in all three designs reuse their verified bindings inside structural
-reconciliation; headers and changed row shapes still use the general path.
+reconciliation. Bar groups also update and reorder their verified rows directly,
+including summary values; changed group/row shapes use the general renderer.
+Headers and changed row shapes still use the general path.
 Previously unseen actors receive a fresh observer sample after layout changes,
 so arrivals retain their entry spring without synchronous offscreen reads.
 Arrival samples use a separate one-shot observer rather than comparing browser
