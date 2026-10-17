@@ -1276,10 +1276,13 @@ const Stage = {
     const width = `${this.cv.width / this.cv.flowDpr}px`, height = `${this.cv.height / this.cv.flowDpr}px`;
     if (this.cv.style.width !== width) this.cv.style.width = width;
     if (this.cv.style.height !== height) this.cv.style.height = height;
-    ctx.clearRect(0, 0, this.cv.width / this.cv.flowDpr, this.cv.height / this.cv.flowDpr);
+    // Capacity outside the live viewport stays clipped. Clear newly exposed
+    // pixels on expansion, without repainting the reserved backing store.
+    const clearW=Math.ceil(G.w*this.cv.flowDpr)/this.cv.flowDpr,clearH=Math.ceil(G.h*this.cv.flowDpr)/this.cv.flowDpr;
+    ctx.clearRect(0, 0, clearW, clearH);
     if(!this.guideSurface)this.guideSurface=document.createElement('canvas');
     const guide=fitCanvas(this.guideSurface,G.w,G.h,Math.min(2,devicePixelRatio||1),true);this.layer(this.guideSurface,{x:0,y:0,w:G.w,h:G.h},true);
-    guide.clearRect(0,0,this.guideSurface.width/this.guideSurface.flowDpr,this.guideSurface.height/this.guideSurface.flowDpr);
+    guide.clearRect(0,0,clearW,clearH);
     const Y = v => this.Y(v, G), x0 = 24, x1 = G.w - 52;
     // Keep the root levels as faint rules; rank labels would overlap the future columns.
     const sb = S.bars[S.sel];
@@ -2018,7 +2021,8 @@ const Panes = {
         if(id==='lrows'&&!measure&&variant==='signal'&&Flow.update(root,html,memo=>PaneDesigns.updateSignal(root,r,memo)))continue;
         if(id==='lrows'&&variant==='bars'&&pane.dataset.view==='bars'&&Flow.update(root,html,()=>PaneDesigns.updateBars(root,r,ctx.barCount),true))continue;
         if(id==='lrows'&&variant==='ledger'&&pane.dataset.view==='ledger'&&Flow.update(root,html,(_,move)=>PaneDesigns.updateLedger(root,r,move),true))continue;
-        Flow.patch(root,html,true,!measure,id==='lrows'?retainReading:null);
+        const template=id==='lrows'&&variant==='signal'&&retainReading?PaneDesigns.signalTemplate(root,r,ctx,retainReading):null;
+        Flow.patch(root,html,true,!measure,id==='lrows'?retainReading:null,template??html);
       }
       },measure,side==='left'&&(P.rows?.length||0)>70);
       // The pane itself scrolls; its body has no painted size boundary. Keep its

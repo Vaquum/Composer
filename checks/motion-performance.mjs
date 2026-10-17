@@ -594,6 +594,14 @@ for(const [name,type,rate] of browsers){
       finally{A.Stage.draw=draw;}
     });
     assert.deepEqual(resizeFrame,{paints:1,settled:true,temporary:false},'resize settlement must draw one complete frame and release its geometry snapshot');
+    const clearParity=await page.evaluate(()=>{
+      const A=__perf;A.Stage.rootPaintKey=null;A.Stage.draw();const G=A.Stage.geom(),surfaces=[A.Stage.cv,A.Stage.guideSurface];
+      const pixels=cv=>cv.getContext('2d').getImageData(0,0,Math.min(cv.width,Math.ceil(G.w*cv.flowDpr)),Math.min(cv.height,Math.ceil(G.h*cv.flowDpr))).data;
+      const before=surfaces.map(pixels);
+      for(const cv of surfaces){const ctx=cv.getContext('2d');ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,cv.width,cv.height);ctx.restore();}
+      A.Stage.rootPaintKey=null;A.Stage.draw();return surfaces.every((cv,k)=>pixels(cv).every((value,i)=>value===before[k][i]));
+    });
+    assert.ok(clearParity,'visible root/guide pixels after repeated resize must match an independent full-capacity clear');
     const focus=await page.evaluate(()=>{
       const F=__perf.Flow,root=document.createElement('div');Object.assign(root.style,{position:'fixed',left:'10px',top:'10px'});document.body.append(root);
       F.patch(root,'<button data-motion-key="a">A</button><button data-motion-key="b">B</button>');

@@ -506,11 +506,11 @@ const TactileFlow = (() => {
       try{return change();}finally{transaction=previous;}
     },actors,measure,defer);
   }
-  function patch(root, markup, animate = true, stable = false, retain = null) {
+  function patch(root, markup, animate = true, stable = false, retain = null, templateMarkup = markup) {
     const previous=markups.get(root);
     if(previous?.markup===markup&&previous.first===root.firstChild&&previous.last===root.lastChild){details(root);return;}
     for(let parent=root.parentElement;parent;parent=parent.parentElement)markups.delete(parent);
-    const template = document.createElement('template'); template.innerHTML = markup; details(template.content);
+    const template = document.createElement('template'); template.innerHTML = templateMarkup; details(template.content);
     let result=stable&&!retain&&previous&&previous.first===root.firstChild&&previous.last===root.lastChild?stableUpdate(root,template.content):null;
     if(result===null)result=animate?(transaction?.root.contains(root)?reconcile(root,template.content,transaction.geometries,true,retain):layout(root,geometries=>reconcile(root,template.content,geometries,true,retain))):reconcile(root,template.content,new Map(),false,retain);
     details(root);invalidate(root);

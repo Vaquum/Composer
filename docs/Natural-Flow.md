@@ -92,7 +92,9 @@ visibility skips offscreen geometry in settled scenes; scroll/resize resets it,
 and disconnected targets are released. Active scenes retain live measurements.
 Reconciliation prepares all nested retirements before retained DOM writes, so
 later sibling snapshots do not repeatedly force layout. Desktop grid columns
-contain their layout and paint during the reference track's resize. Mac desktop
+contain their layout and paint during the reference track's resize. Root and
+guide canvases clear only the live viewport, keeping reserved capacity clipped;
+visible pixels are compared with an independent full-capacity clear. Mac desktop
 WebKit uses its fixed-background cache for the paper while the document is at
 its origin, retaining the existing paint order. Outer document scrolling restores
 scroll attachment for both body and viewport scrollers, preserving texture coordinates. Other engines
@@ -102,6 +104,9 @@ and permit two 8-bit compositor rounding units.
 Retained reading rows in all three designs reuse their verified bindings inside structural
 reconciliation. Bar groups also update and reorder their verified rows directly,
 including summary values; changed group/row shapes use the general renderer.
+Ranked readings use compact templates only for validated rows staying in their
+keyed parent; crossings retain full markup. Reconciliation caches the canonical
+full markup, so compact templates cannot suppress subsequent value updates.
 Headers and changed row shapes still use the general path.
 Previously unseen actors receive a fresh observer sample after layout changes,
 so arrivals retain their entry spring without synchronous offscreen reads.
