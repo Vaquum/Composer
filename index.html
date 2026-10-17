@@ -537,7 +537,7 @@ const COL = {};
 // original background while decoding and if the browser cannot read it back.
 const Paper={key:'',cache:new Map(),ready:Promise.resolve(),update(){
   if(!PAPER_CACHE)return;
-  const texture=getComputedStyle(document.documentElement).getPropertyValue('--tex').trim(),dpr=devicePixelRatio||1,key=dpr+'|'+texture;
+  const texture=getComputedStyle(document.documentElement).getPropertyValue('--tex').trim(),paper=getComputedStyle(document.body).backgroundColor,dpr=devicePixelRatio||1,key=dpr+'|'+paper+'|'+texture;
   if(key===this.key)return;this.key=key;
   document.body.style.removeProperty('background-image');document.body.style.removeProperty('background-size');
   const apply=url=>{if(this.key===key){document.body.style.backgroundImage=`url("${url}")`;document.body.style.backgroundSize='220px 220px';}};
@@ -547,7 +547,9 @@ const Paper={key:'',cache:new Map(),ready:Promise.resolve(),update(){
     if(!match){resolve();return;}
     image.onerror=resolve;image.onload=()=>{
       const raster=()=>{try{
-        const tile=document.createElement('canvas');tile.width=tile.height=Math.round(220*dpr);tile.getContext('2d').drawImage(image,0,0,tile.width,tile.height);
+        const tile=document.createElement('canvas');tile.width=tile.height=Math.round(220*dpr);const ctx=tile.getContext('2d');
+        // An opaque tile avoids PNG alpha unpremultiplication changing shades.
+        ctx.fillStyle=paper;ctx.fillRect(0,0,tile.width,tile.height);ctx.drawImage(image,0,0,tile.width,tile.height);
         const url=tile.toDataURL();if(this.cache.size>=4)this.cache.delete(this.cache.keys().next().value);this.cache.set(key,url);apply(url);
       }catch(error){/* the native background remains available */}finally{resolve();}};
       if('requestIdleCallback' in window)requestIdleCallback(raster,{timeout:500});else setTimeout(raster,0);
