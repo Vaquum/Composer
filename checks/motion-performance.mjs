@@ -78,6 +78,8 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
     if(type===chromium){cdp=await context.newCDPSession(page);await cdp.send('Performance.enable');await cdp.send('Emulation.setCPUThrottlingRate',{rate});}
     await page.evaluate(()=>{
       const A=__perf;__samples.active=false;
+      const drawFan=A.Stage.drawFan;
+      A.Stage.drawFan=function(...args){const before=this.fanCache;try{return drawFan.apply(this,args);}finally{if(__samples.active&&before!==this.fanCache)__samples.fanRasters++;}};
       for(const [owner,names]of [[A.Stage,['move','down','up']],[A.Match,['presentResult']]])for(const name of names){
         const handler=owner[name];
         owner[name]=function(...args){const t=performance.now(),part=name==='presentResult'?['cards','right','left'][this.presentation?.tasks.length-1]:null;
@@ -90,7 +92,7 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
     });
     const measure=async(label,action)=>{
       await settle(page);
-      await page.evaluate(()=>{for(const key of ['frames','work','tasks','calls','paints','observers'])__samples[key]=[];for(const key of ['mutations','clones','measures','frameTime','frameWork'])__samples[key]=0;__samples.presentation={};__samples.active=true;});
+      await page.evaluate(()=>{for(const key of ['frames','work','tasks','calls','paints','observers'])__samples[key]=[];for(const key of ['mutations','clones','measures','frameTime','frameWork','fanRasters'])__samples[key]=0;__samples.presentation={};__samples.active=true;});
       await action();await settle(page);
       const sample=await page.evaluate(()=>{__samples.active=false;if(__samples.frameTime)__samples.work.push(__samples.frameWork);return{...__samples};});
       const p95=a=>a.length?a.slice().sort((a,b)=>a-b)[Math.floor((a.length-1)*.95)]:0;
@@ -125,7 +127,13 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
     await measure('pane',async()=>{for(const v of ['bars','ledger','signal']){await call('pane',v);await settle(page);await call('paneRight',v);await settle(page);}});
     const size=await measure('disclosure',async()=>{await call('disclosure');});
     assert.ok(size.measures<=3,'opening a fixed-width disclosure must not clone/measure once per animation frame');
-    await measure('reference',async()=>{for(const topic of [2,3,4]){await call('reference',true);await settle(page);await call('topic',topic);await settle(page);await call('reference',false);await settle(page);}});
+    const framing=await measure('reference',async()=>{for(const topic of [2,3,4]){await call('reference',true);await settle(page);await call('topic',topic);await settle(page);await call('reference',false);await settle(page);}});
+    assert.ok(framing.fanRasters<=12,'framing must reuse the blurred fan rather than rebuilding it every spring frame');
+    const fanParity=await page.evaluate(()=>{
+      const A=__perf,before=A.Stage.forecastSurface.toDataURL();A.Stage.fanCache=null;A.Stage.forecastPaint=null;A.Stage.draw();
+      return before===A.Stage.forecastSurface.toDataURL();
+    });
+    assert.ok(fanParity,'settled fan pixels must match a fresh native render after texture reprojection');
     await measure('forecast',async()=>{for(const v of ['paths','branches','states']){await call('forecast',v);await settle(page);}await call('fan',false);await settle(page);await call('fan',true);});
     await measure('refresh',async()=>{for(let i=0;i<3;i++){await call('refresh');await settle(page);}});
     await measure('refresh-replace',async()=>{await call('refresh','replace');});

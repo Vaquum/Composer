@@ -1444,7 +1444,8 @@ const Stage = {
     const scaleY=(Y(1)-Y(0))/(cached.one-cached.zero),top=Y(0)+(texture.y-cached.zero)*scaleY;
     // The first interval and the five equally spaced future columns resize
     // independently. Two image slices preserve all six quantile positions.
-    for(const [left,right,start,finish]of [[texture.x,cached.first,lx+(texture.x-cached.root)*(xs[0]-lx)/(cached.first-cached.root),xs[0]],
+    if(cached.projection===projection)paintCanvas(ctx,surface,texture.x,texture.y,texture.w,texture.h);
+    else for(const [left,right,start,finish]of [[texture.x,cached.first,lx+(texture.x-cached.root)*(xs[0]-lx)/(cached.first-cached.root),xs[0]],
       [cached.first,texture.x+texture.w,xs[0],xs[0]+(texture.x+texture.w-cached.first)*(end-xs[0])/(cached.end-cached.first)]]){
       const sourceX=(left-texture.x)/texture.w*surface.flowWidth,sourceW=(right-left)/texture.w*surface.flowWidth;
       ctx.drawImage(surface,sourceX,0,sourceW,surface.flowHeight,start,top,finish-start,texture.h*scaleY);
