@@ -523,7 +523,9 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
     if(cdp){const after=(await cdp.send('Performance.getMetrics')).metrics.find(m=>m.name==='JSHeapUsedSize').value;assert.ok(after-heap<2e6,`transition heap grew by ${after-heap} bytes after GC`);}
     await page.emulateMedia({reducedMotion:'reduce'});
     await page.waitForFunction(()=>__perf.Flow.reduced());
-    const reduced=await measure('reduced-motion',async()=>{await call('reference',true);await call('pane','bars');await call('forecast','states');await call('reference',false);await call('refresh','layout');});
+    const reduced=await measure('reduced-motion',async()=>{await call('reference',true);await call('pane','bars');await call('forecast','states');await call('reference',false);
+      // Reference resize is an explicit settlement boundary; test refresh after it.
+      await settle(page);await call('refresh','layout');});
     if(n>10)assert.equal(reduced.presentationFrames.length,3,'reduced-motion refresh must still yield between all three result parts');
     assert.equal(reduced.measures,0,'reduced motion must bypass intrinsic measurement clones');
     const resizeFrame=await page.evaluate(async()=>{
