@@ -2298,7 +2298,7 @@ const App = {
     // one bad frame must never stop the paper for good
     try {
       Stage.frameBox=Stage.box&&!Flow.value(Ref.pane,'reference')?Stage.box:Stage.measureBox();
-      if(Stage.resizePending){Stage.resizePending=false;if(!Flow.value(Ref.pane,'reference')){Stage.plot.ready=false;Flow.finish();}}
+      if(Stage.resizePending){Stage.resizePending=false;if(!Flow.value(Ref.pane,'reference')){Stage.plot.ready=false;Stage.settle(false);}}
       busy = Stage.step(dt); Stage.draw();
     } catch (err) { console.error(err); }
     finally{Stage.frameBox=null;}

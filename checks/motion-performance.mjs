@@ -225,7 +225,8 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
     if(n===20){
       const queued=await page.evaluate(async()=>{
         const A=__perf,r=A.Match.result,shown=document.querySelector('#emaki .card').dataset.motionKey,send=offset=>A.Match.onmsg({...r,type:'result',id:A.Match.id,results:r.results.map(x=>({...x,start:x.start+offset}))});
-        send(1e6);send(2e6);A.Match.setTrace(0);const trace=A.Stage.trace.key;await new Promise(requestAnimationFrame);return{keys:A.Match.result.results.map(x=>A.Match.resultKeyOf(x)),shown,trace,remaining:A.Match.presentation?.tasks.length};
+        // An internal canvas resize must not flush queued result presentation.
+        A.Stage.resizePending=true;A.App.redraw();send(1e6);send(2e6);A.Match.setTrace(0);const trace=A.Stage.trace.key;await new Promise(requestAnimationFrame);return{keys:A.Match.result.results.map(x=>A.Match.resultKeyOf(x)),shown,trace,remaining:A.Match.presentation?.tasks.length};
       });
       assert.equal(queued.trace,queued.shown,'input during queued presentation must address the displayed historical card');
       assert.equal(queued.remaining,2,'superseding results must share one scheduled presentation callback');

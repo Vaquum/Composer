@@ -106,7 +106,8 @@ one declaration rather than repeated CSS property setters.
 Large result presentation coalesces one animation-frame callback and commits
 the left pane, right pane and cards in separate paint frames. Superseding results
 reuse the pending callback; forced settlement cancels it and commits the accepted
-cohort. Reduced-motion users retain separate presentation frames; hidden and
+cohort. Internal canvas resize settlement leaves the result queue intact.
+Reduced-motion users retain separate presentation frames; hidden and
 printing pages settle immediately. Large thumbnails retain the original rectangle
 renderer inside a shared vector image, preserving native pixels, skip opacity and
 held annotations while reducing live SVG nodes. Theme changes refresh the image
