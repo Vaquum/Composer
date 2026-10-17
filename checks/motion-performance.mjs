@@ -41,13 +41,27 @@ const seed=(page,result)=>page.evaluate(r=>{
   const A=__perf;A.Match.ready=true;A.Match.failed=false;A.Match.sent=A.Match.query();A.Match.sentKey=A.Match.key();
   A.Match.onmsg({...r,type:'result',id:A.Match.id});
 },result);
-const reports=[],paperProfile=process.argv.includes('--paper-profile');
+const reports=[],paperProfile=process.argv.includes('--paper-profile'),nativeProfile=process.argv.includes('--native-profile');
 const traceDirectory=paperProfile?fs.mkdtempSync(path.join(os.tmpdir(),'composer-paper-trace-')):null;
-const browsers=paperProfile?[['Chromium 4x CPU',chromium,4]]:[['Chromium native',chromium,1],['Chromium 4x CPU',chromium,4],['WebKit',webkit,1]];
-const screens=paperProfile?[[20,1600,2,'scroll'],[20,1600,2,'fixed'],[20,1600,2,'scroll'],[20,1600,2,'fixed']]:[[2,1600,1],[20,1600,2],[20,390,2]];
+const browsers=nativeProfile?[['WebKit',webkit,1]]:paperProfile?[['Chromium 4x CPU',chromium,4]]:[['Chromium native',chromium,1],['Chromium 4x CPU',chromium,4],['WebKit',webkit,1]];
+const screens=nativeProfile?[[2,1600,1]]:paperProfile?[[20,1600,2,'scroll'],[20,1600,2,'fixed'],[20,1600,2,'scroll'],[20,1600,2,'fixed']]:[[2,1600,1],[20,1600,2],[20,390,2]];
 // Shared GitHub runners have no controlled display/GPU cadence. Keep application
 // and input budgets there; native frame delivery is enforced on the local host.
 const controlledGraphics=process.env.GITHUB_ACTIONS!=='true';
+async function diagnoseNativePaint(page,label,action,p95){
+  const start=()=>page.evaluate(()=>{
+    const d=window.__paintDiagnosis={frames:[],active:true,previous:0};
+    const tick=now=>{if(!d.active)return;if(d.previous)d.frames.push(now-d.previous);d.previous=now;requestAnimationFrame(tick);};requestAnimationFrame(tick);
+  });
+  const stop=()=>page.evaluate(()=>{__paintDiagnosis.active=false;return __paintDiagnosis.frames;});
+  const report=(variant,frames)=>{assert.ok(frames.length>5,'paint diagnosis must collect actual frames');console.log(JSON.stringify({diagnosis:label,variant,frames:frames.length,p95:p95(frames)}));};
+  await start();await page.waitForTimeout(1200);report('idle',await stop());
+  for(const [variant,css]of [['control',''],['paper-none',':root,body{background-image:none!important}'],['control',''],['flat-detail','.flow-detail-content{transform:none!important}'],['control',''],['clipped-detail','.flow-detail-body{contain:paint!important}'],['contained-rows','.pane div.prow{contain:layout!important}'],['control','']]){
+    const style=await page.addStyleTag({content:css});
+    try{await settle(page);await start();await action();await settle(page);await action();await settle(page);report(variant,await stop());}
+    finally{await style.evaluate(node=>node.remove());await settle(page);}
+  }
+}
 try{
 for(const [name,type,rate] of browsers){
   const browser=await type.launch({headless:true});
@@ -216,6 +230,8 @@ for(const [name,type,rate] of browsers){
       // work and input handlers. Frame delivery is reported, never hidden by idle samples.
       assert.ok(report.callMax<100,`${label}: an input/result task exceeded 100 ms (${report.callMax})`);
       assert.ok(report.workP95<16.7*rate,`${label}: application work exceeded its native-frame budget scaled by ${rate}× CPU (${report.workP95})`);
+      // Diagnostic ablations never replace or waive the original native gate.
+      if(nativeProfile&&controlledGraphics&&label!=='reduced-motion'&&report.frameP95>=25)await diagnoseNativePaint(page,label,action,p95);
       if(controlledGraphics&&rate===1&&label!=='reduced-motion')assert.ok(report.frameP95<25,`${label}: native frame delivery exceeded its budget (${report.frameP95})`);
       if(controlledGraphics)assert.ok(report.paintP95<100,`${label}: pointer input waited more than 100 ms for its next paint (${report.paintP95})`);
       return sample;
