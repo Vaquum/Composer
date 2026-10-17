@@ -1388,7 +1388,9 @@ const Stage = {
       const layer=fitCanvas(this.forecastSurface,box.w,box.h,Math.min(2,devicePixelRatio||1),true);
       layer.clearRect(0,0,this.forecastSurface.width/this.forecastSurface.flowDpr,this.forecastSurface.height/this.forecastSurface.flowDpr);layer.translate(-x,-y);
       this.layer(this.forecastSurface,box);
-      this.drawFan(layer,G,true);
+      // Engines without canvas filters have no blur readback to avoid; keep
+      // their wash in the existing surface instead of adding compositor layers.
+      this.drawFan(layer,G,'filter' in layer);
       if(Forecast.source){this.drawStates(layer,G);this.drawPaths(layer,G);this.drawBranches(layer,G);}else this.drawForecastEmpty(layer,G);
       this.forecastPaint = { source: Forecast.source, key, canvas: this.forecastSurface };
     }
