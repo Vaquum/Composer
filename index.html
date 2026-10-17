@@ -828,7 +828,7 @@ const Forecast = {
       this.rendered=key;this.context?.cancelFor?.(this.body);this.context?.cancelFor?.(this.fanHits);
       Flow.patch(this.body,this.markup(),false);
       Flow.patch(this.fanHits,c?'<button type="button" class="forecast-fan-hit" data-kind="fan" aria-label="Historical closing-price fan"></button>'+c.fan.flatMap((q,j)=>q.map((_,k)=>`<span class="forecast-fan-point" data-step="${j}" data-quantile="${k}" data-key="fan-${j}-${k}"></span>`)).join(''):'',false);
-      this.placement=null;this.tipSource=null;
+      this.placement=null;this.positions=new WeakMap();this.tipSource=null;
       if(focused){const target=[...this.body.querySelectorAll('[data-key]')].find(b=>b.dataset.key===focused);target?.focus({preventScroll:true});}
       App.redraw();
     }
@@ -874,12 +874,14 @@ const Forecast = {
     const placement=[G.w,G.h,G.forecastLeft,G.plotTop,G.plotBottom,...F.xs,F.width,lo,hi,Stage.view.lo,Stage.view.hi,this.semantic].join('|');
     if(this.placement===placement)return;this.placement=placement;
     const set=this.source?this.outcomes(this.view==='branches'?this.prefix:''):null;
+    this.positions??=new WeakMap();
     const put=(el,x,y,w,h)=>{
-      const values={left:x,top:y,width:Math.max(0,w),height:Math.max(0,h)};
-      for(const [name,value] of Object.entries(values)){
-        const css=`${Math.round(value*1000)/1000}px`;
-        if(el.style[name]!==css)el.style[name]=css;
-      }
+      const values=[x,y,Math.max(0,w),Math.max(0,h)].map(v=>Math.round(v*1000)/1000),before=this.positions.get(el);
+      if(!before){el.style.left='0px';el.style.top='0px';}
+      if(!before||before[0]!==values[0]||before[1]!==values[1])el.style.translate=`${values[0]}px ${values[1]}px`;
+      if(!before||before[2]!==values[2])el.style.width=`${values[2]}px`;
+      if(!before||before[3]!==values[3])el.style.height=`${values[3]}px`;
+      this.positions.set(el,values);
     };
     put($('#forecast-message'),F.left,F.top-22,F.right-F.left-50,22);put($('#forecast-retry'),F.right-48,F.top-22,48,22);
     this.body.querySelectorAll('[data-kind]').forEach(el=>{
