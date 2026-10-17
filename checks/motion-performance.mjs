@@ -39,7 +39,7 @@ const seed=(page,result)=>page.evaluate(r=>{
   const A=__perf;A.Match.ready=true;A.Match.failed=false;A.Match.sent=A.Match.query();A.Match.sentKey=A.Match.key();
   A.Match.onmsg({...r,type:'result',id:A.Match.id});
 },result);
-const reports=[],paperProfile=process.env.COMPOSER_PAPER_PROFILE==='1';
+const reports=[],paperProfile=process.argv.includes('--paper-profile');
 const browsers=paperProfile?[['Chromium 4x CPU',chromium,4]]:[['Chromium native',chromium,1],['Chromium 4x CPU',chromium,4],['WebKit',webkit,1]];
 const screens=paperProfile?[[20,1600,2,'scroll'],[20,1600,2,'fixed'],[20,1600,2,'scroll'],[20,1600,2,'fixed']]:[[2,1600,1],[20,1600,2],[20,390,2]];
 // Shared GitHub runners have no controlled display/GPU cadence. Keep application
