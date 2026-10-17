@@ -11,7 +11,7 @@ const requests=[];
 const origin=spawn(python,['checks/loading_origin.py',barsFile,activityFile],{stdio:['ignore','pipe','pipe']});
 let stderr='',startupTimer,browser;
 origin.stderr.on('data',bytes=>{stderr+=bytes;});
-const exited=new Promise(resolve=>origin.once('exit',resolve));
+const exited=new Promise(resolve=>{origin.once('exit',resolve);origin.once('error',resolve);});
 const lines=createInterface({input:origin.stdout});
 const ready=new Promise((resolve,reject)=>{
   startupTimer=setTimeout(()=>reject(new Error(`loading origin did not start: ${stderr}`)),20000);
@@ -74,7 +74,9 @@ try{
   console.log('Real loading: prioritized first matches, cached reload, complete readings and stable controls passed.');
 }finally{
   clearTimeout(startupTimer);
-  await browser?.close();
-  if(origin.exitCode===null&&origin.signalCode===null){origin.kill();await exited;}
-  lines.close();
+  try{await browser?.close();}
+  finally{
+    if(origin.exitCode===null&&origin.signalCode===null){origin.kill();await exited;}
+    lines.close();
+  }
 }
