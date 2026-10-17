@@ -125,3 +125,5 @@
 /* Keep later sections below the initial viewport while their primary readings
    load, so the first answer does not push visible controls out of the way. */
 .pane[data-loading="true"] :is(#lrows,#rbecame) { display: block; min-height: max(320px,calc(100dvh - 240px)); }
+
+.pane[data-loading="true"] :is(#lnextsec,#rfan,#rnearsec,details[data-detail="left-method"],details[data-detail="right-method"]) { display: none; }

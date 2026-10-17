@@ -156,6 +156,7 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
 .chip[aria-pressed="true"] b { color: var(--ink); }
 .status { display: flex; align-items: center; gap: 10px; min-height: 22px; font-size: 12.5px; color: var(--ink-2); }
 .status .msg { min-width: 0; }
+@media (min-width: 1181px) { .status { align-items: flex-start; } .status .prog { margin-top: 17px; } }
 .status .msg b { color: var(--ink); font-weight: 500; }
 .prog { flex: none; width: 90px; height: 1px; background: var(--hair); position: relative; overflow: hidden; }
 .prog i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--ai); width: 0; }
@@ -186,7 +187,7 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
 .nm.none { color: var(--ink-3); font-size: 12.5px; }
 .desc { margin: 0; font-size: 12.5px; color: var(--ink-2); max-width: 78ch; display: flex; flex-direction: column; gap: 2px; }
 .codebox { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; min-width: 0; }
-.codebox code { font: 400 12px/1.4 var(--font-code); color: var(--ink-2); overflow-wrap: anywhere; }
+.codebox code { min-height: 1.4em; font: 400 12px/1.4 var(--font-code); color: var(--ink-2); overflow-wrap: anywhere; }
 .codebox .dom { font-size: 12px; color: var(--ink-3); }
 .link { font-size: 12px; color: var(--ai); }
 
@@ -382,7 +383,7 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
           <span class="seg mini" id="nmeas" role="group" aria-label="By how much"><button type="button" data-v="any">at all</button><button type="button" data-v="bps">bps</button><button type="button" data-v="atr">ATR</button></span>
           <label class="nval" id="nvalw" hidden>≥<input id="nval" type="number" inputmode="decimal" min="0.1" step="1" aria-label="Threshold"></label>
         </span>
-        <span class="tfs" id="tfs" role="group" aria-label="Timeframes"></span>
+        <span class="tfs" id="tfs" role="group" aria-label="Timeframes"><button type="button" class="chip" data-k="0" aria-pressed="true" title="Leave out 15m">15m</button><button type="button" class="chip" data-k="1" aria-pressed="true" title="Leave out 30m">30m</button><button type="button" class="chip" data-k="2" aria-pressed="true" title="Leave out 1h">1h</button><button type="button" class="chip" data-k="3" aria-pressed="true" title="Leave out 2h">2h</button><button type="button" class="chip" data-k="4" aria-pressed="true" title="Leave out 4h">4h</button></span>
         <span class="seg" id="xsel" role="group" aria-label="How many instances"><button type="button" data-x="12">12</button><button type="button" data-x="24">24</button><button type="button" data-x="48">48</button></span>
         </div>
       </div>
