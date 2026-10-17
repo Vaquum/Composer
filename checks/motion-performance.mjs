@@ -140,7 +140,7 @@ for(const [name,type,rate] of browsers){
       assert.ok(scroll>previous,'each paper tile must advance the actual scroll offset');previous=scroll;tiles++;
       if(scroll>0)assert.equal(position.attachment,'scroll','outer body/document scrolling must restore the original paper attachment');
       const layeredPaper=await page.screenshot();
-      const originalPaper=await page.addStyleTag({content:'body{background-attachment:scroll!important;background-image:var(--tex)!important;background-size:auto!important}'});
+      const originalPaper=await page.addStyleTag({content:':root{background-image:none!important}body{background-color:var(--paper)!important;background-image:var(--tex)!important;background-attachment:scroll!important;background-size:auto!important}'});
       try{
         await painted();const original=await page.screenshot();
         if(!layeredPaper.equals(original)){
@@ -206,7 +206,7 @@ for(const [name,type,rate] of browsers){
         trace={file:stem+'.trace.json',cpu:stem+'.cpuprofile',inclusiveEvents:[...totals.values()].sort((a,b)=>b.totalMs-a.totalMs).slice(0,12),selfSamples:[...samples].sort((a,b)=>b[1]-a[1]).slice(0,12)};
       }
       const p95=a=>a.length?a.slice().sort((a,b)=>a-b)[Math.floor((a.length-1)*.95)]:0;
-      const paintState=await page.evaluate(()=>({attachment:getComputedStyle(document.body).backgroundAttachment,bodyTop:document.body.scrollTop,windowTop:scrollY}));
+      const paintState=await page.evaluate(()=>({attachment:getComputedStyle(document.body).backgroundAttachment,rootAttachment:getComputedStyle(document.documentElement).backgroundAttachment,rootImage:getComputedStyle(document.documentElement).backgroundImage!=='none',bodyTop:document.body.scrollTop,windowTop:scrollY}));
       const report={browser:name,paper,trace,paintState,graphics,frameGate:controlledGraphics,bars:n,width,dpr,scenario:label,frames:sample.frames.length,
         frameP95:+p95(sample.frames).toFixed(1),workP95:+p95(sample.work).toFixed(1),callMax:+Math.max(0,...sample.calls).toFixed(1),
         paintP95:+p95(sample.paints).toFixed(1),observerMax:+Math.max(0,...sample.observers).toFixed(1),timerMax:+Math.max(0,...sample.timers).toFixed(1),taskMax:Math.max(0,...sample.tasks),presentationMax:Object.fromEntries(Object.entries(sample.presentation).map(([k,v])=>[k,+v.toFixed(1)])),actionMax:Object.fromEntries(Object.entries(sample.actions).map(([k,v])=>[k,+v.toFixed(1)])),measurements:sample.measures,mutations:sample.mutations};

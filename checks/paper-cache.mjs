@@ -19,8 +19,9 @@ try{
           await page.evaluate(top=>document.body.scrollTop=top,top);
           await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
           assert.equal(await page.evaluate(()=>document.body.scrollTop),top);
-          assert.equal(await page.evaluate(()=>getComputedStyle(document.body).backgroundAttachment),width>=1181&&top===0?'fixed':'scroll','only desktop origin may use the native cache');
-          const cached=await page.screenshot(),legacy=await page.addStyleTag({content:'body{background-attachment:scroll!important}'});
+          const enabled=await page.evaluate(()=>getComputedStyle(document.documentElement).backgroundImage!=='none');
+          assert.equal(enabled,width>=1181&&top===0,'only desktop origin may use the native cache');
+          const cached=await page.screenshot(),legacy=await page.addStyleTag({content:':root{background-image:none!important}body{background-color:var(--paper)!important;background-image:var(--tex)!important;background-attachment:scroll!important}'});
           const original=await page.screenshot();await legacy.evaluate(node=>node.remove());
           const difference=await page.evaluate(async({a,b})=>{
             const pixels=async src=>{const image=new Image();await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=reject;image.src=src;});const canvas=document.createElement('canvas');canvas.width=image.width;canvas.height=image.height;const ctx=canvas.getContext('2d');ctx.drawImage(image,0,0);return ctx.getImageData(0,0,canvas.width,canvas.height).data;};

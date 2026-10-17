@@ -16,9 +16,14 @@ checks = [
     [sys.executable, 'checks/container.py'],
     [sys.executable, 'checks/lint_workflows.py'],
 ]
+failed = []
 for argv in checks:
     print('Checking ' + ' '.join(argv[1:]), flush=True)
     result = subprocess.run(argv, cwd=ROOT, check=False)
     if result.returncode:
-        sys.exit(result.returncode)
+        failed.append((' '.join(argv[1:]), result.returncode))
+if failed:
+    for name, code in failed:
+        print(f'Failed ({code}): {name}', flush=True)
+    sys.exit(1)
 print('All required checks passed.', flush=True)
