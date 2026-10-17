@@ -46,8 +46,9 @@ let id = 0, mismatches = 0;
 const key = r => JSON.stringify({ mode: r.mode, exact: r.exact, exactF: r.exactF, counts: r.counts, countsF: r.countsF, split: r.split, base: r.base, results: r.results.map(x => [x.tf, x.start, x.end, x.picks.join('.'), x.flips, x.off, x.score]) });
 for (const [label, q, compare, budget] of cases) {
   const query = { x: 48, tfs: [1, 1, 1, 1, 1], oriented: true, next: null, stretch: 0, ...q };
-  bounded.setLatest(++id); let t = Date.now(); const a = await bounded.search(query, id, () => {}); const tb = Date.now() - t;
-  let line = `${label}: ${a.mode}, bounded ${tb} ms`;
+  bounded.setLatest(++id); const cpuStart=process.cpuUsage();let t = Date.now(); const a = await bounded.search(query, id, () => {}); const tb = Date.now() - t;
+  const cpu=process.cpuUsage(cpuStart),cpuMs=Math.round((cpu.user+cpu.system)/1000);
+  let line = `${label}: ${a.mode}, bounded ${tb} ms wall (${cpuMs} ms CPU)`;
   if (compare) {
     exhaustive.setLatest(++id); t = Date.now(); const b = await exhaustive.search(query, id, () => {}); const te = Date.now() - t;
     const same = key(a) === key(b);
