@@ -170,3 +170,9 @@ graphics renderer, while enforcing application-work, actual pointer-handler,
 input/result, semantic, allocation and cleanup budgets. Both frame delivery and
 pointer-to-next-frame wait remain enforced on the local native graphics host.
 Their uncontrolled virtual display/GPU cadence is not a native frame-delivery gate.
+
+For a bounded two-round Retina desktop comparison under 4× Chromium CPU
+throttling, run `COMPOSER_PAPER_PROFILE=1 node checks/motion-performance.mjs`.
+It alternates original and fixed paper attachment, reports every scenario, and
+retains the application, input, continuity and cleanup guards. The normal suite
+still runs the complete browser/viewport matrix and unchanged native budgets.

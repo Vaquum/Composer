@@ -39,15 +39,17 @@ const seed=(page,result)=>page.evaluate(r=>{
   const A=__perf;A.Match.ready=true;A.Match.failed=false;A.Match.sent=A.Match.query();A.Match.sentKey=A.Match.key();
   A.Match.onmsg({...r,type:'result',id:A.Match.id});
 },result);
-const reports=[];
+const reports=[],paperProfile=process.env.COMPOSER_PAPER_PROFILE==='1';
+const browsers=paperProfile?[['Chromium 4x CPU',chromium,4]]:[['Chromium native',chromium,1],['Chromium 4x CPU',chromium,4],['WebKit',webkit,1]];
+const screens=paperProfile?[[20,1600,2,'scroll'],[20,1600,2,'fixed'],[20,1600,2,'scroll'],[20,1600,2,'fixed']]:[[2,1600,1],[20,1600,2],[20,390,2]];
 // Shared GitHub runners have no controlled display/GPU cadence. Keep application
 // and input budgets there; native frame delivery is enforced on the local host.
 const controlledGraphics=process.env.GITHUB_ACTIONS!=='true';
 try{
-for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU',chromium,4],['WebKit',webkit,1]]){
+for(const [name,type,rate] of browsers){
   const browser=await type.launch({headless:true});
   try{
-  for(const [n,width,dpr] of [[2,1600,1],[20,1600,2],[20,390,2]]){
+  for(const [n,width,dpr,paper] of screens){
     const context=await browser.newContext({viewport:{width,height:1000},deviceScaleFactor:dpr,hasTouch:width===390});
     try{
     const page=await context.newPage(),errors=[];
@@ -76,6 +78,7 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
       Element.prototype.append=function(...nodes){__samples.measures+=nodes.filter(n=>n.nodeType===1&&n.hasAttribute('data-flow-measuring')).length;return append.apply(this,nodes);};
     });
     await page.route('https://fonts.**/**',r=>r.abort());await page.goto(base);await settle(page);
+    if(paper)await page.addStyleTag({content:`body{background-attachment:${paper}!important}`});
     await page.evaluate(n=>{while(__perf.S.bars.length<n)__perf.Ops.add();},n);
     const data=fixture(n);await seed(page,data);await settle(page);
     const thumbnails=await page.evaluate(async reference=>{
@@ -113,7 +116,7 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
     }
     await settle(page);
     const painted=()=>page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
-    const stillPaper=await page.addStyleTag({content:'*,*::before,*::after{transition:none!important;animation:none!important}'});
+    const freeze='transition:none!important;animation:none!important',stillPaper=await page.addStyleTag({content:`*,*::before,*::after{${freeze}}input[type=range]::-webkit-slider-thumb{${freeze}}input[type=range]::-moz-range-thumb{${freeze}}`});
     const paperScroll=await page.evaluate(()=>{
       const candidates=[...new Set([document.body,document.scrollingElement])];
       for(const node of candidates){
@@ -182,7 +185,7 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
       await action();await settle(page);
       const sample=await page.evaluate(()=>{__samples.active=false;if(__samples.frameTime)__samples.work.push(__samples.frameWork);return{...__samples};});
       const p95=a=>a.length?a.slice().sort((a,b)=>a-b)[Math.floor((a.length-1)*.95)]:0;
-      const report={browser:name,graphics,frameGate:controlledGraphics,bars:n,width,dpr,scenario:label,frames:sample.frames.length,
+      const report={browser:name,paper,graphics,frameGate:controlledGraphics,bars:n,width,dpr,scenario:label,frames:sample.frames.length,
         frameP95:+p95(sample.frames).toFixed(1),workP95:+p95(sample.work).toFixed(1),callMax:+Math.max(0,...sample.calls).toFixed(1),
         paintP95:+p95(sample.paints).toFixed(1),observerMax:+Math.max(0,...sample.observers).toFixed(1),timerMax:+Math.max(0,...sample.timers).toFixed(1),taskMax:Math.max(0,...sample.tasks),presentationMax:Object.fromEntries(Object.entries(sample.presentation).map(([k,v])=>[k,+v.toFixed(1)])),actionMax:Object.fromEntries(Object.entries(sample.actions).map(([k,v])=>[k,+v.toFixed(1)])),measurements:sample.measures,mutations:sample.mutations};
       reports.push(report);console.log(JSON.stringify(report));
