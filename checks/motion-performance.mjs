@@ -87,12 +87,20 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
         finally{URL.revokeObjectURL(url);}
       };
       const report=[];
+      for(let theme=0;theme<2;theme++){
       for(const [count,flat]of [[2,false],[20,false],[24,false],[20,true]]){
         let close=50;const raw=Array.from({length:count},(_,i)=>{const open=close;close=flat?50:open+[7,-5,0][i%3];return flat?[50,50,50,50]:[open,Math.max(open,close)+8,Math.min(open,close)-6,close];});
         const result={raw,picks:Array.from({length:count},(_,i)=>i).filter(i=>![2,7,12,17].includes(i)),broken:[0,1]},held=[{h:{color:true,bar:0}},{h:{a:[0,3],b:[1,2]}}];
         const before=await raster(legacy(result,held)),after=await raster(__perf.Match.thumb(result,held));let max=0;
         for(let i=0;i<before.pixels.length;i++)max=Math.max(max,Math.abs(before.pixels[i]-after.pixels[i]));
-        report.push({count,flat,max,before:before.count,after:after.count});
+        report.push({theme,count,flat,max,before:before.count,after:after.count});
+      }
+      document.querySelector('#theme').click();
+      if(__perf.Match.presentedResults?.[0]?.raw.length>4){
+        const image=document.querySelector('#emaki .card svg image'),template=document.createElement('template');
+        template.innerHTML=__perf.Match.thumb(__perf.Match.presentedResults[0],__perf.Match.presentedSent.held);
+        if(image?.getAttribute('href')!==template.content.querySelector('image')?.getAttribute('href'))throw Error('displayed thumbnail palette did not refresh with theme');
+      }
       }
       return report;
     },referenceThumbnail.toString());
@@ -515,7 +523,8 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
     if(cdp){const after=(await cdp.send('Performance.getMetrics')).metrics.find(m=>m.name==='JSHeapUsedSize').value;assert.ok(after-heap<2e6,`transition heap grew by ${after-heap} bytes after GC`);}
     await page.emulateMedia({reducedMotion:'reduce'});
     await page.waitForFunction(()=>__perf.Flow.reduced());
-    const reduced=await measure('reduced-motion',async()=>{await call('reference',true);await call('pane','bars');await call('forecast','states');await call('reference',false);});
+    const reduced=await measure('reduced-motion',async()=>{await call('reference',true);await call('pane','bars');await call('forecast','states');await call('reference',false);await call('refresh','layout');});
+    if(n>10)assert.equal(reduced.presentationFrames.length,3,'reduced-motion refresh must still yield between all three result parts');
     assert.equal(reduced.measures,0,'reduced motion must bypass intrinsic measurement clones');
     const resizeFrame=await page.evaluate(async()=>{
       const A=__perf,draw=A.Stage.draw;let paints=0;A.Stage.draw=function(...args){paints++;return draw.apply(this,args);};

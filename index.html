@@ -1760,7 +1760,7 @@ const Match = {
     }
   },
   queuePresentation(){
-    if(Flow.reduced()){this.flushPresentation();return;}
+    if(Flow.suspended()){this.flushPresentation();return;}
     if(this.presentationFrame)return;
     this.presentationFrame=requestAnimationFrame(()=>{this.presentationFrame=0;this.presentResult();});
   },
@@ -1795,7 +1795,7 @@ const Match = {
   },
   render(sent=this.resultSent||this.sent) {
     const r = this.result, held = sent.held, n = sent.q.bars.length,current=r.id===this.id;
-    this.presentedResults=r.results;
+    this.presentedResults=r.results;this.presentedSent=sent;
     if(current)$('#prog').hidden = true;
     // every count in the sentence covers the timeframes shown, like the rates it is compared with; the chips keep all five
     const F = r.filter, on = sent.q.tfs, sum = a => a.reduce((x, y, k) => x + (on[k] ? y : 0), 0);
@@ -1853,22 +1853,11 @@ const Match = {
     const X = i => pad + pitch * (i + 0.5), Y = v => pad + (hi - v) / (hi - lo || 1) * (h - 2 * pad - 5);
     let s = `<svg viewBox="0 0 ${w} ${h}" aria-hidden="true">`;
     // bars the drawing skipped stay visible but faint, so the run reads as it happened
-    const kept = new Set(r.picks),groups=new Map(),number=v=>+v.toFixed(4);
-    const rectangle=(x,y,w,h,round=false)=>{
-      [x,y,w,h]=[x,y,w,h].map(v=>+v.toFixed(2));
-      if(!round)return `M${x} ${y}h${w}v${h}h${-w}z`;
-      const rx=Math.min(.6,w/2),ry=Math.min(.6,h/2),dx=number(w-2*rx),dy=number(h-2*ry);
-      return `M${number(x+rx)} ${y}h${dx}a${rx} ${ry} 0 0 1 ${rx} ${ry}v${dy}a${rx} ${ry} 0 0 1 ${-rx} ${ry}h${-dx}a${rx} ${ry} 0 0 1 ${-rx} ${-ry}v${-dy}a${rx} ${ry} 0 0 1 ${rx} ${-ry}z`;
-    };
+    const kept = new Set(r.picks);
     bars.forEach(([o, hh, l, c], i) => {
       const cls = (c > o ? 'cu' : c < o ? 'cd' : 'cz') + (kept.has(i) ? '' : ' skip'), t = Y(Math.max(o, c)), b = Y(Math.min(o, c));
-      if(n<=4){s+=`<rect class="${cls}" x="${(X(i)-ww/2).toFixed(2)}" y="${Y(hh).toFixed(2)}" width="${ww.toFixed(2)}" height="${Math.max(.6,Y(l)-Y(hh)).toFixed(2)}"/><rect class="${cls}" x="${(X(i)-bw/2).toFixed(2)}" y="${t.toFixed(2)}" width="${bw.toFixed(2)}" height="${Math.max(1,b-t).toFixed(2)}" rx="0.6"/>`;return;}
-      let group=groups.get(cls);if(!group){group={wick:'',body:''};groups.set(cls,group);}
-      group.wick+=rectangle(X(i)-ww/2,Y(hh),ww,Math.max(.6,Y(l)-Y(hh)));
-      group.body+=rectangle(X(i)-bw/2,t,bw,Math.max(1,b-t),true);
+      s += `<rect class="${cls}" x="${(X(i) - ww / 2).toFixed(2)}" y="${Y(hh).toFixed(2)}" width="${ww.toFixed(2)}" height="${Math.max(0.6, Y(l) - Y(hh)).toFixed(2)}"/><rect class="${cls}" x="${(X(i) - bw / 2).toFixed(2)}" y="${t.toFixed(2)}" width="${bw.toFixed(2)}" height="${Math.max(1, b - t).toFixed(2)}" rx="0.6"/>`;
     });
-    // Separate wick/body paths preserve the original overlap opacity of skips.
-    for(const [cls,group]of groups)s+=`<path class="${cls}" d="${group.wick}"/><path class="${cls}" d="${group.body}"/>`;
     for (const bi of r.broken) {
       const hd = held[bi].h;
       if (hd.color) { const b = bars[hd.bar], t = Y(Math.max(b[0], b[3])), bt = Y(Math.min(b[0], b[3])); s += `<rect class="mk" x="${(X(hd.bar) - bw / 2 - 2).toFixed(2)}" y="${(t - 2).toFixed(2)}" width="${(bw + 4).toFixed(2)}" height="${(Math.max(1, bt - t) + 4).toFixed(2)}" rx="1.5"/>`; continue; }
@@ -1876,7 +1865,21 @@ const Match = {
       const [x1, y1] = pt(hd.a), [x2, y2] = pt(hd.b);
       s += `<line class="mkl" x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}"/><circle class="mk" cx="${x1.toFixed(2)}" cy="${y1.toFixed(2)}" r="2.4"/><circle class="mk" cx="${x2.toFixed(2)}" cy="${y2.toFixed(2)}" r="2.4"/>`;
     }
-    return s + '</svg>';
+    s+='</svg>';
+    if(n<=4)return s;
+    // Keep native rect rasterization, but share one decoded vector image across
+    // live cards and their departure snapshots instead of cloning every candle.
+    const palette=`<style>.cu{fill:${COL.up}}.cd{fill:${COL.down}}.cz{fill:${COL.flat}}.skip{fill-opacity:.22}.mk{fill:none;stroke:${COL.shu};stroke-width:1.3}.mkl{fill:none;stroke:${COL.shu};stroke-width:1;stroke-dasharray:2 2}</style>`;
+    const source=s.replace('aria-hidden="true"',`xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"`).replace('>',`>${palette}`);
+    return `<svg viewBox="0 0 ${w} ${h}" aria-hidden="true"><image width="${w}" height="${h}" href="data:image/svg+xml,${encodeURIComponent(source)}"/></svg>`;
+  },
+  retint(){
+    const held=this.presentedSent?.held;
+    if(!held)return;
+    document.querySelectorAll('#emaki .card').forEach((card,i)=>{
+      const image=card.querySelector('svg image'),result=this.presentedResults?.[i];
+      if(image&&result){const template=document.createElement('template');template.innerHTML=this.thumb(result,held);image.setAttribute('href',template.content.querySelector('image').getAttribute('href'));}
+    });
   },
   setTrace(i) {
     const r=i>=0?(this.presentedResults||this.result?.results)?.[i]:null;
@@ -2346,7 +2349,7 @@ function setSpace(u) {
 }
 $('#space').value = String(S.space);
 $('#space').addEventListener('input', e => setSpace(+e.target.value));
-function onTheme() { const root=document.documentElement;root.dataset.flowTheme='';Flow.finish();readTheme();Stage.paintVersion=(Stage.paintVersion||0)+1;void document.body.offsetWidth;delete root.dataset.flowTheme;Stage.departingForecast=null;App.redraw(); }
+function onTheme() { const root=document.documentElement;root.dataset.flowTheme='';Flow.finish();readTheme();Match.retint();Stage.paintVersion=(Stage.paintVersion||0)+1;void document.body.offsetWidth;delete root.dataset.flowTheme;Stage.departingForecast=null;App.redraw(); }
 $('#theme').addEventListener('click', () => {
   const root = document.documentElement, cur = root.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
   root.dataset.theme = cur === 'dark' ? 'light' : 'dark'; onTheme();

@@ -103,8 +103,11 @@ one declaration rather than repeated CSS property setters.
 Large result presentation coalesces one animation-frame callback and commits
 the left pane, right pane and cards in separate paint frames. Superseding results
 reuse the pending callback; forced settlement cancels it and commits the accepted
-cohort. Large thumbnails group wick and body geometry by fill class, preserving
-skip overlap opacity and held annotations with far fewer SVG nodes. Each actual presentation task is
+cohort. Reduced-motion users retain separate presentation frames; hidden and
+printing pages settle immediately. Large thumbnails retain the original rectangle
+renderer inside a shared vector image, preserving native pixels, skip opacity and
+held annotations while reducing live SVG nodes. Theme changes refresh the image
+from the displayed cohort’s captured query. Each actual presentation task is
 timed by the performance guard, and settlement waits for the complete queue.
 New accepted results replace queued work. A new search retains the last accepted
 cohort, including when its presentation has not started. That cohort finishes
