@@ -1362,7 +1362,7 @@ const Stage = {
     if(!this.forecastSurface)this.forecastSurface=document.createElement('canvas');
     const x=Math.max(0,Math.floor(G.forecastLeft-24)),y=Math.max(0,Math.floor(G.plotTop-24));
     const box={x,y,w:G.w-x,h:Math.min(G.h,Math.ceil(G.plotBottom+24))-y};
-    const key = [G.w,G.h,G.plotTop,G.plotBottom,G.forecastLeft,G.forecastWidth,...G.futureXs,
+    const key = [Math.min(2,devicePixelRatio||1),this.paintVersion||0,G.w,G.h,G.plotTop,G.plotBottom,G.forecastLeft,G.forecastWidth,...G.futureXs,
       this.view.lo,this.view.hi,this.modeMix,this.fanA,this.fanWeight,this.tracePresence,
       Forecast.view,Forecast.prefix,Forecast.selected,Forecast.current,COL.paper,COL.up,COL.down,COL.ai,COL['ink-2'],
       ...S.bars.flatMap(b=>[b.d,...b.dv])].join('|');
@@ -2292,7 +2292,7 @@ refresh();
 Match.start();
 Flow.onSettle(()=>{if(Match.presentation){Match.flushPresentation();Flow.finish();}Stage.settle(!Stage.frameBox);App.redraw();});
 Flow.reveal($('.top'),0);Flow.reveal($('.stage'),0);Flow.reveal($('.lpane'));Flow.reveal($('.rpane'));
-if (document.fonts) { const fontsReady=()=>{Flow.finish();App.redraw();}; document.fonts.ready.then(fontsReady); document.fonts.addEventListener('loadingdone',fontsReady); }
+if (document.fonts) { const fontsReady=()=>{Stage.paintVersion=(Stage.paintVersion||0)+1;Flow.finish();App.redraw();}; document.fonts.ready.then(fontsReady); document.fonts.addEventListener('loadingdone',fontsReady); }
 })();
 </script>
 

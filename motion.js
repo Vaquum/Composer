@@ -270,7 +270,7 @@ const TactileFlow = (() => {
     if (!opacity)return settle;
     // Preserve selector/inheritance context with shallow shells. Copying every computed
     // property of every descendant made a pane switch a hundreds-of-ms blocking task.
-    const ghost=path.template.cloneNode(true),snapshot=element.cloneNode(true);let context=ghost;
+    const ghost=document.createElement('div'),content=path.template.cloneNode(true),snapshot=element.cloneNode(true);let context=content;
     while(context.firstElementChild)context=context.firstElementChild;
     for(const node of [snapshot,...snapshot.querySelectorAll('*')])node.removeAttribute('id');
     const frozen=['display','box-sizing','font','color','text-align','padding','border','border-radius','background','gap','flex-direction','align-items','justify-content'].map(property=>`${property}:${style.getPropertyValue(property)}!important`).join(';');
@@ -281,14 +281,19 @@ const TactileFlow = (() => {
     }
     snapshot.style.cssText+=`;${frozen};position:absolute!important;left:0!important;top:0!important;width:${box.width}px!important;height:${box.height}px!important;margin:0!important;opacity:1!important;translate:none!important;transform:none!important`;
     context.append(snapshot);
+    ghost.append(content);
     ghost.inert = true; ghost.setAttribute('aria-hidden', 'true'); ghost.dataset.flowRetiring = '';
-    ghost.style.cssText=`position:fixed;left:${box.left}px;top:${box.top}px;width:${box.width}px;height:${box.height}px;margin:0;translate:none;transform:none;pointer-events:none;z-index:90`;
+    // Keep the viewport clip still and translate only its contents. Updating a
+    // clip path every spring sample repaints the entire retained SVG/text tree.
+    // Twice the travel includes the shared spring's small overshoot.
+    const room=model.information*2,top=box.top-room,height=box.height+room*2;
+    ghost.style.cssText=`position:fixed;left:${box.left}px;top:${top}px;width:${box.width}px;height:${height}px;margin:0;translate:none;transform:none;pointer-events:none;z-index:90;clip-path:inset(${Math.max(0,bounds.top-top)}px ${Math.max(0,box.right-bounds.right)}px ${Math.max(0,top+height-bounds.bottom)}px ${Math.max(0,bounds.left-box.left)}px)`;
+    content.style.cssText=`position:absolute;left:0;top:${room}px;width:${box.width}px;height:${box.height}px;will-change:translate;pointer-events:none`;
     const commit=()=>{
     settle(); document.body.append(ghost);
     spring(ghost, 'retirement', { from: { opacity, y: 0 }, to: { opacity: 0, y: -model.information },
       write: ({ opacity, y }) => {
-        ghost.style.opacity = String(bounded(opacity)); ghost.style.translate = `0 ${y}px`;
-        ghost.style.clipPath = `inset(${Math.max(0, bounds.top - box.top - y)}px ${Math.max(0, box.right - bounds.right)}px ${Math.max(0, box.bottom + y - bounds.bottom)}px ${Math.max(0, bounds.left - box.left)}px)`;
+        ghost.style.opacity = String(bounded(opacity)); content.style.translate = `0 ${y}px`;
       }, done: () => ghost.remove() });
     };commit.snapshot=ghost;return commit;
   }
