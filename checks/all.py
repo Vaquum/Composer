@@ -6,18 +6,24 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 checks = [
     ['node', 'checks/page.mjs'],
+    ['node', 'checks/paper-cache.mjs'],
     ['node', 'checks/motion-performance.mjs'],
     [sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-v'],
     *[['node', f'checks/{name}.mjs'] for name in
       ('pane-designs', 'forecast', 'forecast-ux', 'drag', 'chain', 'motion-model', 'motion-browser')],
     *[[sys.executable, 'checks/with_bars.py', f'checks/{name}.mjs'] for name in
-      ('similarity-windows', 'similarity-look', 'similarity-equivalence', 'panes', 'search-performance', 'loading-performance')],
+      ('similarity-windows', 'similarity-look', 'similarity-equivalence', 'panes', 'activity-preparation', 'search-performance', 'loading-performance')],
     [sys.executable, 'checks/container.py'],
     [sys.executable, 'checks/lint_workflows.py'],
 ]
+failed = []
 for argv in checks:
     print('Checking ' + ' '.join(argv[1:]), flush=True)
     result = subprocess.run(argv, cwd=ROOT, check=False)
     if result.returncode:
-        sys.exit(result.returncode)
+        failed.append((' '.join(argv[1:]), result.returncode))
+if failed:
+    for name, code in failed:
+        print(f'Failed ({code}): {name}', flush=True)
+    sys.exit(1)
 print('All required checks passed.', flush=True)

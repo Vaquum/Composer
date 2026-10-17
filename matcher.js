@@ -27,7 +27,7 @@ const TF_NAMES = ['15m', '30m', '1h', '2h', '4h'];
 const WORK_SLICE_MS = 16;
 let BARS = null, latest = 0, pending = null;
 // what Composer reads about each bar beside its shape, once the activity has arrived (per timeframe, aligned with BARS)
-let READ = null, pendingActivity = null;
+let READ = null, pendingActivity = null, activityVersion = 0;
 
 function decode(buffer) {
   const buf = new Uint8Array(buffer);
@@ -102,12 +102,12 @@ function decodeActivity(buffer) {
 // squares over its whole history, for the comparison.
 const READINGS = ['vol', 'trades', 'size', 'maker', 'range', 'body', 'day'];
 const AS_LOG = [true, true, true, false, false, false, false];
-function readings(T, A) {
+function* readingsWork(T, A) {
   const n = T.n, R = {};
   if (A.n !== n) throw new Error(`The ${T.name} activity does not cover its bars.`);
   for (const key of READINGS) R[key] = new Float32Array(n).fill(NaN);
   const size = new Float64Array(n);
-  for (let i = 0; i < n; i++) size[i] = A.quote[i] / A.trades[i];
+  for (let i = 0; i < n; i++) { size[i] = A.quote[i] / A.trades[i]; if ((i & 1023) === 1023) yield; }
   const w = new Float64Array(11);
   const median = (a, i) => { for (let j = 0; j < 11; j++) w[j] = a[i - 11 + j]; w.sort(); return w[5]; };
   for (let i = 0; i < n; i++) {
@@ -115,26 +115,55 @@ function readings(T, A) {
     if (T.run[i] >= 12) { R.vol[i] = A.vol[i] / median(A.vol, i); R.trades[i] = A.trades[i] / median(A.trades, i); R.size[i] = size[i] / median(size, i); }
     const a = i ? T.atr[i - 1] : NaN;
     if (T.run[i] >= 2 && a > 0) { R.range[i] = (T.H[i] - T.L[i]) / a; R.body[i] = Math.abs(T.C[i] - T.O[i]) / a; }
+    if ((i & 1023) === 1023) yield;
   }
   const days = new Map();
   for (let i = 0; i < n; i++) {
     const d = Math.floor(T.ts[i] / 86400), h = days.get(d);
     if (!h) days.set(d, [T.H[i], T.L[i]]);
     else { if (T.H[i] > h[0]) h[0] = T.H[i]; if (T.L[i] < h[1]) h[1] = T.L[i]; }
+    if ((i & 1023) === 1023) yield;
   }
   for (let i = 0; i < n; i++) {
     const h = days.get(Math.floor(T.ts[i] / 86400) - 1);
     if (h && h[0] > h[1]) R.day[i] = (T.C[i] - h[1]) / (h[0] - h[1]);
+    if ((i & 1023) === 1023) yield;
   }
   // Keep the exact log of each Float32 reading once, rather than repeating it
   // for every admitted placement in every search.
-  R.features = READINGS.map((key, f) => AS_LOG[f] ? Float64Array.from(R[key], Math.log) : R[key]);
-  R.base = READINGS.map((key, f) => {
+  R.features = []; R.base = [];
+  for (let f = 0; f < READINGS.length; f++) {
+    const values = AS_LOG[f] ? new Float64Array(n) : R[READINGS[f]];
+    if (AS_LOG[f]) for (let i = 0; i < n; i++) { values[i] = Math.log(R[READINGS[f]][i]); if ((i & 1023) === 1023) yield; }
+    R.features.push(values);
     let c = 0, sum = 0, sq = 0;
-    for (const x of R.features[f]) { if (x !== x) continue; c++; sum += x; sq += x * x; }
-    return [c, sum, sq];
-  });
+    for (let i = 0; i < n; i++) {
+      const x = values[i]; if (x === x) { c++; sum += x; sq += x * x; }
+      if ((i & 1023) === 1023) yield;
+    }
+    R.base.push([c, sum, sq]);
+  }
   return R;
+}
+function readings(T, A) {
+  const work = readingsWork(T, A); let step;
+  do { step = work.next(); } while (!step.done);
+  return step.value;
+}
+async function prepareReadings(tables, activity, current) {
+  const prepared = []; let deadline = performance.now() + WORK_SLICE_MS;
+  for (let k = 0; k < tables.length; k++) {
+    const work = readingsWork(tables[k], activity[k]);
+    for (;;) {
+      const step = work.next();
+      if (step.done) { prepared.push(step.value); break; }
+      if (performance.now() >= deadline) {
+        await tick(); if (!current()) return null;
+        deadline = performance.now() + WORK_SLICE_MS;
+      }
+    }
+  }
+  return current() ? prepared : null;
 }
 
 // Grid's statistics: 95% intervals, Wilson for rates and t for means, and nothing for fewer than 30 windows
@@ -319,7 +348,7 @@ function tick() {
 }
 
 async function search(q, id, report) {
-  const read = READ;
+  const read = READ, tables = BARS;
   const t0 = Date.now(), cq = compile(q), n = cq.n, held = q.holds.length > 0, stretch = held ? q.stretch : 0;
   const MO = new Float64Array(n), MH = new Float64Array(n), ML = new Float64Array(n), MC = new Float64Array(n), W = new Float64Array(4 * n);
   const picks = new Int32Array(n), exact = TF_NAMES.map(() => 0), counts = TF_NAMES.map(() => 0);
@@ -327,7 +356,7 @@ async function search(q, id, report) {
   const f = q.next && q.next.dir ? q.next : null, oo = {}, o0 = {};
   const base = { n: 0, up: 0, down: 0, flat: 0, pass: 0 }, split = { n: 0, up: 0, down: 0, flat: 0, none: 0 };
   const best = new Best(Math.max(400, q.x * 40));
-  const total = BARS.reduce((a, T) => a + T.n, 0);
+  const total = tables.reduce((a, T) => a + T.n, 0);
   let done = 0, sinceTick = 0, deadline = performance.now() + WORK_SLICE_MS;
 
   // The panes: the set of windows that match (exact twins with nothing held, the windows that hold otherwise, on the
@@ -514,8 +543,8 @@ async function search(q, id, report) {
     return false;
   }
 
-  for (let k = 0; k < BARS.length; k++) {
-    T = BARS[k]; on = !!q.tfs[k];
+  for (let k = 0; k < tables.length; k++) {
+    T = tables[k]; on = !!q.tfs[k];
     colourBounds = null;
     if (on && held && stretch && n > 2) {
       colourBounds = await boundColours(); if (id !== latest) return null;
@@ -596,9 +625,9 @@ async function search(q, id, report) {
     // nothing holds everything (and passes the next-bar filter): show the nearest windows that pass, each with the relations it breaks
     mode = 'fallback';
     const near = new Best(Math.max(400, q.x * 40));
-    for (let k = 0; k < BARS.length; k++) {
+    for (let k = 0; k < tables.length; k++) {
       if (!q.tfs[k]) continue;
-      T = BARS[k];
+      T = tables[k];
       for (s = 0; s + n <= T.n; s++) {
         if ((++sinceTick & 255) === 0 && performance.now() >= deadline) { await tick(); if (id !== latest) return null; deadline = performance.now() + WORK_SLICE_MS; }
         if (T.run[s + n - 1] < n) continue;
@@ -615,7 +644,7 @@ async function search(q, id, report) {
   let setKind = held && mode === 'held' ? 'hold' : 'twins';
   if (setN < 30 && setKind === 'twins' || mode === 'fallback') {
     acc = new Float64Array(n * NR * 3); setN = 0; setTf = TF_NAMES.map(() => [0, 0]); fan = new Float32Array(SAMPLE * AFTER); cont = [0, 0, 0, 0]; seed = 0x9e3779b9; sequences = new Map();
-    for (const r of ranked) { const R = BARS[r.k], e = r.s + r.span - 1; addSet(r.k, R, r.s, r.picks, e, outcomeInto(R, e, oo)); }
+    for (const r of ranked) { const R = tables[r.k], e = r.s + r.span - 1; addSet(r.k, R, r.s, r.picks, e, outcomeInto(R, e, oo)); }
     setKind = 'closest';
   }
   const panes = { kind: setKind, n: setN, readings: !!read, rows: [], next: null, byTf: setTf.map(([m, k]) => wilson(k, m)), tfN: setTf.map(([m]) => m), after: AFTER, cont: null, near: [] };
@@ -649,7 +678,7 @@ async function search(q, id, report) {
     };
   }
   panes.near = [...near].sort((a, b) => b[1].n - a[1].n).slice(0, 6).map(([at, v]) => {
-    const p = Math.floor(at / 3), R = BARS[v.k], bars = [];
+    const p = Math.floor(at / 3), R = tables[v.k], bars = [];
     for (let g = 0; g < n; g++) { const j = v.s + g; bars.push([R.O[j] / 100, R.H[j] / 100, R.L[j] / 100, R.C[j] / 100]); }
     return { a: cq.A[p], b: cq.B[p], was: cq.R[p], rel: at % 3 - 1, n: v.n, up: wilson(v.up, v.out), bars };
   });
@@ -657,13 +686,13 @@ async function search(q, id, report) {
   // distinct moments: skip anything overlapping an earlier pick in time, on any timeframe
   const chosen = [], spans = [];
   for (const r of ranked) {
-    const R = BARS[r.k], a = R.ts[r.s], b = R.ts[r.s + r.span - 1] + R.sec;
+    const R = tables[r.k], a = R.ts[r.s], b = R.ts[r.s + r.span - 1] + R.sec;
     if (spans.some(([x, y]) => a < y && b > x)) continue;
     spans.push([a, b]); chosen.push(r);
     if (chosen.length >= q.x) break;
   }
   const results = chosen.map(r => {
-    const R = BARS[r.k], raw = [], drawn = [], ps = r.picks || Array.from({ length: n }, (_, i) => i);
+    const R = tables[r.k], raw = [], drawn = [], ps = r.picks || Array.from({ length: n }, (_, i) => i);
     for (let i = 0; i < r.span; i++) { const j = r.s + i; raw.push([R.O[j] / 100, R.H[j] / 100, R.L[j] / 100, R.C[j] / 100]); }
     for (let g = 0; g < n; g++) {
       const j = r.s + ps[g];
@@ -682,16 +711,16 @@ async function search(q, id, report) {
 if (typeof self !== 'undefined' && typeof self.postMessage === 'function' && typeof window === 'undefined') {
   const memo = new Map();
   const run = async m => {
-    const key = JSON.stringify([!!READ,m.q]);
+    const read = READ, tables = BARS, key = JSON.stringify([!!read,m.q]);
     if (memo.has(key)) { if (m.id === latest) self.postMessage({type:'result',id:m.id,...memo.get(key),ms:0}); return; }
     const r = await search(m.q, m.id, f => self.postMessage({ type: 'progress', id: m.id, f }));
-    if (r) { if(memo.size>=6)memo.delete(memo.keys().next().value);memo.set(key,r);self.postMessage({ type: 'result', id: m.id, ...r }); }
+    if (r) { if (read === READ && tables === BARS) { if(memo.size>=6)memo.delete(memo.keys().next().value);memo.set(key,r); } self.postMessage({ type: 'result', id: m.id, ...r }); }
   };
   self.onmessage = async e => {
     const m = e.data;
     if (m.type === 'bars') {
       try {
-        BARS = decode(m.buffer); memo.clear();
+        BARS = decode(m.buffer); READ = null; activityVersion++; memo.clear();
         self.postMessage({ type: 'ready', bars: BARS.reduce((a, T) => a + T.n, 0), from: BARS[0].ts[0], to: BARS[0].ts[BARS[0].n - 1] + BARS[0].sec });
         if (pendingActivity) { const a = pendingActivity; pendingActivity = null; self.onmessage({ data: { type: 'activity', buffer: a } }); }
         if (pending) { const p = pending; pending = null; run(p); }
@@ -700,12 +729,15 @@ if (typeof self !== 'undefined' && typeof self.postMessage === 'function' && typ
     }
     if (m.type === 'activity') {
       if (!BARS) { pendingActivity = m.buffer; return; }
+      const tables = BARS, version = ++activityVersion;
       try {
         const A = decodeActivity(m.buffer);
-        if (A.length !== BARS.length) throw new Error('The activity does not cover every timeframe.');
-        READ = BARS.map((T, k) => readings(T, A[k])); memo.clear();
+        if (A.length !== tables.length) throw new Error('The activity does not cover every timeframe.');
+        const prepared = await prepareReadings(tables, A, () => version === activityVersion && tables === BARS);
+        if (!prepared) return;
+        READ = prepared; memo.clear();
         self.postMessage({ type: 'readings' });
-      } catch (err) { self.postMessage({ type: 'readings-error', message: String(err.message || err) }); }
+      } catch (err) { if (version === activityVersion && tables === BARS) self.postMessage({ type: 'readings-error', message: String(err.message || err) }); }
       return;
     }
     if (m.type === 'query') {

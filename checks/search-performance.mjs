@@ -10,17 +10,18 @@ let t=performance.now();const history=M.decode(bytes(file));M.setBars(history);c
 t=performance.now();const A=M.decodeActivity(bytes(process.argv[4]));console.log(JSON.stringify({stage:'decode-activity',ms:performance.now()-t}));
 t=performance.now();M.setRead(history.map((T,k)=>M.readings(T,A[k])));console.log(JSON.stringify({stage:'precompute-readings',ms:performance.now()-t}));
 function bars(n){let c=42;return Array.from({length:n},(_,i)=>{const o=c;c+=i%3===1?-18:14;return[o,Math.max(o,c)+12,Math.min(o,c)-12,c];});}
-let id=0;
+let id=0;const timingFailures=[];
 for(const [name,n,holds,stretch,tf,oriented] of [
 ['default',2,[],0,[1,1,1,1,1],true],['default-repeat',2,[],0,[1,1,1,1,1],true],['2-bars-only-4h',2,[],0,[0,0,0,0,1],true],['10-bars',10,[],0,[1,1,1,1,1],true],['20-bars',20,[],0,[1,1,1,1,1],true],['20-bars-shape-only',20,[],0,[1,1,1,1,1],false],['2-bars-pin',2,[{color:true,bar:0,dir:1}],0,[1,1,1,1,1],true],['5-bars-pin-stretch-0',5,[{color:true,bar:0,dir:1}],0,[1,1,1,1,1],true],['5-bars-pin-stretch-4',5,[{color:true,bar:0,dir:1}],4,[1,1,1,1,1],true],['10-bars-pin-stretch-4',10,[{color:true,bar:0,dir:1}],4,[1,1,1,1,1],true],['20-bars-pin-stretch-4',20,[{color:true,bar:0,dir:1}],4,[1,1,1,1,1],true]]){
-  const q={bars:bars(n),holds,stretch,tfs:tf,oriented,x:12};M.setLatest(++id);let previous=performance.now(),maxChunk=0,chunks=0;
+  const q={bars:bars(n),holds,stretch,tfs:tf,oriented,x:12};M.setLatest(++id);let previous=performance.now(),previousCpu=process.cpuUsage(),maxChunk=0,maxChunkCpu=0,cpuAtLongest=0,chunks=0;
+  const chunk=()=>{const now=performance.now(),cpu=process.cpuUsage(),ms=now-previous,cpuMs=(cpu.user-previousCpu.user+cpu.system-previousCpu.system)/1000;if(ms>maxChunk){maxChunk=ms;cpuAtLongest=cpuMs;}maxChunkCpu=Math.max(maxChunkCpu,cpuMs);previous=now;previousCpu=cpu;};
   t=performance.now();console.log(JSON.stringify({start:name}));
-  M.observeYield(()=>{const now=performance.now();maxChunk=Math.max(maxChunk,now-previous);previous=now;chunks++;});
-  const r=await M.search(q,id,()=>{});maxChunk=Math.max(maxChunk,performance.now()-previous);
-  console.log(JSON.stringify({scenario:name,ms:+(performance.now()-t).toFixed(1),reported:r?.ms,maxChunkMs:+maxChunk.toFixed(1),chunks,cohort:r?.panes.n,rows:r?.panes.rows.length,mode:r?.mode}));
+  M.observeYield(()=>{chunk();chunks++;});
+  const r=await M.search(q,id,()=>{});chunk();
+  console.log(JSON.stringify({scenario:name,ms:+(performance.now()-t).toFixed(1),reported:r?.ms,maxChunkMs:+maxChunk.toFixed(1),maxChunkCpuMs:+maxChunkCpu.toFixed(1),cpuAtLongestMs:+cpuAtLongest.toFixed(1),chunks,cohort:r?.panes.n,rows:r?.panes.rows.length,mode:r?.mode}));
   assert.ok(r, 'the current query must complete');
-  assert.ok(maxChunk < 100, `${name}: work failed to yield within 100 ms (${maxChunk})`);
-  assert.ok(r.ms < 5000, `${name}: search exceeded 5 seconds (${r.ms})`);
+  if(maxChunk>=100)timingFailures.push(`${name}: work failed to yield within 100 ms (${maxChunk})`);
+  if(r.ms>=5000)timingFailures.push(`${name}: search exceeded 5 seconds (${r.ms})`);
 }
 for(const n of [5,20]){
   M.observeYield(null);M.setLatest(++id);
@@ -28,6 +29,7 @@ for(const n of [5,20]){
   setTimeout(()=>M.setLatest(++id),10);
   assert.equal(await cancelled,null,'an obsolete search must not publish a result');
   const elapsed=performance.now()-start;console.log(JSON.stringify({scenario:'cancel-'+n,ms:elapsed}));
-  assert.ok(elapsed<100,`cancellation exceeded 100 ms (${elapsed})`);
+  if(elapsed>=100)timingFailures.push(`cancellation exceeded 100 ms (${elapsed})`);
 }
+assert.deepEqual(timingFailures,[],'all search, yielding and cancellation timing budgets must pass');
 process.exit(0);

@@ -92,9 +92,22 @@ visibility skips offscreen geometry in settled scenes; scroll/resize resets it,
 and disconnected targets are released. Active scenes retain live measurements.
 Reconciliation prepares all nested retirements before retained DOM writes, so
 later sibling snapshots do not repeatedly force layout. Desktop grid columns
-contain their layout and paint during the reference track's resize.
+contain their layout and paint during the reference track's resize. Root and
+guide canvases clear only the live viewport, keeping reserved capacity clipped;
+visible pixels are compared with an independent full-capacity clear. Mac desktop
+WebKit uses its fixed-background cache for the paper while the document is at
+its origin, retaining the existing paint order. Outer document scrolling restores
+scroll attachment for both body and viewport scrollers, preserving texture coordinates. Other engines
+and mobile keep their existing background. Fixed viewport tiles compare the
+complete document on its actual scroll element, assert that each tile advances,
+and permit two 8-bit compositor rounding units.
 Retained reading rows in all three designs reuse their verified bindings inside structural
-reconciliation; headers and changed row shapes still use the general path.
+reconciliation. Bar groups also update and reorder their verified rows directly,
+including summary values; changed group/row shapes use the general renderer.
+Ranked readings use compact templates only for validated rows staying in their
+keyed parent; crossings retain full markup. Reconciliation caches the canonical
+full markup, so compact templates cannot suppress subsequent value updates.
+Headers and changed row shapes still use the general path.
 Previously unseen actors receive a fresh observer sample after layout changes,
 so arrivals retain their entry spring without synchronous offscreen reads.
 Arrival samples use a separate one-shot observer rather than comparing browser
@@ -103,7 +116,8 @@ one declaration rather than repeated CSS property setters.
 Large result presentation coalesces one animation-frame callback and commits
 the left pane, right pane and cards in separate paint frames. Superseding results
 reuse the pending callback; forced settlement cancels it and commits the accepted
-cohort. Reduced-motion users retain separate presentation frames; hidden and
+cohort. Internal canvas resize settlement leaves the result queue intact.
+Reduced-motion users retain separate presentation frames; hidden and
 printing pages settle immediately. Large thumbnails retain the original rectangle
 renderer inside a shared vector image, preserving native pixels, skip opacity and
 held annotations while reducing live SVG nodes. Theme changes refresh the image
@@ -161,3 +175,12 @@ graphics renderer, while enforcing application-work, actual pointer-handler,
 input/result, semantic, allocation and cleanup budgets. Both frame delivery and
 pointer-to-next-frame wait remain enforced on the local native graphics host.
 Their uncontrolled virtual display/GPU cadence is not a native frame-delivery gate.
+
+For a bounded two-round Retina desktop comparison under 4× Chromium CPU
+throttling, run `node checks/motion-performance.mjs --paper-profile`.
+Production pixel/scroll guards run before experimental overrides. Timed scenarios
+alternate original and fixed paper attachment, report every sample, and
+retains the application, input, continuity and cleanup guards. Layout-changing
+refreshes also save Chrome timeline and CPU profiles in a temporary directory;
+event totals are inclusive and are not summed as exclusive CPU time. The normal suite
+still runs the complete browser/viewport matrix and unchanged native budgets.

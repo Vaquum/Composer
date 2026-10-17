@@ -25,6 +25,17 @@ assert.equal(model.phase,'sparse'); assert.equal(model.source,null,'a final spar
 
 // The complete ranked rows and a separate numeric gutter must survive every viewport and root count.
 const html=fs.readFileSync('index.html','utf8'),a=html.indexOf('const Forecast = {'),b=html.indexOf('const Stage = {',a);
+const fitA=html.indexOf('  fit(force) {'),fitB=html.indexOf('  retire(b) {',fitA);
+const fitState={bars:[{v:[0,.2,.6,1]},{v:[0,.2,.6,1]}]},fitMatch={result:{panes:{cont:{fan:[[-.45,0,.5,1,1.85]]}}}};
+const fitProbe=new Function('S','Match','calm','return ({'+html.slice(fitA,fitB)+'});')(fitState,fitMatch,()=>false);
+fitProbe.view={cur:new Float64Array(2),vel:new Float64Array(2),tgt:new Float64Array([0,1]),get tlo(){return this.tgt[0];},get thi(){return this.tgt[1];}};
+fitProbe.fit();const firstFrame=[...fitProbe.view.tgt];
+fitMatch.result.panes.cont={fan:[[-.449,0,.501,1,1.851]]};fitProbe.fit();
+assert.deepEqual([...fitProbe.view.tgt],firstFrame,'a tiny forecast update must retain the presented camera frame');
+fitMatch.result.panes.cont={fan:[[-2,0,.5,1,3]]};fitProbe.fit();
+assert.ok(fitProbe.view.tlo< -2&&fitProbe.view.thi>3,'a material forecast escape must refit with room around it');
+fitMatch.result.panes.cont=null;fitProbe.ready=false;fitProbe.fit();
+assert.deepEqual([...fitProbe.view.tgt],[-.22,1.22],'root-only framing must retain its original padding');
 for(const width of [320,375,480,600,736,1024,1800])for(const n of [2,3,10,20]){
   const fixed=V.geometry(width,n),G={...fixed,w:width,N:n,plotTop:130,plotH:240,plotBottom:370},field=V.field(G);
   assert.ok(field.rateLeft-(fixed.xs.at(-1)+fixed.baseBw*.6)>=17.9,'numbers have a clean gap from the widest root candle');

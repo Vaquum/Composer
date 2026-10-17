@@ -51,6 +51,11 @@ button:disabled { cursor: default; }
 [lang="ja"] { font-family: var(--font-mincho); }
 .ja { font-family: var(--font-mincho); color: var(--ink-3); font-size: .92em; margin-inline-start: .35em; letter-spacing: .04em; }
 
+/* Cache the native paper while its document origin is stationary. */
+@media (min-width: 1181px) {
+  :root[data-paper-cache] { background-color:var(--paper);background-image:var(--tex);background-attachment:fixed; }
+  :root[data-paper-cache] body { background-color:transparent;background-image:none; }
+}
 .app { min-height: 100%; display: flex; flex-direction: column; padding-inline: 16px; padding-block: 0 14px; }
 .top { display: flex; align-items: center; gap: 22px; padding-block: 14px 12px; border-bottom: 1px solid var(--hair); flex-wrap: wrap; }
 .brand { display: flex; align-items: center; gap: 12px; min-width: 0; margin-inline-end: auto; }
@@ -438,6 +443,14 @@ const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(
 const sgn = x => (x > 0 ? 1 : x < 0 ? -1 : 0);
 const Flow = TactileFlow;
 const calm = () => Flow.reduced();
+// Cache Mac WebKit's paper on the existing root, outside resizing body content.
+// Preserve document coordinates by restoring the body background when scrolled.
+const PAPER_CACHE=navigator.platform.includes('Mac')&&!('filter' in document.createElement('canvas').getContext('2d'));
+if(PAPER_CACHE){
+  const origin=()=>document.documentElement.toggleAttribute('data-paper-cache',scrollY===0&&document.body.scrollTop===0);
+  origin();addEventListener('scroll',event=>{if(event.target===document||event.target===document.body||event.target===document.documentElement)origin();},{capture:true,passive:true});
+}
+
 function dense(arr) { const s = Array.from(new Set(arr)).sort((a, b) => a - b), m = new Map(); s.forEach((v, i) => m.set(v, i)); return arr.map(v => m.get(v)); }
 /* ---- the feel of a drag: pure functions of the pointer, checked by checks/drag.mjs ---- */
 // A press barely moves what it holds until it is clearly a drag, then the part catches up with the pointer within a few px:
@@ -855,12 +868,12 @@ const Forecast = {
       const other=c?c.n-leaders.reduce((n,[,k])=>n+k,0):0;
       html+=`<span class="forecast-note" data-kind="other" ${tip(c?`${c.sequences.length-leaders.length} other complete sequences: ${V.interval(other,c.n)}. Together with the displayed rows these mutually exclusive sequences account for every complete window.`:note)}></span>`;
     }else{
-      const prefix=this.view==='branches'?this.prefix:'',set=c?V.outcomes(c,prefix):null;
+      const prefix=this.view==='branches'?this.prefix:'',set=c?this.outcomes(prefix):null;
       html+=Array.from({length:6},(_,j)=>V.states.map((s,k)=>{
         const prior=this.view==='branches'&&j<prefix.length,n=set?.grid[j][k]||0;
         const actionable=this.view==='branches'&&j===prefix.length&&n&&set.n>=30;
         const selected=prior&&prefix[j]===s;
-        const text=c?(prior?(selected?`Bar +${j+1}, ${V.names[s]} is an earlier chosen closing state. Click to return before this bar and choose again.`:`Bar +${j+1}, ${V.names[s]} is excluded by your earlier choices.`):V.stateTip(c,prefix,j,s)+(this.view==='states'?' This coloured portion occupies that share of a column totaling 100%.':actionable?' Choose this outcome to update the following bars.':' Later columns describe the current cohort; they are not independent path odds.')):note;
+        const text=c?(prior?(selected?`Bar +${j+1}, ${V.names[s]} is an earlier chosen closing state. Click to return before this bar and choose again.`:`Bar +${j+1}, ${V.names[s]} is excluded by your earlier choices.`):V.stateTip(c,prefix,j,s,set)+(this.view==='states'?' This coloured portion occupies that share of a column totaling 100%.':actionable?' Choose this outcome to update the following bars.':' Later columns describe the current cohort; they are not independent path odds.')):note;
         const explanation=text+(c&&prefix.length===6?' '+V.pathTip(c,prefix):'');
         return `<button type="button" class="forecast-cell-hit" data-kind="${this.view}" data-step="${j}" data-state="${s}" data-state-index="${k}" data-key="${this.view}-${j}-${s}" ${actionable?`data-prefix="${prefix+s}"`:selected?`data-prefix="${prefix.slice(0,j)}"`:''} aria-label="${escape(explanation)}" aria-disabled="${!this.current}" ${this.view==='branches'?`aria-pressed="${!!selected}"`:''} ${tip(explanation)}></button>`;
       }).join('')).join('');
@@ -940,8 +953,8 @@ const Stage = {
     let mn = Infinity, mx = -Infinity;
     for (const b of S.bars) for (let k = 0; k < 4; k++) { mn = Math.min(mn, b.v[k]); mx = Math.max(mx, b.v[k]); }
     let lo = mn - Math.max(mx - mn, 1) * 0.22, hi = mx + Math.max(mx - mn, 1) * 0.22;
-    const c = Match.result && Match.result.panes && Match.result.panes.cont;
-    if (c && mx > mn) {
+    const c = Match.result && Match.result.panes && Match.result.panes.cont,hasFan=!!c&&mx>mn;
+    if (hasFan) {
       // the fan's closes are in the shape's own scale: 0 is the drawing's low, 1 its high
       let a = Infinity, z = -Infinity;
       for (const q of c.fan) { a = Math.min(a, q[0]); z = Math.max(z, q[4]); }
@@ -949,7 +962,10 @@ const Stage = {
       lo = Math.min(lo, fLo - pad); hi = Math.max(hi, fHi + pad); mn = Math.min(mn, fLo); mx = Math.max(mx, fHi);
     }
     const span = Math.max(mx - mn, 1);
-    const cur = this.view.thi - this.view.tlo, inLo = this.view.tlo + cur * 0.07, inHi = this.view.thi - cur * 0.07;
+    // The inset must fit inside the fan's 6% padding. A 7% inset
+    // immediately refitted even tiny updates and repainted every candle.
+    const cur = this.view.thi - this.view.tlo,inset=hasFan?.04:.07;
+    const inLo = this.view.tlo + cur * inset, inHi = this.view.thi - cur * inset;
     if (force || !this.ready || mn < inLo || mx > inHi || span < cur * 0.4) { this.view.tgt[0] = lo; this.view.tgt[1] = hi; }
     if (!this.ready || calm()) { this.view.cur.set(this.view.tgt); this.view.vel.fill(0); this.ready = true; }
   },
@@ -1266,10 +1282,13 @@ const Stage = {
     const width = `${this.cv.width / this.cv.flowDpr}px`, height = `${this.cv.height / this.cv.flowDpr}px`;
     if (this.cv.style.width !== width) this.cv.style.width = width;
     if (this.cv.style.height !== height) this.cv.style.height = height;
-    ctx.clearRect(0, 0, this.cv.width / this.cv.flowDpr, this.cv.height / this.cv.flowDpr);
+    // Capacity outside the live viewport stays clipped. Clear newly exposed
+    // pixels on expansion, without repainting the reserved backing store.
+    const clearW=Math.ceil(G.w*this.cv.flowDpr)/this.cv.flowDpr,clearH=Math.ceil(G.h*this.cv.flowDpr)/this.cv.flowDpr;
+    ctx.clearRect(0, 0, clearW, clearH);
     if(!this.guideSurface)this.guideSurface=document.createElement('canvas');
     const guide=fitCanvas(this.guideSurface,G.w,G.h,Math.min(2,devicePixelRatio||1),true);this.layer(this.guideSurface,{x:0,y:0,w:G.w,h:G.h},true);
-    guide.clearRect(0,0,this.guideSurface.width/this.guideSurface.flowDpr,this.guideSurface.height/this.guideSurface.flowDpr);
+    guide.clearRect(0,0,clearW,clearH);
     const Y = v => this.Y(v, G), x0 = 24, x1 = G.w - 52;
     // Keep the root levels as faint rules; rank labels would overlap the future columns.
     const sb = S.bars[S.sel];
@@ -1831,6 +1850,7 @@ const Match = {
     this.setTrace(this.sticky);
   },
   resultKeyOf(r){return `${r.tf}:${r.start}:${r.picks.join(',')}`;},
+  thumbLayouts:new Map(),
   card(r, i, held) {
     const d = new Date(r.start * 1000), when = `${calendarDay.format(d)} ${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
     const broken = r.broken.map(i2 => held[i2].label);
@@ -1851,12 +1871,14 @@ const Match = {
     const lo = Math.min(...bars.map(b => b[2])), hi = Math.max(...bars.map(b => b[1]));
     const pitch = (w - 2 * pad) / n, bw = Math.max(1.4, pitch * 0.6), ww = Math.max(0.8, Math.min(1.4, pitch * 0.08));
     const X = i => pad + pitch * (i + 0.5), Y = v => pad + (hi - v) / (hi - lo || 1) * (h - 2 * pad - 5);
+    let layout=this.thumbLayouts.get(n);
+    if(!layout){layout={wick:ww.toFixed(2),body:bw.toFixed(2),xs:bars.map((_,i)=>({wick:(X(i)-ww/2).toFixed(2),body:(X(i)-bw/2).toFixed(2)}))};this.thumbLayouts.set(n,layout);}
     let s = `<svg viewBox="0 0 ${w} ${h}" aria-hidden="true">`;
     // bars the drawing skipped stay visible but faint, so the run reads as it happened
     const kept = new Set(r.picks);
     bars.forEach(([o, hh, l, c], i) => {
       const cls = (c > o ? 'cu' : c < o ? 'cd' : 'cz') + (kept.has(i) ? '' : ' skip'), t = Y(Math.max(o, c)), b = Y(Math.min(o, c));
-      s += `<rect class="${cls}" x="${(X(i) - ww / 2).toFixed(2)}" y="${Y(hh).toFixed(2)}" width="${ww.toFixed(2)}" height="${Math.max(0.6, Y(l) - Y(hh)).toFixed(2)}"/><rect class="${cls}" x="${(X(i) - bw / 2).toFixed(2)}" y="${t.toFixed(2)}" width="${bw.toFixed(2)}" height="${Math.max(1, b - t).toFixed(2)}" rx="0.6"/>`;
+      s += `<rect class="${cls}" x="${layout.xs[i].wick}" y="${Y(hh).toFixed(2)}" width="${layout.wick}" height="${Math.max(0.6, Y(l) - Y(hh)).toFixed(2)}"/><rect class="${cls}" x="${layout.xs[i].body}" y="${t.toFixed(2)}" width="${layout.body}" height="${Math.max(1, b - t).toFixed(2)}" rx="0.6"/>`;
     });
     for (const bi of r.broken) {
       const hd = held[bi].h;
@@ -1871,7 +1893,7 @@ const Match = {
     // live cards and their departure snapshots instead of cloning every candle.
     const palette=`<style>.cu{fill:${COL.up}}.cd{fill:${COL.down}}.cz{fill:${COL.flat}}.skip{fill-opacity:.22}.mk{fill:none;stroke:${COL.shu};stroke-width:1.3}.mkl{fill:none;stroke:${COL.shu};stroke-width:1;stroke-dasharray:2 2}</style>`;
     const source=s.replace('aria-hidden="true"',`xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"`).replace('>',`>${palette}`);
-    return `<svg viewBox="0 0 ${w} ${h}" aria-hidden="true"><image width="${w}" height="${h}" href="data:image/svg+xml,${encodeURIComponent(source)}"/></svg>`;
+    return `<svg viewBox="0 0 ${w} ${h}" aria-hidden="true"><image width="${w}" height="${h}" href="data:image/svg+xml;base64,${btoa(source)}"/></svg>`;
   },
   retint(){
     const held=this.presentedSent?.held;
@@ -2006,8 +2028,10 @@ const Panes = {
       for(const [id,html]of Object.entries(markup)){
         const root=$('#'+id);
         if(id==='lrows'&&!measure&&variant==='signal'&&Flow.update(root,html,memo=>PaneDesigns.updateSignal(root,r,memo)))continue;
+        if(id==='lrows'&&variant==='bars'&&pane.dataset.view==='bars'&&Flow.update(root,html,()=>PaneDesigns.updateBars(root,r,ctx.barCount),true))continue;
         if(id==='lrows'&&variant==='ledger'&&pane.dataset.view==='ledger'&&Flow.update(root,html,(_,move)=>PaneDesigns.updateLedger(root,r,move),true))continue;
-        Flow.patch(root,html,true,!measure,id==='lrows'?retainReading:null);
+        const template=id==='lrows'&&variant==='signal'&&retainReading?PaneDesigns.signalTemplate(root,r,ctx,retainReading):null;
+        Flow.patch(root,html,true,!measure,id==='lrows'?retainReading:null,template??html);
       }
       },measure,side==='left'&&(P.rows?.length||0)>70);
       // The pane itself scrolls; its body has no painted size boundary. Keep its
@@ -2292,7 +2316,7 @@ const App = {
     // one bad frame must never stop the paper for good
     try {
       Stage.frameBox=Stage.box&&!Flow.value(Ref.pane,'reference')?Stage.box:Stage.measureBox();
-      if(Stage.resizePending){Stage.resizePending=false;if(!Flow.value(Ref.pane,'reference')){Stage.plot.ready=false;Flow.finish();}}
+      if(Stage.resizePending){Stage.resizePending=false;if(!Flow.value(Ref.pane,'reference')){Stage.plot.ready=false;Stage.settle(false);}}
       busy = Stage.step(dt); Stage.draw();
     } catch (err) { console.error(err); }
     finally{Stage.frameBox=null;}

@@ -70,6 +70,10 @@ for (const [title, T, q, fallback] of [
     for (const column of all.grid) assert.equal(column.reduce((a,b)=>a+b,0),c.n);
     const prefix=c.sequences[0][0].slice(0,2), conditioned=V.outcomes(c,prefix);
     for (const column of conditioned.grid) assert.equal(column.reduce((a,b)=>a+b,0),conditioned.n);
+    for (let j=0;j<c.fan.length;j++) for(const state of V.states){
+      assert.equal(all.grid[j][V.states.indexOf(state)],c.sequences.reduce((sum,[key,n])=>sum+(key[j]===state?n:0),0));
+      assert.equal(V.stateTip(c,prefix,j,state,conditioned),V.stateTip(c,prefix,j,state),'shared tooltip cohort preserves every probability and evidence label');
+    }
     for (const draw of [V.paths(c,prefix),V.branches(c,prefix),V.grid(c,prefix)]) {
       assert.doesNotMatch(draw,/NaN|undefined|Infinity/); assert.match(draw,/windows/);
     }

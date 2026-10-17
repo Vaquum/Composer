@@ -33,11 +33,14 @@ const PaneDesigns = (() => {
       aria:`Selected mean ${selectedDisplay}; 95% interval ${displayed(w,lo)} to ${displayed(w,hi)}; all-window mean ${baselineDisplay}`,band:`left:${at(lo)}%;width:${at(hi)-at(lo)}%`,dot:`left:${at(mean)}%`,reference:`left:${at(ref)}%`};
     formattedReadings.set(w,{key:w.key,log:w.log,mean,lo,hi,ref,fields});return fields;
   }
-  function track(w) {
-    const f=trackFields(w);
+  function track(w, f=trackFields(w)) {
     return `<div class="trk" role="img" aria-label="${f.aria}"><i class="bd" style="${f.band}"></i><i class="dt" style="${f.dot}"></i><i class="tk" style="${f.reference}"></i></div>`;
   }
-  const reading = (w, showBar = true) => `<div class="prow" data-reading="${w.bar}-${w.key}"><div class="pl"><span>${showBar ? 'Bar '+(w.bar+1)+' · ' : ''}${label(w)}</span><b>${trackFields(w).selectedDisplay}</b></div><div class="pane-reading-bottom">${track(w)}<span class="pane-baseline">All ${trackFields(w).baselineDisplay}</span></div></div>`;
+  function reading(w, showBar = true, retained = null, destination = '') {
+    if(retained?.has(`${destination}|${w.bar}-${w.key}`))return `<div class="prow" data-reading="${w.bar}-${w.key}"></div>`;
+    const f=trackFields(w);
+    return `<div class="prow" data-reading="${w.bar}-${w.key}"><div class="pl"><span>${showBar ? 'Bar '+(w.bar+1)+' · ' : ''}${label(w)}</span><b>${f.selectedDisplay}</b></div><div class="pane-reading-bottom">${track(w,f)}<span class="pane-baseline">All ${f.baselineDisplay}</span></div></div>`;
+  }
   const difference = w => {
     if (w.key === 'maker' || w.key === 'day') { const d = (w.set[0]-w.all[0])*100; return `${d > 0 ? '+' : ''}${d.toFixed(1).replace('-','−')} pp`; }
     const ratio = w.log ? Math.exp(w.set[0]-w.all[0]) : w.all[0] > 0 ? w.set[0]/w.all[0] : null;
@@ -57,13 +60,13 @@ const PaneDesigns = (() => {
         return detail('bar-'+bar, `<strong>Bar ${bar+1}</strong><span class="pane-bar-summary">${lead ? `${label(lead)} <b>${displayed(lead,lead.set[0])}</b> · all ${displayed(lead,lead.all[0])}` : 'No estimate for this bar'}</span>`,rows.map(w=>reading(w,false)).join(''),bar === 0);
       }).join('')+'<p class="pane-note">Activity and trade size are relative to the prior 11 bars.</p>';
     }
-    const remaining = all.length > 10 ? detail('more', `${all.length-10} more readings`, variant === 'ledger' ? table(all.slice(10)) : all.slice(10).map(w=>reading(w)).join('')) : '';
+    const remaining = all.length > 10 ? detail('more', `${all.length-10} more readings`, variant === 'ledger' ? table(all.slice(10)) : all.slice(10).map(w=>reading(w,true,ctx.retainedReadings,'more')).join('')) : '';
     if (variant === 'ledger') {
       return '<p class="pane-order">Largest differences first</p>'+table(first)+`<p class="pane-note">${ledgerNote(first)}</p>`+remaining+detail('intervals',`95% intervals · all ${all.length} readings`,legend()+all.map(w=>reading(w)).join(''));
     }
     const lead = first[0], delta = difference(lead), rest = first.slice(1);
     return `<div class="pane-hero" data-reading="${lead.bar}-${lead.key}"><p class="pane-hero-label">Largest difference · Bar ${lead.bar+1} ${label(lead).toLowerCase()}</p><p class="pane-hero-value">${value(lead,lead.set[0])}<span class="pane-unit">${unit(lead)}</span></p><p class="pane-hero-compare">All ${displayed(lead,lead.all[0])}${delta ? ' · <strong>'+delta+'</strong>' : ''}</p>${track(lead)}</div>`+legend()+
-      [...new Set(rest.map(w=>groups[w.key]))].map(group=>`<section class="pane-group" data-motion-key="group-${group}"><h3>${group}${group === 'Activity' || group === 'Trade size' ? '<span class="pane-unit">vs prior 11 bars</span>' : ''}</h3>${rest.filter(w=>groups[w.key]===group).map(w=>reading(w)).join('')}</section>`).join('')+remaining;
+      [...new Set(rest.map(w=>groups[w.key]))].map(group=>`<section class="pane-group" data-motion-key="group-${group}"><h3>${group}${group === 'Activity' || group === 'Trade size' ? '<span class="pane-unit">vs prior 11 bars</span>' : ''}</h3>${rest.filter(w=>groups[w.key]===group).map(w=>reading(w,true,ctx.retainedReadings,'group-'+group)).join('')}</section>`).join('')+remaining;
   }
   // Used only after the caller verifies unchanged layout/identity. Bindings live
   // in Flow's markup entry, so a structural patch releases old DOM references.
@@ -114,6 +117,39 @@ const PaneDesigns = (() => {
         if(b.track){attr(b.track,'aria-label',f.aria);attr(b.band,'style',f.band);attr(b.dot,'style',f.dot);attr(b.reference,'style',f.reference);}
       };
     };
+  }
+  // Reuse only rows whose validated bindings stay in the same keyed parent.
+  // Rows crossing the hero/visible/more boundary keep their full representation.
+  function signalTemplate(root,r,ctx,retain){
+    const retainedReadings=new Set();
+    for(const node of root.querySelectorAll('div.prow[data-reading]')){
+      const parent=node.parentElement;
+      const destination=parent.dataset.motionKey||(parent.classList.contains('flow-detail-content')&&parent.closest('details')?.dataset.detail==='more'?'more':null);
+      if(destination&&retain(node,node))retainedReadings.add(`${destination}|${node.dataset.reading}`);
+    }
+    return retainedReadings.size?left('signal',r,{...ctx,retainedReadings}):null;
+  }
+  function updateBars(root,r,barCount){
+    const P=r.panes,details=[...root.querySelectorAll(':scope > details[data-detail]')];
+    if(P.n<30||!P.readings||details.length!==barCount)return false;
+    const groups=Array.from({length:barCount},()=>[]),updater=readingUpdater(r),plans=[];
+    for(const w of sorted(P)){if(!groups[w.bar])return false;groups[w.bar].push(w);}
+    for(let bar=0;bar<barCount;bar++){
+      const detail=details[bar],rows=groups[bar],content=detail.querySelector(':scope > .flow-detail-body > .flow-detail-content'),summary=detail.querySelector('.pane-bar-summary');
+      if(detail.dataset.detail!==`bar-${bar}`||!content||!rows.length||summary?.childNodes.length!==3)return false;
+      const nodes=[...content.children],byKey=new Map(nodes.map(node=>[node.dataset.reading,node])),ordered=rows.map(w=>byKey.get(`${w.bar}-${w.key}`));
+      if(nodes.length!==rows.length||byKey.size!==rows.length||ordered.some(node=>!node))return false;
+      const changes=ordered.map(node=>updater(node,node)),[heading,value,baseline]=summary.childNodes;
+      if(changes.some(change=>!change)||heading.nodeType!==3||value.nodeName!=='B'||baseline.nodeType!==3)return false;
+      plans.push({content,ordered,changes,heading,value,baseline,lead:rows[0]});
+    }
+    const text=(node,value)=>{if(node.nodeValue!==value)node.nodeValue=value;};
+    for(const p of plans){
+      for(const change of p.changes)change();
+      let cursor=p.content.firstElementChild;for(const node of p.ordered){if(node!==cursor)p.content.insertBefore(node,cursor);cursor=node.nextElementSibling;}
+      const f=trackFields(p.lead);text(p.heading,label(p.lead)+' ');if(p.value.textContent!==f.selectedDisplay)p.value.textContent=f.selectedDisplay;text(p.baseline,' · all '+f.baselineDisplay);
+    }
+    return {kind:'bars'};
   }
   function updateLedger(root,r,move){
     const all=sorted(r.panes),tables=[...root.querySelectorAll('.pane-ledger tbody')],intervals=root.querySelector('details[data-detail="intervals"] .flow-detail-content'),note=root.querySelector(':scope > .pane-note');
@@ -170,5 +206,5 @@ const PaneDesigns = (() => {
   }
   const leftMethod = barCount => `<ul class="pane-method"><li>All means every ${barCount}-bar window on the selected timeframes. Rows compare selected-window and all-window means.</li><li>Volume, trades and mean trade size: relative to the median of the prior 11 bars; geometric means.</li><li>Body and range: prior-bar Wilder ATR(14). Maker share: share of volume. Last close: position in the prior UTC day's range.</li><li>Every reading track has its own scale. Differences are ranked in standard deviations of all windows.</li><li>95% intervals: t for means, Wilson for rates. No estimate below 30 windows.</li></ul>`;
   const rightMethod = after => `<ul class="pane-method"><li>Each window is scaled from its own low and high to your drawing. The canvas fan shows the median and middle 50% and 80% of closes.</li><li>Breaks count any crossing during the next ${after} bars. Final close compares bar ${after} with the window's last close.</li><li>The terminal band is the middle 50% of closes, not a confidence interval. Outcome rates use all complete continuations, with Wilson 95% intervals.</li></ul>`;
-  return { variants, left, updateSignal, readingUpdater, updateLedger, right, next, terminal, caption, leftMethod, rightMethod };
+  return { variants, left, updateSignal, readingUpdater, signalTemplate, updateBars, updateLedger, right, next, terminal, caption, leftMethod, rightMethod };
 })();

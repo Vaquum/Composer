@@ -5,7 +5,7 @@ const ForecastViews = (() => {
   const names = { U: 'Above', I: 'Inside', D: 'Below' };
   const words = key => [...key].map(s => names[s]).join(' → ');
   const percent = x => `${(100 * x).toFixed(1).replace(/\.0$/, '')}%`;
-  const count = n => n.toLocaleString('en-GB');
+  const count = new Intl.NumberFormat('en-GB').format;
   function rate(k, n) {
     if (n < 30) return null;
     const z = 1.959964, p = k / n, d = 1 + z * z / n;
@@ -24,7 +24,9 @@ const ForecastViews = (() => {
   }
   function outcomes(c, prefix = '') {
     const set = subset(c, prefix), steps = c.fan.length;
-    return { ...set, grid: Array.from({ length: steps }, (_, j) => states.map(s => set.sequences.reduce((sum, [key, n]) => sum + (key[j] === s ? n : 0), 0))) };
+    const grid = Array.from({ length: steps }, () => [0, 0, 0]);
+    for (const [key, n] of set.sequences) for (let j = 0; j < steps; j++) grid[j][states.indexOf(key[j])] += n;
+    return { ...set, grid };
   }
   function crumbs(prefix) {
     return `<div class="forecast-crumbs"><button type="button" data-prefix="" aria-label="Return to the current combo">Current combo</button>${[...prefix].map((s, j) => `<span aria-hidden="true">›</span><button type="button" data-prefix="${prefix.slice(0, j + 1)}" title="Bar +${j + 1} closes ${names[s].toLowerCase()}" aria-label="Return to ${words(prefix.slice(0, j + 1))}">+${j + 1} ${s === 'U' ? '↑' : s === 'D' ? '↓' : '•'}</button>`).join('')}</div>`;
@@ -130,8 +132,8 @@ const ForecastViews = (() => {
     const p=rate(n,c.n);
     return `${words(key)}. Probability of this entire six-bar closing-state sequence: ${p?percent(p[0]):'no estimate'}; ${interval(n,c.n)}. All ${count(c.n)} complete matched windows contribute; the six percentages are not multiplied independently. ${definition} ${cohortDefinition}`;
   }
-  function stateTip(c,prefix,j,s) {
-    const set=outcomes(c,prefix),k=set.grid[j][states.indexOf(s)],prior=prefix? `Given ${words(prefix)} at the earlier bars; `:'Given the current combo; ';
+  function stateTip(c,prefix,j,s,set=outcomes(c,prefix)) {
+    const k=set.grid[j][states.indexOf(s)],prior=prefix? `Given ${words(prefix)} at the earlier bars; `:'Given the current combo; ';
     const p=rate(k,set.n);
     return `Bar +${j+1}, ${names[s]}: ${p?percent(p[0]):'no estimate'}. ${prior}${interval(k,set.n)}. This is the close at this bar, not a whole-path probability. ${definition} ${cohortDefinition}`;
   }

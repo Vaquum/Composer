@@ -454,6 +454,17 @@ const TactileFlow = (() => {
   }
   function applyReconcile({root,plan,remove},geometries){
     for(const node of remove){if(node.nodeType===1)finish(node);node.remove();}
+    // A large static reading list can reverse in one accepted result. Batch
+    // those moves while preserving the existing nodes and their bindings.
+    // Interactive content and selected text keep the incremental path.
+    let bulk=false;
+    if(plan.length>70&&root.classList?.contains('flow-detail-content')&&plan.every(({node})=>node.nodeName==='DIV'&&node.className==='prow')){
+      const controls='a,button,input,select,textarea,[tabindex],[contenteditable]',selection=document.getSelection();
+      if(!root.contains(document.activeElement)&&!root.querySelector(controls)&&!plan.some(({node,next})=>node===next&&node.querySelector(controls))&&
+        (!selection?.rangeCount||selection.isCollapsed||!selection.getRangeAt(0).intersectsNode(root))){
+        const old=[...root.childNodes];bulk=plan.filter(({node},i)=>old[i]!==node).length>plan.length/2;
+      }
+    }
     let cursor=root.firstChild,deferred=false;
     for(const {node,next,children,retain}of plan){
       if(children){deferred=attributes(node,next)||deferred;deferred=applyReconcile(children,geometries)||deferred;}
@@ -463,9 +474,9 @@ const TactileFlow = (() => {
         while((child=walker.nextNode())){markups.delete(child);const measurement=measurements.get(child);if(measurement)measurement.dirty=true;}
       }
       else if(node!==next&&node.nodeType!==1&&node.nodeValue!==next.nodeValue)node.nodeValue=next.nodeValue;
-      if(node!==cursor)root.insertBefore(node,cursor);
-      cursor=node.nextSibling;
+      if(!bulk){if(node!==cursor)root.insertBefore(node,cursor);cursor=node.nextSibling;}
     }
+    if(bulk)root.replaceChildren(...plan.map(({node})=>node));
     geometries.bookends?.set(root,{first:plan[0]?.node??null,last:plan.at(-1)?.node??null});
     return deferred;
   }
@@ -506,11 +517,11 @@ const TactileFlow = (() => {
       try{return change();}finally{transaction=previous;}
     },actors,measure,defer);
   }
-  function patch(root, markup, animate = true, stable = false, retain = null) {
+  function patch(root, markup, animate = true, stable = false, retain = null, templateMarkup = markup) {
     const previous=markups.get(root);
     if(previous?.markup===markup&&previous.first===root.firstChild&&previous.last===root.lastChild){details(root);return;}
     for(let parent=root.parentElement;parent;parent=parent.parentElement)markups.delete(parent);
-    const template = document.createElement('template'); template.innerHTML = markup; details(template.content);
+    const template = document.createElement('template'); template.innerHTML = templateMarkup; details(template.content);
     let result=stable&&!retain&&previous&&previous.first===root.firstChild&&previous.last===root.lastChild?stableUpdate(root,template.content):null;
     if(result===null)result=animate?(transaction?.root.contains(root)?reconcile(root,template.content,transaction.geometries,true,retain):layout(root,geometries=>reconcile(root,template.content,geometries,true,retain))):reconcile(root,template.content,new Map(),false,retain);
     details(root);invalidate(root);

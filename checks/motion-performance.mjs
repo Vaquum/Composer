@@ -2,6 +2,8 @@
 // automated environment; structural guards remain useful on every machine.
 import fs from 'node:fs';
 import http from 'node:http';
+import os from 'node:os';
+import path from 'node:path';
 import assert from 'node:assert/strict';
 import { chromium, webkit } from 'playwright';
 import referenceThumbnail from './thumbnail-reference.mjs';
@@ -16,7 +18,10 @@ function fixture(n){
   const count=sequences.reduce((sum,[,n])=>sum+n,0),raw=Array.from({length:n},()=>[30,68,18,56]);
   return{mode:'nearest',exact:[0,0,0,0,0],exactF:[0,0,0,0,0],filter:null,stretch:0,base:{n:20000,up:10000},
     counts:[12,0,0,0,0],countsF:[12,0,0,0,0],ms:10,
-    results:Array.from({length:12},(_,i)=>({tf:'15m',start:1700000000+i*900,raw,drawn:raw.map(()=>[18,30,56,68]),picks:Array.from({length:n},(_,j)=>j),broken:[],flips:0,off:i*.01,next:null,nextWhy:'end'})),
+    results:Array.from({length:12},(_,i)=>{
+      const run=raw.map(([o,h,l,c],j)=>[o,h+(i+1)*(j%3+1)*.07,l,c]);
+      return{tf:'15m',start:1700000000+i*900,raw:run,drawn:run.map(([o,h,l,c])=>[l,Math.min(o,c),Math.max(o,c),h]),picks:Array.from({length:n},(_,j)=>j),broken:[],flips:0,off:i*.01,next:null,nextWhy:'end'};
+    }),
     panes:{kind:'closest',n:count,readings:true,after:6,near:[],next:[.43,.38,.48],byTf:Array.from({length:5},()=>[.43,.38,.48]),tfN:Array(5).fill(count),
       rows:Array.from({length:7*n},(_,i)=>({bar:Math.floor(i/7),key:keys[i%7],set:[1.4,1.3,1.5],all:[.5,.48,.52],d:3-i*.01,log:i%7<3})),
       cont:{n:count,sampled:count,aboveHigh:[.82,.78,.86],belowLow:[.27,.23,.31],aboveClose:[.52,.47,.57],
@@ -36,22 +41,45 @@ const seed=(page,result)=>page.evaluate(r=>{
   const A=__perf;A.Match.ready=true;A.Match.failed=false;A.Match.sent=A.Match.query();A.Match.sentKey=A.Match.key();
   A.Match.onmsg({...r,type:'result',id:A.Match.id});
 },result);
-const reports=[];
+const reports=[],frameFailures=[],paperProfile=process.argv.includes('--paper-profile'),nativeRetina=process.argv.includes('--native-retina-profile'),nativeProfile=nativeRetina||process.argv.includes('--native-profile');
+const traceDirectory=paperProfile?fs.mkdtempSync(path.join(os.tmpdir(),'composer-paper-trace-')):null;
+const browsers=nativeProfile?[['WebKit',webkit,1]]:paperProfile?[['Chromium 4x CPU',chromium,4]]:[['Chromium native',chromium,1],['Chromium 4x CPU',chromium,4],['WebKit',webkit,1]];
+const screens=nativeProfile?[nativeRetina?[20,1600,2]:[2,1600,1]]:paperProfile?[[20,1600,2,'scroll'],[20,1600,2,'fixed'],[20,1600,2,'scroll'],[20,1600,2,'fixed']]:[[2,1600,1],[20,1600,2],[20,390,2]];
 // Shared GitHub runners have no controlled display/GPU cadence. Keep application
 // and input budgets there; native frame delivery is enforced on the local host.
 const controlledGraphics=process.env.GITHUB_ACTIONS!=='true';
+async function diagnoseNativePaint(page,label,action,p95){
+  const start=()=>page.evaluate(()=>{
+    const d=window.__paintDiagnosis={frames:[],active:true,previous:0};
+    const tick=now=>{if(!d.active)return;if(d.previous)d.frames.push(now-d.previous);d.previous=now;requestAnimationFrame(tick);};requestAnimationFrame(tick);
+  });
+  const stop=()=>page.evaluate(()=>{__paintDiagnosis.active=false;return __paintDiagnosis.frames;});
+  const report=(variant,frames)=>{assert.ok(frames.length>5,'paint diagnosis must collect actual frames');console.log(JSON.stringify({diagnosis:label,variant,frames:frames.length,p95:p95(frames)}));};
+  await start();await page.waitForTimeout(1200);report('idle',await stop());
+  // Repeated physical drags change the drawing. Keep the original drag/pixel
+  // assertions meaningful; its measured timing still uses every original gate.
+  if(label==='pointer-drag')return;
+  for(const [variant,css]of [['control',''],['paper-none',':root,body{background-image:none!important}'],['control',''],['forced-detail-layer','.flow-detail-content{transform:translateZ(0)!important}'],['control',''],['clipped-detail','.flow-detail-body{contain:paint!important}'],['contained-rows','.pane div.prow{contain:layout!important}'],['control','']]){
+    const style=await page.addStyleTag({content:css||'/* native paint control */'});
+    try{
+      await settle(page);
+      await start();await action();await settle(page);if(label!=='reference'){await action();await settle(page);}report(variant,await stop());
+    }
+    finally{await style.evaluate(node=>node.remove());await settle(page);}
+  }
+}
 try{
-for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU',chromium,4],['WebKit',webkit,1]]){
+for(const [name,type,rate] of browsers){
   const browser=await type.launch({headless:true});
   try{
-  for(const [n,width,dpr] of [[2,1600,1],[20,1600,2],[20,390,2]]){
+  for(const [n,width,dpr,paper] of screens){
     const context=await browser.newContext({viewport:{width,height:1000},deviceScaleFactor:dpr,hasTouch:width===390});
     try{
-    const page=await context.newPage(),errors=[];
+    const page=await context.newPage(),errors=[],diagnostics=[];
     page.on('pageerror',e=>errors.push(e.message));
     await page.addInitScript(()=>{
       window.Worker=class{postMessage(){} terminate(){}};
-      window.__samples={frames:[],work:[],tasks:[],calls:[],paints:[],observers:[],timers:[],presentation:{},frameTime:0,frameWork:0,mutations:0,clones:0,measures:0};
+      window.__samples={frames:[],work:[],tasks:[],calls:[],paints:[],observers:[],timers:[],presentation:{},frameTime:0,frameWork:0,mutations:0,clones:0,measures:0,readingMoves:0};
       const raf=window.requestAnimationFrame;
       window.requestAnimationFrame=callback=>raf.call(window,now=>{
         if(__samples.active&&now!==__samples.frameTime){if(__samples.frameTime){__samples.work.push(__samples.frameWork);__samples.frameWork=0;}__samples.frameTime=now;}
@@ -71,6 +99,8 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
       Node.prototype.cloneNode=function(...args){__samples.clones++;return clone.apply(this,args);};
       const append=Element.prototype.append;
       Element.prototype.append=function(...nodes){__samples.measures+=nodes.filter(n=>n.nodeType===1&&n.hasAttribute('data-flow-measuring')).length;return append.apply(this,nodes);};
+      const insert=Node.prototype.insertBefore;
+      Node.prototype.insertBefore=function(node,...args){if(__samples.active&&node.nodeType===1&&node.hasAttribute('data-reading')&&this.nodeType===1&&this.classList.contains('flow-detail-content'))__samples.readingMoves++;return insert.call(this,node,...args);};
     });
     await page.route('https://fonts.**/**',r=>r.abort());await page.goto(base);await settle(page);
     await page.evaluate(n=>{while(__perf.S.bars.length<n)__perf.Ops.add();},n);
@@ -108,6 +138,50 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
       assert.ok(image.max<=1,`thumbnail pixels changed beyond one 8-bit raster rounding unit: ${JSON.stringify(image)}`);
       if(image.count>=20)assert.ok(image.after<=image.before/2,'large thumbnails must remove at least half their SVG nodes');
     }
+    await settle(page);
+    const painted=()=>page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+    const freeze='transition:none!important;animation:none!important',stillPaper=await page.addStyleTag({content:`*,*::before,*::after{${freeze}}input[type=range]::-webkit-slider-thumb{${freeze}}input[type=range]::-moz-range-thumb{${freeze}}`});
+    const paperScroll=await page.evaluate(()=>{
+      const candidates=[...new Set([document.body,document.scrollingElement])];
+      for(const node of candidates){
+        if(!node||node.scrollHeight<=node.clientHeight)continue;
+        const before=node.scrollTop;node.scrollTop=1;const moves=node.scrollTop>0;node.scrollTop=before;
+        if(moves)return{selector:node===document.body?'body':'html',initial:before,max:node.scrollHeight-node.clientHeight};
+      }
+      return{selector:'body',initial:document.body.scrollTop,max:0};
+    }),viewportHeight=page.viewportSize().height;
+    let previous=-1,tiles=0;
+    // Full-page capture can resize a mobile viewport and change the scene itself.
+    // Compare fixed viewport tiles instead, covering the complete document.
+    for(let top=0;;top+=viewportHeight){
+      const maximum=await page.evaluate(selector=>{const node=document.querySelector(selector);return node.scrollHeight-node.clientHeight;},paperScroll.selector);
+      const target=Math.min(top,Math.max(0,maximum));
+      await page.evaluate(({selector,target})=>document.querySelector(selector).scrollTo(0,target),{selector:paperScroll.selector,target});await painted();await settle(page);
+      const position=await page.evaluate(selector=>{const node=document.querySelector(selector);return{top:node.scrollTop,max:node.scrollHeight-node.clientHeight,attachment:getComputedStyle(document.body).backgroundAttachment};},paperScroll.selector),scroll=position.top;
+      assert.ok(Math.abs(scroll-Math.min(target,position.max))<1,'paper tiles must reach the requested offset on the actual scroller');
+      assert.ok(scroll>previous,'each paper tile must advance the actual scroll offset');previous=scroll;tiles++;
+      if(scroll>0)assert.equal(position.attachment,'scroll','outer body/document scrolling must restore the original paper attachment');
+      const layeredPaper=await page.screenshot();
+      const originalPaper=await page.addStyleTag({content:':root{background-image:none!important}body{background-color:var(--paper)!important;background-image:var(--tex)!important;background-attachment:scroll!important;background-size:auto!important}.flow-detail-content{transform:translateZ(0)!important}'});
+      try{
+        await painted();const original=await page.screenshot();
+        if(!layeredPaper.equals(original)){
+          const difference=await page.evaluate(async({a,b})=>{
+            const pixels=async src=>{const image=new Image();await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=reject;image.src=src;});const canvas=document.createElement('canvas');canvas.width=image.width;canvas.height=image.height;const ctx=canvas.getContext('2d');ctx.drawImage(image,0,0);return ctx.getImageData(0,0,canvas.width,canvas.height).data;};
+            const x=await pixels(a),y=await pixels(b);if(x.length!==y.length)return{max:255,mean:255};let max=0,total=0,worst=null;
+            for(let i=0;i<x.length;i++){const d=Math.abs(x[i]-y[i]);if(d>max){max=d;worst={x:Math.floor(i/4)%Math.round(innerWidth*devicePixelRatio),y:Math.floor(Math.floor(i/4)/Math.round(innerWidth*devicePixelRatio)),channel:i%4,a:x[i],b:y[i]};}total+=d;}return{max,mean:total/x.length,worst};
+          },{a:'data:image/png;base64,'+layeredPaper.toString('base64'),b:'data:image/png;base64,'+original.toString('base64')});
+          // A separate compositor pass can round translucent glyph edges twice.
+          assert.ok(difference.max<=2&&difference.mean<.005,`paper cache changed pixels at scroll ${scroll} beyond compositor rounding: ${JSON.stringify(difference)}`);
+        }
+      }finally{await originalPaper.evaluate(node=>node.remove());}
+      if(scroll>=position.max-1)break;
+    }
+    if(paperScroll.max>0)assert.ok(tiles>1,'tall documents must compare more than the initial viewport');
+    await stillPaper.evaluate(node=>node.remove());
+    await page.evaluate(({selector,initial})=>document.querySelector(selector).scrollTo(0,initial),paperScroll);await painted();await settle(page);
+    // Experimental overrides apply only after the production pixel/scroll guard.
+    if(paper)await page.addStyleTag({content:`body{background-attachment:${paper}!important}`});
     const graphics=await page.evaluate(()=>{
       const canvas=document.createElement('canvas'),gl=canvas.getContext('webgl');if(!gl)return'unavailable';
       const info=gl.getExtension('WEBGL_debug_renderer_info'),renderer=info?gl.getParameter(info.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER);
@@ -133,20 +207,42 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
     });
     const measure=async(label,action)=>{
       await settle(page);
-      await page.evaluate(()=>{for(const key of ['frames','work','tasks','calls','paints','observers','timers','presentationFrames'])__samples[key]=[];for(const key of ['mutations','clones','measures','frameTime','frameWork','fanRasters'])__samples[key]=0;__samples.presentation={};__samples.actions={};__samples.active=true;});
+      const tracing=paperProfile&&label==='refresh-layout'&&cdp;
+      if(tracing){await cdp.send('Profiler.enable');await cdp.send('Profiler.start');await cdp.send('Tracing.start',{categories:'devtools.timeline,blink.user_timing',transferMode:'ReturnAsStream'});}
+      await page.evaluate(()=>{for(const key of ['frames','work','tasks','calls','paints','observers','timers','presentationFrames'])__samples[key]=[];for(const key of ['mutations','clones','measures','frameTime','frameWork','fanRasters','readingMoves'])__samples[key]=0;__samples.presentation={};__samples.actions={};__samples.active=true;});
       await action();await settle(page);
-      const sample=await page.evaluate(()=>{__samples.active=false;if(__samples.frameTime)__samples.work.push(__samples.frameWork);return{...__samples};});
+      const sample=await page.evaluate(()=>{__samples.active=false;if(__samples.frameTime)__samples.work.push(__samples.frameWork);return{...__samples,cameraTarget:[...__perf.Stage.view.tgt]};});
+      let trace;
+      if(tracing){
+        const {profile}=await cdp.send('Profiler.stop'),done=new Promise(resolve=>cdp.once('Tracing.tracingComplete',resolve));
+        await cdp.send('Tracing.end');const {stream}=await done;let source='';
+        try{for(;;){const chunk=await cdp.send('IO.read',{handle:stream});source+=chunk.data;if(chunk.eof)break;}}
+        finally{await cdp.send('IO.close',{handle:stream});}
+        const stem=path.join(traceDirectory,`${paper}-${reports.length}`),events=JSON.parse(source).traceEvents,totals=new Map();
+        fs.writeFileSync(stem+'.trace.json',source);fs.writeFileSync(stem+'.cpuprofile',JSON.stringify(profile));
+        for(const event of events)if(event.ph==='X'&&event.dur&&/Layout|Paint|Raster|Image|Decode|ParseHTML|Layerize|Composite/.test(event.name)){
+          const value=totals.get(event.name)||{name:event.name,count:0,totalMs:0,maxMs:0};value.count++;value.totalMs+=event.dur/1000;value.maxMs=Math.max(value.maxMs,event.dur/1000);totals.set(event.name,value);
+        }
+        const nodes=new Map(profile.nodes.map(node=>[node.id,node.callFrame])),samples=new Map();
+        for(let i=0;i<(profile.samples?.length||0);i++){const frame=nodes.get(profile.samples[i]),key=`${frame.functionName||'(anonymous)'} ${frame.url}:${frame.lineNumber+1}`;samples.set(key,(samples.get(key)||0)+(profile.timeDeltas?.[i]||0)/1000);}
+        trace={file:stem+'.trace.json',cpu:stem+'.cpuprofile',inclusiveEvents:[...totals.values()].sort((a,b)=>b.totalMs-a.totalMs).slice(0,12),selfSamples:[...samples].sort((a,b)=>b[1]-a[1]).slice(0,12)};
+      }
       const p95=a=>a.length?a.slice().sort((a,b)=>a-b)[Math.floor((a.length-1)*.95)]:0;
-      const report={browser:name,graphics,frameGate:controlledGraphics,bars:n,width,dpr,scenario:label,frames:sample.frames.length,
+      const paintState=await page.evaluate(()=>({attachment:getComputedStyle(document.body).backgroundAttachment,rootAttachment:getComputedStyle(document.documentElement).backgroundAttachment,rootImage:getComputedStyle(document.documentElement).backgroundImage!=='none',bodyTop:document.body.scrollTop,windowTop:scrollY}));
+      const report={browser:name,paper,trace,paintState,graphics,frameGate:controlledGraphics,bars:n,width,dpr,scenario:label,frames:sample.frames.length,
         frameP95:+p95(sample.frames).toFixed(1),workP95:+p95(sample.work).toFixed(1),callMax:+Math.max(0,...sample.calls).toFixed(1),
-        paintP95:+p95(sample.paints).toFixed(1),observerMax:+Math.max(0,...sample.observers).toFixed(1),timerMax:+Math.max(0,...sample.timers).toFixed(1),taskMax:Math.max(0,...sample.tasks),presentationMax:Object.fromEntries(Object.entries(sample.presentation).map(([k,v])=>[k,+v.toFixed(1)])),actionMax:Object.fromEntries(Object.entries(sample.actions).map(([k,v])=>[k,+v.toFixed(1)])),measurements:sample.measures,mutations:sample.mutations};
+        paintP95:+p95(sample.paints).toFixed(1),observerMax:+Math.max(0,...sample.observers).toFixed(1),timerMax:+Math.max(0,...sample.timers).toFixed(1),taskMax:Math.max(0,...sample.tasks),presentationMax:Object.fromEntries(Object.entries(sample.presentation).map(([k,v])=>[k,+v.toFixed(1)])),actionMax:Object.fromEntries(Object.entries(sample.actions).map(([k,v])=>[k,+v.toFixed(1)])),measurements:sample.measures,mutations:sample.mutations,readingMoves:sample.readingMoves};
       reports.push(report);console.log(JSON.stringify(report));
       const presentationFrames=new Map();for(const step of sample.presentationFrames){if(!presentationFrames.has(step.cohort))presentationFrames.set(step.cohort,new Set());const frames=presentationFrames.get(step.cohort);assert.ok(!frames.has(step.frame),'large result parts must commit in separate paint frames');frames.add(step.frame);}
       // CI contention can stretch rAF intervals, so timing gates use measured application
       // work and input handlers. Frame delivery is reported, never hidden by idle samples.
       assert.ok(report.callMax<100,`${label}: an input/result task exceeded 100 ms (${report.callMax})`);
       assert.ok(report.workP95<16.7*rate,`${label}: application work exceeded its native-frame budget scaled by ${rate}× CPU (${report.workP95})`);
-      if(controlledGraphics&&rate===1&&label!=='reduced-motion')assert.ok(report.frameP95<25,`${label}: native frame delivery exceeded its budget (${report.frameP95})`);
+      // Finish every gated workload before optional paint experiments. Their
+      // extra updates, image allocations and drawing state must not change a
+      // subsequent production measurement or its correctness assertions.
+      if(nativeProfile&&controlledGraphics&&label!=='reduced-motion'&&(label==='reference'||report.frameP95>=25))diagnostics.push({label,action,p95});
+      if(controlledGraphics&&rate===1&&label!=='reduced-motion'&&report.frameP95>=25)frameFailures.push(`${name}/${n} bars/${width}px/${dpr}x/${label}: native frame delivery exceeded its budget (${report.frameP95})`);
       if(controlledGraphics)assert.ok(report.paintP95<100,`${label}: pointer input waited more than 100 ms for its next paint (${report.paintP95})`);
       return sample;
     };
@@ -160,9 +256,10 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
       if(kind==='disclosure')document.querySelector('#lrows details summary').click();
       if(kind==='fan'){A.Forecast.fan=value;A.Forecast.remember();A.App.redraw();}
       if(kind==='refresh'){
-        const r=A.Match.result,layout=value==='layout',replace=value==='replace'||layout;
-        A.Match.onmsg({...r,type:'result',id:A.Match.id,results:r.results.map(x=>({...x,start:x.start+(replace?1e6:900),raw:x.raw.map(b=>b.slice())})),
-          panes:{...r.panes,rows:r.panes.rows.map((w,i)=>({...w,d:layout?(i+1)/r.panes.rows.length:w.d,set:w.set.map(v=>v+(layout?1:.001))})),cont:{...r.panes.cont,fan:r.panes.cont.fan.map(q=>q.map(v=>v+.001))}}});
+        const r=A.Match.result,layout=value==='layout',replace=value==='replace'||layout,refreshSerial=(r.refreshSerial||0)+1;
+        if(layout)window.__reorderRows=new Map([...document.querySelectorAll('#lrows div.prow[data-reading]')].map(node=>[node.dataset.reading,{node,parent:node.parentNode}]));
+        A.Match.onmsg({...r,type:'result',id:A.Match.id,refreshSerial,results:r.results.map(x=>({...x,start:x.start+(replace?1e6:900),raw:x.raw.map((b,j)=>b.map((v,k)=>v+(k===1?(j%3+1)*.013*refreshSerial:0))),drawn:x.drawn.map((b,j)=>b.map((v,k)=>v+(k===3?(j%3+1)*.013*refreshSerial:0)))})),
+          panes:{...r.panes,rows:r.panes.rows.map((w,i)=>({...w,d:layout?(refreshSerial%2?i+1:r.panes.rows.length-i)/r.panes.rows.length:w.d,set:w.set.map(v=>v+(layout?1:.001))})),cont:{...r.panes.cont,fan:r.panes.cont.fan.map(q=>q.map(v=>v+.001))}}});
       }
       const elapsed=performance.now()-t;__samples.calls.push(elapsed);
       const action=kind+':'+value;__samples.actions[action]=Math.max(__samples.actions[action]||0,elapsed);
@@ -193,19 +290,24 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
     });
     assert.ok(collapsedWash,'a collapsed drawing must hide the previous composited fan wash');
     await measure('forecast',async()=>{for(const v of ['paths','branches','states']){await call('forecast',v);await settle(page);}await call('fan',false);await settle(page);await call('fan',true);});
-    await measure('refresh',async()=>{for(let i=0;i<3;i++){await call('refresh');await settle(page);}});
+    const cameraBefore=await page.evaluate(()=>[...__perf.Stage.view.tgt]);
+    const refreshed=await measure('refresh',async()=>{for(let i=0;i<3;i++){await call('refresh');await settle(page);}});
+    assert.deepEqual(refreshed.cameraTarget,cameraBefore,'small result quantile updates must not restart camera motion');
     await measure('refresh-replace',async()=>{await call('refresh','replace');});
-    await measure('refresh-layout',async()=>{await call('refresh','layout');});
+    const reordered=await measure('refresh-layout',async()=>{await call('refresh','layout');});
+    if(n===20)assert.ok(reordered.readingMoves<30,'a large reading reorder must avoid moving every row through individual DOM calls');
     const reorderedParity=await page.evaluate(()=>{
       const A=__perf,expected=document.createElement('div');expected.innerHTML=A.PaneDesigns.left('signal',A.Match.result,{barCount:A.S.bars.length});
       const fields=root=>[...root.querySelectorAll('[data-reading]')].map(node=>({key:node.dataset.reading,text:node.textContent,aria:node.querySelector('.trk')?.getAttribute('aria-label'),styles:[...node.querySelectorAll('.trk i')].map(i=>i.getAttribute('style'))}));
-      return JSON.stringify(fields(document.querySelector('#lrows')))===JSON.stringify(fields(expected));
+      const root=document.querySelector('#lrows'),identity=[...root.querySelectorAll('div.prow[data-reading]')].every(node=>{const before=__reorderRows.get(node.dataset.reading);return !before||before.parent!==node.parentNode||before.node===node;});
+      return{fields:JSON.stringify(fields(root))===JSON.stringify(fields(expected)),identity};
     });
-    assert.ok(reorderedParity,'retained reordered reading updates must match the full renderer in text, order, semantics and chart geometry');
+    assert.deepEqual(reorderedParity,{fields:true,identity:true},'retained reordered reading updates must preserve nodes and match full-render text, order, semantics and chart geometry');
     if(n===20){
       const queued=await page.evaluate(async()=>{
         const A=__perf,r=A.Match.result,shown=document.querySelector('#emaki .card').dataset.motionKey,send=offset=>A.Match.onmsg({...r,type:'result',id:A.Match.id,results:r.results.map(x=>({...x,start:x.start+offset}))});
-        send(1e6);send(2e6);A.Match.setTrace(0);const trace=A.Stage.trace.key;await new Promise(requestAnimationFrame);return{keys:A.Match.result.results.map(x=>A.Match.resultKeyOf(x)),shown,trace,remaining:A.Match.presentation?.tasks.length};
+        // An internal canvas resize must not flush queued result presentation.
+        A.Stage.resizePending=true;A.App.redraw();send(1e6);send(2e6);A.Match.setTrace(0);const trace=A.Stage.trace.key;await new Promise(requestAnimationFrame);return{keys:A.Match.result.results.map(x=>A.Match.resultKeyOf(x)),shown,trace,remaining:A.Match.presentation?.tasks.length};
       });
       assert.equal(queued.trace,queued.shown,'input during queued presentation must address the displayed historical card');
       assert.equal(queued.remaining,2,'superseding results must share one scheduled presentation callback');
@@ -261,10 +363,20 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
       await measure(`refresh-${variant}`,async()=>{await call('refresh');await settle(page);await call('refresh','layout');});
       const parity=await page.evaluate(variant=>{
         const A=__perf,expected=document.createElement('div');expected.innerHTML=A.PaneDesigns.left(variant,A.Match.result,{barCount:A.S.bars.length});
-        const fields=root=>[...root.querySelectorAll('[data-reading]')].map(node=>({key:node.dataset.reading,text:node.textContent,aria:node.querySelector('.trk')?.getAttribute('aria-label'),styles:[...node.querySelectorAll('.trk i')].map(i=>i.getAttribute('style'))}));
+        const fields=root=>({readings:[...root.querySelectorAll('[data-reading]')].map(node=>({key:node.dataset.reading,text:node.textContent,aria:node.querySelector('.trk')?.getAttribute('aria-label'),styles:[...node.querySelectorAll('.trk i')].map(i=>i.getAttribute('style'))})),summaries:[...root.querySelectorAll('details > summary')].map(node=>node.textContent)});
         return JSON.stringify(fields(document.querySelector('#lrows')))===JSON.stringify(fields(expected));
       },variant);
       assert.ok(parity,`${variant} refresh must match the full renderer`);
+      if(variant==='bars'){
+        const retainedBars=await page.evaluate(()=>{
+          const A=__perf,r=A.Match.result,root=document.querySelector('#lrows'),row=root.querySelector('[data-reading]'),key=row.dataset.reading;
+          const next={...r,panes:{...r.panes,rows:r.panes.rows.map(w=>w.key==='vol'?{...w,log:!w.log}:w)}};A.Panes.render(next,'left');
+          const expected=document.createElement('div');expected.innerHTML=A.PaneDesigns.left('bars',next,{barCount:A.S.bars.length});
+          const fields=node=>({text:node.textContent,labels:[...node.querySelectorAll('[aria-label]')].map(n=>n.getAttribute('aria-label')),styles:[...node.querySelectorAll('.trk i')].map(n=>n.getAttribute('style'))});
+          const result={retained:row.isConnected&&root.querySelector(`[data-reading="${key}"]`)===row,parity:JSON.stringify(fields(root))===JSON.stringify(fields(expected))};A.Flow.finish();return result;
+        });
+        assert.deepEqual(retainedBars,{retained:true,parity:true},'retained bar rows, summaries and chart semantics must match the full renderer after normalization changes');
+      }
       if(variant==='ledger'){
         const normalization=await page.evaluate(()=>{
           const A=__perf,r=A.Match.result,root=document.querySelector('#lrows'),row=root.querySelector('tr[data-reading="0-vol"]');
@@ -534,6 +646,14 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
       finally{A.Stage.draw=draw;}
     });
     assert.deepEqual(resizeFrame,{paints:1,settled:true,temporary:false},'resize settlement must draw one complete frame and release its geometry snapshot');
+    const clearParity=await page.evaluate(()=>{
+      const A=__perf;A.Stage.rootPaintKey=null;A.Stage.draw();const G=A.Stage.geom(),surfaces=[A.Stage.cv,A.Stage.guideSurface];
+      const pixels=cv=>cv.getContext('2d').getImageData(0,0,Math.min(cv.width,Math.ceil(G.w*cv.flowDpr)),Math.min(cv.height,Math.ceil(G.h*cv.flowDpr))).data;
+      const before=surfaces.map(pixels);
+      for(const cv of surfaces){const ctx=cv.getContext('2d');ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,cv.width,cv.height);ctx.restore();}
+      A.Stage.rootPaintKey=null;A.Stage.draw();return surfaces.every((cv,k)=>pixels(cv).every((value,i)=>value===before[k][i]));
+    });
+    assert.ok(clearParity,'visible root/guide pixels after repeated resize must match an independent full-capacity clear');
     const focus=await page.evaluate(()=>{
       const F=__perf.Flow,root=document.createElement('div');Object.assign(root.style,{position:'fixed',left:'10px',top:'10px'});document.body.append(root);
       F.patch(root,'<button data-motion-key="a">A</button><button data-motion-key="b">B</button>');
@@ -561,10 +681,25 @@ for(const [name,type,rate] of [['Chromium native',chromium,1],['Chromium 4x CPU'
       root.remove();return{updated,reordered};
     });
     assert.deepEqual(stable,{updated:true,reordered:true},'stable readouts must retain nodes and update semantics/styles, with keyed reconciliation on a structure change');
+    if(diagnostics.length){
+      await page.emulateMedia({reducedMotion:'no-preference'});
+      for(const {label,action,p95}of diagnostics){
+        await call('reference',false);await seed(page,data);
+        await call('pane',label==='refresh-bars'?'bars':label==='refresh-ledger'?'ledger':'signal');await call('paneRight','signal');await call('forecast','states');
+        await page.evaluate(label=>{
+          const A=__perf,more=document.querySelector('#lrows details[data-detail="more"]');
+          if(more)more.open=label!=='disclosure'&&label!=='refresh-ledger';
+          A.Flow.details(document.querySelector('#lrows'));A.Stage.ptr=A.Stage.hov=A.Stage.trace=null;A.Stage.fit(true);A.Flow.finish();A.Stage.settle();
+          document.body.scrollTop=0;scrollTo(0,0);A.App.redraw();
+        },label);
+        await settle(page);await diagnoseNativePaint(page,label,action,p95);
+      }
+    }
     assert.deepEqual(errors,[]);
     }finally{await context.close();}
   }
   }finally{await browser.close();}
 }
+assert.deepEqual(frameFailures,[],'all native frame-delivery budgets must pass');
 console.log(`Motion performance: ${reports.length} browser/workload samples passed; input/render budgets, bounded measurements/raster area, idle DOM, pixel reuse, retained styling and cleanup.`);
 }finally{await new Promise(resolve=>server.close(resolve));}

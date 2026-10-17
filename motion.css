@@ -19,7 +19,7 @@ input[type="range"]::-moz-range-thumb { transition: box-shadow var(--flow-feedba
 details[data-flow-details] > .flow-detail-body { display: block !important; }
 details[data-flow-details]::details-content { content-visibility: visible; }
 .flow-detail-body[inert] { pointer-events: none; }
-.flow-detail-content { display: flow-root; transform: translateZ(0); }
+.flow-detail-content { display: flow-root; }
 @media (min-width: 701px) { #ref[data-flow-visible] > * { width: var(--flow-reference-content-width); } }
 @media (min-width: 1181px) { .prog[hidden] { display: block !important; visibility: hidden; } }
 @media (min-width: 1181px) { .work > .pane, .work > .ref, .work > .stage { contain: layout paint; } }
@@ -29,3 +29,11 @@ details[data-flow-details]::details-content { content-visibility: visible; }
 [data-flow-theme] *, [data-flow-theme] *::before, [data-flow-theme] *::after { transition: none !important; }
 
 .pane-body, .forecast-path-rate { transition: opacity var(--flow-feedback) ease-out, color var(--flow-feedback) ease-out; }
+
+/* Native range thumbs live outside the generic pseudo-element selectors. */
+[data-flow-theme] input[type="range"]::-webkit-slider-thumb { transition:none !important; animation:none !important; }
+[data-flow-theme] input[type="range"]::-moz-range-thumb { transition:none !important; animation:none !important; }
+@media (prefers-reduced-motion: reduce), print {
+  input[type="range"]::-webkit-slider-thumb { transition:none !important; animation:none !important; }
+  input[type="range"]::-moz-range-thumb { transition:none !important; animation:none !important; }
+}
