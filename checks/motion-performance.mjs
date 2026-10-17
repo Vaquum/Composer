@@ -59,19 +59,10 @@ async function diagnoseNativePaint(page,label,action,p95){
   // Repeated physical drags change the drawing. Keep the original drag/pixel
   // assertions meaningful; its measured timing still uses every original gate.
   if(label==='pointer-drag')return;
-  const layer=':root[data-paper-cache]{background-image:none!important}:root[data-paper-cache]::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;background-color:var(--paper);background-image:var(--tex);will-change:transform}';
-  for(const [variant,css]of [['control',''],['paper-none',':root,body{background-image:none!important}'],['control',''],['root-paper-layer',layer],['control',''],['layer-and-clip',layer+'.flow-detail-body{contain:paint!important}'],['control',''],['forced-detail-layer','.flow-detail-content{transform:translateZ(0)!important}'],['control',''],['clipped-detail','.flow-detail-body{contain:paint!important}'],['contained-rows','.pane div.prow{contain:layout!important}'],['control','']]){
-    const before=variant==='root-paper-layer'||variant==='layer-and-clip'?await page.screenshot():null;
+  for(const [variant,css]of [['control',''],['paper-none',':root,body{background-image:none!important}'],['control',''],['forced-detail-layer','.flow-detail-content{transform:translateZ(0)!important}'],['control',''],['clipped-detail','.flow-detail-body{contain:paint!important}'],['contained-rows','.pane div.prow{contain:layout!important}'],['control','']]){
     const style=await page.addStyleTag({content:css||'/* native paint control */'});
     try{
       await settle(page);
-      if(before){
-        const after=await page.screenshot(),difference=await page.evaluate(async({a,b})=>{
-          const pixels=async src=>{const image=new Image();await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=reject;image.src=src;});const canvas=document.createElement('canvas');canvas.width=image.width;canvas.height=image.height;const ctx=canvas.getContext('2d');ctx.drawImage(image,0,0);return ctx.getImageData(0,0,canvas.width,canvas.height).data;};
-          const x=await pixels(a),y=await pixels(b);if(x.length!==y.length)return{max:255,mean:255};let max=0,total=0;for(let i=0;i<x.length;i++){const d=Math.abs(x[i]-y[i]);max=Math.max(max,d);total+=d;}return{max,mean:total/x.length};
-        },{a:'data:image/png;base64,'+before.toString('base64'),b:'data:image/png;base64,'+after.toString('base64')});
-        console.log(JSON.stringify({diagnosis:label,variant,pixels:difference}));
-      }
       await start();await action();await settle(page);if(label!=='reference'){await action();await settle(page);}report(variant,await stop());
     }
     finally{await style.evaluate(node=>node.remove());await settle(page);}
