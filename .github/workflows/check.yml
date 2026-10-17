@@ -39,6 +39,8 @@ jobs:
         run: npm run test:motion
       - name: Motion input and rendering performance
         run: npm run test:performance
+      - name: Native paper pixels across palettes, scrolling and screen densities
+        run: node checks/paper-cache.mjs
       - name: Unit tests
         run: python -m unittest discover -s tests -v
       - name: The page and its reference

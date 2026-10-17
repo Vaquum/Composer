@@ -6,6 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 checks = [
     ['node', 'checks/page.mjs'],
+    ['node', 'checks/paper-cache.mjs'],
     ['node', 'checks/motion-performance.mjs'],
     [sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-v'],
     *[['node', f'checks/{name}.mjs'] for name in

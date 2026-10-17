@@ -533,36 +533,11 @@ const FONT_MIN = '"Shippori Mincho", "Hiragino Mincho ProN", serif';
 
 /* ================= theme ================= */
 const COL = {};
-// Rasterize the native SVG tile once per palette and screen density. Keep the
-// original background while decoding and if the browser cannot read it back.
-const Paper={key:'',cache:new Map(),ready:Promise.resolve(),update(){
-  if(!PAPER_CACHE)return;
-  const texture=getComputedStyle(document.documentElement).getPropertyValue('--tex').trim(),paper=getComputedStyle(document.body).backgroundColor,dpr=devicePixelRatio||1,key=dpr+'|'+paper+'|'+texture;
-  if(key===this.key)return;this.key=key;
-  document.body.style.removeProperty('background-image');document.body.style.removeProperty('background-size');
-  const apply=url=>{if(this.key===key){document.body.style.backgroundImage=`url("${url}")`;document.body.style.backgroundSize='220px 220px';}};
-  if(this.cache.has(key)){apply(this.cache.get(key));this.ready=Promise.resolve();return;}
-  this.ready=new Promise(resolve=>{
-    const image=new Image(),match=texture.match(/^url\(["']?(.*?)["']?\)$/);
-    if(!match){resolve();return;}
-    image.onerror=resolve;image.onload=()=>{
-      const raster=()=>{try{
-        const tile=document.createElement('canvas');tile.width=tile.height=Math.round(220*dpr);const ctx=tile.getContext('2d');
-        // An opaque tile avoids PNG alpha unpremultiplication changing shades.
-        ctx.fillStyle=paper;ctx.fillRect(0,0,tile.width,tile.height);ctx.drawImage(image,0,0,tile.width,tile.height);
-        const url=tile.toDataURL();if(this.cache.size>=4)this.cache.delete(this.cache.keys().next().value);this.cache.set(key,url);apply(url);
-      }catch(error){/* the native background remains available */}finally{resolve();}};
-      if('requestIdleCallback' in window)requestIdleCallback(raster,{timeout:500});else setTimeout(raster,0);
-    };image.src=match[1];
-  });
-}};
-addEventListener('resize',()=>Paper.update(),{passive:true});
 function rgbOf(s) { s = s.trim(); if (s[0] === '#') { const n = parseInt(s.slice(1, 7), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; } const m = s.match(/[\d.]+/g); return m ? m.slice(0, 3).map(Number) : [128, 128, 128]; }
 function readTheme() {
   const cs = getComputedStyle(document.documentElement);
   ['paper', 'paper-2', 'ink', 'ink-2', 'ink-3', 'hair', 'mist', 'up', 'down', 'flat', 'ai', 'ai-soft', 'shu'].forEach(k => { COL[k] = cs.getPropertyValue('--' + k).trim(); });
   COL.rgb = { u: rgbOf(COL.up), d: rgbOf(COL.down), z: rgbOf(COL.flat) };
-  Paper.update();
 }
 readTheme();
 const rgbStr = (c, a = 1) => `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;

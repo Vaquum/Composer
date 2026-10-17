@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { chromium, webkit } from 'playwright';
 import referenceThumbnail from './thumbnail-reference.mjs';
 
-const html=fs.readFileSync('index.html','utf8').replace('Panes.init();','window.__perf={S,Stage,Match,Panes,Ref,Forecast,Ops,App,Flow,PaneDesigns,Paper};\nPanes.init();');
+const html=fs.readFileSync('index.html','utf8').replace('Panes.init();','window.__perf={S,Stage,Match,Panes,Ref,Forecast,Ops,App,Flow,PaneDesigns};\nPanes.init();');
 const assets=new Set(['motion.js','motion.css','panes.css','pane-designs.js','forecast.js','context.js']);
 function fixture(n){
   const keys=['vol','trades','size','maker','range','body','day'];
@@ -117,7 +117,6 @@ for(const [name,type,rate] of browsers){
       if(image.count>=20)assert.ok(image.after<=image.before/2,'large thumbnails must remove at least half their SVG nodes');
     }
     await settle(page);
-    await page.evaluate(()=>__perf.Paper.ready);
     const painted=()=>page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
     const freeze='transition:none!important;animation:none!important',stillPaper=await page.addStyleTag({content:`*,*::before,*::after{${freeze}}input[type=range]::-webkit-slider-thumb{${freeze}}input[type=range]::-moz-range-thumb{${freeze}}`});
     const paperScroll=await page.evaluate(()=>{
