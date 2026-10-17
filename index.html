@@ -1404,13 +1404,15 @@ const Stage = {
     const neutral=rgbOf(COL['ink-2']),indigo=rgbOf(COL.ai);
     const pigment=neutral.map((v,j)=>Math.round(v*.78+indigo[j]*.22));
     const paint=rgbStr(pigment),weight=this.fanA*this.fanWeight*FAN_OPTIONS.strength*(1-(this.tracePresence||0)*.7);
-    // The blurred wash cannot resolve sub-half-pixel projection changes. Keep
-    // its texture stable while painting every quantile contour at exact coordinates.
-    const key=[G.w,G.h,G.plotTop,G.plotBottom,y0,lx,...xs,...c.fan.flat().map(Y)].map(v=>Math.round(v*2)).join('|')+'|'+paint+'|'+FAN_OPTIONS.softness;
+    // Reproject the soft wash while framing moves; its contours still use the
+    // exact current coordinates. Blur once again at rest for native final pixels.
+    const key=[(closeOf(last.dv,last.d)-lo)/(hi-lo),paint,FAN_OPTIONS.softness].join('|');
+    const projection=[G.w,G.h,G.plotTop,G.plotBottom,Y(0),Y(1),lx,...xs].join('|');
+    const moving=!!Flow.value(Ref.pane,'reference')||this.view.vel.some(Boolean)||this.plot.vel.some(Boolean)||S.bars.some(b=>b.vv.some(Boolean));
     // Raster work is limited to the fan's clipped region; fading reuses its ink.
     const box={x:Math.max(0,Math.floor(lx-24)),y:Math.max(0,Math.floor(G.plotTop-24))};
     box.w=Math.max(1,G.w-box.x);box.h=Math.max(1,Math.min(G.h,Math.ceil(G.plotBottom+24))-box.y);
-    if(this.fanCache?.source!==c||this.fanCache.key!==key){
+    if(this.fanCache?.source!==c||this.fanCache.key!==key||!moving&&this.fanCache.projection!==projection){
     if(!this.fanSurface)this.fanSurface=document.createElement('canvas');
     const density=.4, wash=fitCanvas(this.fanSurface,box.w*density,box.h*density,1,true);
     wash.clearRect(0,0,this.fanSurface.width,this.fanSurface.height);wash.scale(density,density);wash.translate(-box.x,-box.y);wash.fillStyle=paint;
@@ -1435,10 +1437,18 @@ const Stage = {
     if(!this.fanBlurSurface)this.fanBlurSurface=document.createElement('canvas');
     const blur=fitCanvas(this.fanBlurSurface,box.w*density,box.h*density,1,true);blur.clearRect(0,0,this.fanBlurSurface.width,this.fanBlurSurface.height);
     blur.filter=`blur(${6*FAN_OPTIONS.softness*density}px)`;paintCanvas(blur,this.fanSurface,0,0,box.w*density,box.h*density);blur.filter='none';
-    this.fanCache={source:c,key,box};
+    this.fanCache={source:c,key,projection,box,root:lx,first:xs[0],end,zero:Y(0),one:Y(1)};
     }
     ctx.save();ctx.beginPath();ctx.rect(0,G.plotTop-24,G.w,G.plotH+48);ctx.clip();ctx.globalAlpha=weight;
-    const texture=this.fanCache.box;paintCanvas(ctx,this.fanBlurSurface,texture.x,texture.y,texture.w,texture.h);
+    const cached=this.fanCache,texture=cached.box,surface=this.fanBlurSurface;
+    const scaleY=(Y(1)-Y(0))/(cached.one-cached.zero),top=Y(0)+(texture.y-cached.zero)*scaleY;
+    // The first interval and the five equally spaced future columns resize
+    // independently. Two image slices preserve all six quantile positions.
+    for(const [left,right,start,finish]of [[texture.x,cached.first,lx+(texture.x-cached.root)*(xs[0]-lx)/(cached.first-cached.root),xs[0]],
+      [cached.first,texture.x+texture.w,xs[0],xs[0]+(texture.x+texture.w-cached.first)*(end-xs[0])/(cached.end-cached.first)]]){
+      const sourceX=(left-texture.x)/texture.w*surface.flowWidth,sourceW=(right-left)/texture.w*surface.flowWidth;
+      ctx.drawImage(surface,sourceX,0,sourceW,surface.flowHeight,start,top,finish-start,texture.h*scaleY);
+    }
     const line=ctx.createLinearGradient(lx,0,end,0);
     line.addColorStop(0,rgbStr(pigment,0));line.addColorStop(.08,paint);
     line.addColorStop(.94,paint);line.addColorStop(1,rgbStr(pigment,0));
