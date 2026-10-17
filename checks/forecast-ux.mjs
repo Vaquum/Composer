@@ -127,14 +127,23 @@ class Worker {
 }
 const deferred=list=>new Promise((resolve,reject)=>list.push({resolve,reject}));
 const panes={readings:'ready',render(){throw Error('an obsolete activity request cannot change panes');}};
-const R=new Function('$','Worker','document','loadBars','fetch','Panes','App','Stage',html.slice(mStart,mEnd)+'\nreturn Match;')($,Worker,{getElementById:()=>null},()=>deferred(barLoads),()=>deferred(activityLoads),panes,{redraw(){}},{drag:null});
+const R=new Function('$','Worker','document','loadBars','loadPayload','Panes','App','Stage',html.slice(mStart,mEnd)+'\nreturn Match;')($,Worker,{getElementById:()=>null},()=>deferred(barLoads),()=>deferred(activityLoads),panes,{redraw(){}},{drag:null});
 R.schedule=()=>{}; R.key=()=> 'same-combo'; R.fail=()=>failures++; R.result={panes:{cont:data}};R.resultKey='same-combo';R.drawnKey='same-combo';
-R.start(); const retained=R.result; R.failed=true; R.retry();
-assert.equal(workers[0].terminated,true); assert.equal(R.result,retained);assert.equal(R.resultKey,'');assert.equal(R.failed,false);assert.equal(panes.readings,'loading');
-barLoads[0].reject(Error('obsolete request')); activityLoads[0].reject(Error('obsolete activity'));
-barLoads[1].resolve(new ArrayBuffer(1)); activityLoads[1].resolve({ok:true,arrayBuffer:async()=>new ArrayBuffer(1)});
+R.start();barLoads[0].resolve(new ArrayBuffer(1));
 await new Promise(resolve=>setImmediate(resolve));
-assert.equal(failures,0,'late errors cannot undo a retry'); assert.equal(workers[0].messages.length,0);
+assert.equal(activityLoads.length,1,'activity starts after bars have arrived');
+const retained=R.result; R.failed=true; R.retry();
+assert.equal(workers[0].terminated,true); assert.equal(R.result,retained);assert.equal(R.resultKey,'');assert.equal(R.failed,false);assert.equal(panes.readings,'loading');
+activityLoads[0].reject(Error('obsolete activity'));
+barLoads[1].resolve(new ArrayBuffer(1));
+await new Promise(resolve=>setImmediate(resolve));
+activityLoads[1].resolve(new ArrayBuffer(1));
+await new Promise(resolve=>setImmediate(resolve));
+assert.equal(failures,0,'late errors cannot undo a retry'); assert.deepEqual(workers[0].messages.map(m=>m.type),['bars']);
 assert.deepEqual(workers[1].messages.map(m=>m.type),['bars','activity']);
+R.start();R.retry();barLoads[2].reject(Error('obsolete bars'));barLoads[3].resolve(new ArrayBuffer(1));
+await new Promise(resolve=>setImmediate(resolve));activityLoads[2].resolve(new ArrayBuffer(1));
+await new Promise(resolve=>setImmediate(resolve));
+assert.equal(failures,0,'late bar errors cannot undo a retry');assert.equal(workers[2].messages.length,0);
 console.log('All modes and states retain geometry; refresh retains DOM and choices; stale interactions, sparse results, retries, responsive fit and candle alignment pass.');
 
