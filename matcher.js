@@ -328,7 +328,7 @@ async function search(q, id, report) {
   const base = { n: 0, up: 0, down: 0, flat: 0, pass: 0 }, split = { n: 0, up: 0, down: 0, flat: 0, none: 0 };
   const best = new Best(Math.max(400, q.x * 40));
   const total = BARS.reduce((a, T) => a + T.n, 0);
-  let done = 0, sinceTick = 0, deadline = performance.now() + 8;
+  let done = 0, sinceTick = 0, deadline = performance.now() + WORK_SLICE_MS;
 
   // The panes: the set of windows that match (exact twins with nothing held, the windows that hold otherwise, on the
   // timeframes shown and through the next-bar filter), summed as they are found. For each drawn bar, the readings of the
@@ -423,7 +423,7 @@ async function search(q, id, report) {
       const own = new Uint8Array(T.n);
       for (let i = 0; i < T.n; i++) {
         if ((i & 1023) === 0 && performance.now() >= deadline) {
-          await tick(); if (id !== latest) return null; deadline = performance.now() + 8; report(done / total);
+          await tick(); if (id !== latest) return null; deadline = performance.now() + WORK_SLICE_MS; report(done / total);
         }
         const o = T.O[i], c = T.C[i];
         own[i] = cq.oriented ? Math.abs((c > o ? 1 : c < o ? -1 : 0) - cq.D[g]) : 0;
@@ -441,7 +441,7 @@ async function search(q, id, report) {
         const end = T.n - (n - g - 1) - spare;
         for (let i = 0; i < end; i++) {
           if ((i & 1023) === 0 && performance.now() >= deadline) {
-            await tick(); if (id !== latest) return null; deadline = performance.now() + 8; report(done / total);
+            await tick(); if (id !== latest) return null; deadline = performance.now() + WORK_SLICE_MS; report(done / total);
           }
           const rest = g === n - 1 ? 0 : Math.min(columns[g + 1][spare][i + 1], spare ? tails[(spare - 1) % 2][i + 1] : 255);
           tail[i] = rest;
@@ -522,7 +522,7 @@ async function search(q, id, report) {
     }
     for (s = 0; s + n <= T.n; s++) {
       if ((++sinceTick & 255) === 0 && performance.now() >= deadline) {
-        await tick(); deadline = performance.now() + 8;
+        await tick(); deadline = performance.now() + WORK_SLICE_MS;
         if (id !== latest) return null;
         report(done / total);
       }
@@ -561,7 +561,7 @@ async function search(q, id, report) {
         if (e >= T.n || T.run[e] < e - s + 1) break;
         bestHere = null; any = false;
         if(!beginPlacement(extra))continue;
-        while (place(false)) { await tick(); if (id !== latest) return null; deadline = performance.now() + 8; report(done / total); }
+        while (place(false)) { await tick(); if (id !== latest) return null; deadline = performance.now() + WORK_SLICE_MS; report(done / total); }
         if (!any) continue;
         counts[k]++;
         outcomeInto(T, e, oo);
@@ -571,7 +571,7 @@ async function search(q, id, report) {
         if (on) {
           addSet(k, T, s, picks, e, oo);
           beginPlacement(extra,false);
-          while (place(true)) { await tick(); if (id !== latest) return null; deadline = performance.now() + 8; report(done / total); }
+          while (place(true)) { await tick(); if (id !== latest) return null; deadline = performance.now() + WORK_SLICE_MS; report(done / total); }
           if (bestHere) best.push(bestHere.d, { k, s, picks: Array.from(bestHere.picks), extra, span: n + extra, end: T.ts[e] });
         }
       }
@@ -600,7 +600,7 @@ async function search(q, id, report) {
       if (!q.tfs[k]) continue;
       T = BARS[k];
       for (s = 0; s + n <= T.n; s++) {
-        if ((++sinceTick & 255) === 0 && performance.now() >= deadline) { await tick(); if (id !== latest) return null; deadline = performance.now() + 8; }
+        if ((++sinceTick & 255) === 0 && performance.now() >= deadline) { await tick(); if (id !== latest) return null; deadline = performance.now() + WORK_SLICE_MS; }
         if (T.run[s + n - 1] < n) continue;
         if (f && !passes(outcomeInto(T, s + n - 1, o0), f)) continue;
         for (let i = 0; i < n; i++) { MO[i] = T.O[s + i]; MH[i] = T.H[s + i]; ML[i] = T.L[s + i]; MC[i] = T.C[s + i]; }
