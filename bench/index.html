@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Composer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/bench/base.css">
+  <link rel="stylesheet" href="/bench/bench.css">
+  <link rel="stylesheet" href="/bench/composer.css">
+</head>
+<body class="bench night composer">
+  <header class="topbar">
+    <span class="word">Composer</span>
+    <nav class="tabs aspects" aria-label="Aspects of the tool"><a id="to-cube" target="_blank" rel="noopener">Cube ↗</a><span aria-current="page">Composer</span><a id="to-query" target="_blank" rel="noopener">Query ↗</a></nav>
+    <div id="readout" class="readout" aria-live="polite"></div>
+    <div class="tabs toggles" role="toolbar" aria-label="Panels">
+      <button type="button" data-panel="left" title="Named patterns · P">Patterns</button>
+      <button type="button" data-panel="windows" title="The matched windows · W">Windows</button>
+      <button type="button" data-panel="g1" title="The drawing as a g1 pattern · G">g1</button>
+      <button type="button" data-panel="limen" title="Hand this shape to Limen · L">Limen</button>
+      <button type="button" data-panel="right" title="Inspect the selected row or column · I">Inspect</button>
+    </div>
+  </header>
+  <div id="encbar" class="encbar" role="toolbar" aria-label="The drawing's terms and what the canvas shows"></div>
+  <div class="work">
+    <aside id="left" class="side" aria-label="Named patterns" hidden></aside>
+    <div class="main">
+      <section id="canvas" class="canvas" aria-label="Shape canvas">
+        <div class="axis row3"><div class="lab"><span id="rowlabel" class="note"></span><span id="pager" class="pagerbar"></span></div><div id="axis"></div><div id="trackhead" class="cols label"></div></div>
+        <div id="lanes"><div class="cursor" id="cursor"></div><div class="tip" id="tip"></div></div>
+        <div class="band row3"><div class="cursor" id="cursor2"></div>
+          <div id="names" class="cell names"></div>
+          <div id="coltrack"></div>
+          <div id="collabel" class="lab"></div>
+        </div>
+      </section>
+      <section id="drawer" class="drawer" hidden></section>
+    </div>
+    <aside id="right" class="side right" aria-label="Inspect" hidden></aside>
+  </div>
+  <footer class="foot">
+    <span id="chip"></span>
+    <span class="keys">
+      <span class="key"><svg width="9" height="14"><line x1="4.5" x2="4.5" y1="0" y2="14" stroke="#AAB3BD"/><rect x="1.5" y="3.5" width="6" height="6" fill="#142038" stroke="#AAB3BD"/></svg>Up</span>
+      <span class="key"><svg width="9" height="14"><line x1="4.5" x2="4.5" y1="0" y2="14" stroke="#AAB3BD"/><rect x="1.5" y="3.5" width="6" height="6" fill="#AAB3BD" stroke="#AAB3BD"/></svg>Down</span>
+      <span class="key"><svg width="18" height="6"><line x1="0" x2="18" y1="3" y2="3" stroke="#AAB3BD" stroke-dasharray="2 4"/></svg>Shape high and low</span>
+      <span class="key"><svg width="16" height="10"><rect width="16" height="10" fill="#F7F6F2" fill-opacity=".2"/></svg>Middle half of closes</span>
+      <span class="key"><svg width="18" height="10"><rect y="2" width="18" height="6" fill="#F7F6F2" fill-opacity=".07"/><rect y="2" width="10" height="6" fill="#F7F6F2" fill-opacity=".36"/></svg>Share closing above, inside, below</span>
+      <span class="key"><svg width="18" height="10"><rect y="2" width="18" height="6" fill="#F7F6F2" fill-opacity=".07"/><rect y="2" width="11" height="6" fill="#F7F6F2" fill-opacity=".6"/><rect x="6" y="1" width="1" height="8" fill="#F7F6F2" fill-opacity=".85"/></svg>Outside the drawing’s interval · tick, the drawing</span>
+      <span class="key"><svg width="22" height="10"><polyline points="1,2 21,8" fill="none" stroke="#AAB3BD"/><rect x="8.5" y="2.5" width="5" height="5" fill="#142038" stroke="#AAB3BD"/></svg>Held relation</span>
+      <span class="key">Drag a close, high or low · , . bar · ⇧↑↓ nudge · + − bars · H hold</span>
+    </span>
+    <span id="status"></span>
+  </footer>
+  <script src="/patterns.js"></script>
+  <script type="module" src="/bench/bench.js"></script>
+</body>
+</html>
