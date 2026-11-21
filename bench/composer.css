@@ -1,0 +1,195 @@
+/* Composer's additions to the bench. The shell, type, rules and motion are Query's bench.css, unchanged. */
+body.composer { --head: 284px; --track: 328px; }
+.composer .cols { grid-template-columns: 70px repeat(3, minmax(0, 1fr)); gap: 12px; }
+
+/* The canvas gives the columns what room there is. As it narrows (panels open, a small window) the row head loses
+   its second line and the track its interval text, then the track keeps only the count and the next bar. */
+.composer #canvas[data-fit='snug'] { --head: 212px; --track: 252px; }
+.composer #canvas[data-fit='tight'] { --head: 164px; --track: 148px; }
+.composer #canvas[data-fit='snug'] .cols, .composer #canvas[data-fit='tight'] .cols { grid-template-columns: 54px repeat(3, minmax(0, 1fr)); gap: 9px; padding-inline: 10px 12px; }
+.composer #canvas[data-fit='tight'] .cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.composer #canvas[data-fit='tight'] .cols > :nth-child(2), .composer #canvas[data-fit='tight'] .cols > :nth-child(3) { display: none; }
+.composer #canvas:not([data-fit='roomy']) .lane-track small, .composer .lane.short .lane-track small { display: none; }
+.composer #canvas:not([data-fit='roomy']) .lane-track b { font-size: 14px; }
+.composer #canvas:not([data-fit='roomy']) .lane.pinned .lane-track b { font-size: 15px; }
+.composer #canvas:not([data-fit='roomy']) .lane-head > .foot-line, .composer .lane.short .lane-head > .foot-line { display: none; }
+.composer #canvas:not([data-fit='roomy']) .lane-head { padding-inline: 14px 10px; }
+.composer #canvas:not([data-fit='roomy']) .lane-head .text { font-size: 13px; }
+.composer #canvas:not([data-fit='roomy']) .lane.pinned .lane-head .text { font-size: 14.5px; }
+.composer #canvas[data-fit='tight'] .lane-head .acts { display: none; }
+.composer #canvas[data-fit='tight'] .lane.sel .lane-head .acts { display: inline-flex; }
+.composer #canvas[data-fit='tight'] .lane-head > .role { flex-wrap: wrap; row-gap: 3px; }
+.composer #canvas:not([data-fit='roomy']) .axis .lab .note { display: none; }
+
+/* lane heights move on the canvas's spring (bench.js), not on a CSS transition */
+.composer .lane { transition: background-color var(--t) var(--ease); }
+.composer .lane.short .lane-head { padding-block: 8px 6px; }
+.composer .lane.short .lane-track { padding-block: 9px 6px; }
+.composer .lane.short .lane-track .meter { margin-top: 6px; }
+.composer .lane.compact .lane-head .text { font-size: 13px; line-height: 1.35; }
+
+/* a variant's head: what the drawing has, then what this shape has */
+.lane-head .text .was { color: var(--t3); text-decoration: line-through; text-decoration-color: color-mix(in srgb, #F7F6F2 30%, transparent); }
+.lane-head .text .to { color: var(--t3); }
+.lane-head .text .now { font-weight: 500; }
+
+/* the lens: rails for the shape's high and low, and the last close carried into the aftermath */
+.b-rail { fill: none; stroke: var(--t2); stroke-width: 1; stroke-dasharray: 2 4; opacity: .7; }
+.b-link { stroke: var(--t3); stroke-width: 1; stroke-dasharray: 1 3; }
+/* each later bar has three cells (above the high, inside, below the low); a cell fills from the left by its share */
+.b-col { fill: var(--t1); fill-opacity: .022; shape-rendering: crispEdges; }
+.b-wash { fill: var(--t1); fill-opacity: .06; shape-rendering: crispEdges; }
+.b-sharebar { fill: var(--t1); fill-opacity: .3; shape-rendering: crispEdges; }
+.lane.sel .b-sharebar, .lane.draw .b-sharebar, .band .b-sharebar { fill-opacity: .36; }
+/* the drawing's share lies outside this cohort's 95% interval: a stronger fill, and a tick where the drawing has it */
+.b-sharebar.off { fill-opacity: .56; }
+.lane.sel .b-sharebar.off { fill-opacity: .62; }
+.b-sharebar { transition: fill-opacity var(--t) var(--ease); }
+.b-pool { fill: var(--t1); fill-opacity: .8; shape-rendering: crispEdges; }
+/* the one comparison a variant changes */
+.b-ref { stroke: var(--t2); stroke-width: 1; stroke-dasharray: 2 3; shape-rendering: crispEdges; }
+.b-now { stroke: var(--t1); stroke-width: 1.5; shape-rendering: crispEdges; }
+.b-now.thin { stroke-width: 1; }
+.b-was { stroke: var(--t2); stroke-width: 1; stroke-dasharray: 3 2; opacity: .75; shape-rendering: crispEdges; }
+.b-word { font: 500 9.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; fill: var(--t1); paint-order: stroke; stroke: var(--navy); stroke-width: 3px; }
+.lane.sel .b-word { stroke: color-mix(in srgb, var(--raised) 45%, var(--navy)); }
+/* compact lanes: the same candle, finer lines */
+.b-in.b-sm line, .b-in.b-sm rect, .b-after.b-sm line, .b-after.b-sm rect { stroke-width: 1; }
+/* column track */
+.b-num { font: 400 10.5px var(--mono); fill: var(--t1); font-variant-numeric: tabular-nums; }
+.b-num.dim { fill: var(--t3); }
+.b-track { stroke: var(--line-2); stroke-width: 1; shape-rendering: crispEdges; }
+.b-all { fill: var(--t2); shape-rendering: crispEdges; }
+.band { position: relative; }
+.band.hot .cursor { opacity: 1; }
+.b-fan.outer { fill: color-mix(in srgb, #F7F6F2 6%, transparent); }
+.b-mid { fill: none; stroke: var(--t1); stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; opacity: .9; }
+.b-mid.sm { stroke-width: 1; }
+.b-share { font: 400 11px var(--mono); fill: var(--t1); font-variant-numeric: tabular-nums; paint-order: stroke; stroke: var(--navy); stroke-width: 3px; stroke-opacity: .55; }
+.lane.sel .b-share { stroke: var(--raised); }
+svg.moving .b-col, svg.moving .b-wash, svg.moving .b-sharebar, svg.moving .b-pool, svg.moving .b-rail, svg.moving .b-link, svg.moving .b-ref, svg.moving .b-now, svg.moving .b-was, svg.moving .b-track, svg.moving .b-all { shape-rendering: auto; }
+
+/* the drawing: what can be dragged, and the picked bar */
+.lane.draw .lane-svg { cursor: default; touch-action: none; }
+.lane.draw .lane-svg.over-level { cursor: ns-resize; }
+.lane.draw .lane-svg.over-body { cursor: grab; }
+.lane.draw .lane-svg.dragging { cursor: grabbing; }
+.b-knob { fill: var(--navy); stroke: var(--t2); stroke-width: 1; opacity: 0; transition: opacity var(--t-short) var(--ease); shape-rendering: crispEdges; }
+.b-tab { stroke: var(--t2); stroke-width: 1.5; opacity: .5; transition: opacity var(--t-short) var(--ease); shape-rendering: crispEdges; }
+.lane.draw:hover .b-knob, .lane.draw .dragging .b-knob { opacity: 1; }
+.lane.draw:hover .b-tab, .lane.draw .dragging .b-tab { opacity: 1; }
+.lane.sel .b-knob { fill: var(--raised); }
+/* gold marks the selection only: the picked bar of the drawing */
+.lane.draw .b-in line, .lane.draw .b-in.b-up rect { stroke: var(--t1); }
+.lane.draw .b-in.b-down rect { fill: var(--t1); stroke: var(--t1); }
+.lane.draw .b-in.b-up rect { fill: var(--navy); }
+.lane.draw.sel .b-in.b-up rect { fill: var(--raised); }
+.lane.draw .b-pick line, .lane.draw .b-pick.b-up rect { stroke: var(--gold); }
+.lane.draw .b-pick.b-down rect { fill: var(--gold); stroke: var(--gold); }
+.b-axis.pick { fill: var(--gold); }
+
+/* what is held: a relation is a hairline between its two endpoints with a knot at its middle, a held colour a knot
+   on the body, the skeleton the line through the swings it keeps. Quiet at rest; the one in question stands out. */
+.b-hold { fill: none; stroke: var(--t2); stroke-width: 1; opacity: .62; transition: opacity var(--t-short) var(--ease); }
+.b-hold.on { stroke: var(--t1); stroke-width: 1.5; opacity: 1; }
+.b-holdknot { fill: var(--navy); stroke: var(--t2); stroke-width: 1; shape-rendering: crispEdges; transition: fill var(--t-short) var(--ease); }
+.b-holdknot.tint { stroke: var(--t1); }
+.lane.sel .b-holdknot { fill: var(--raised); }
+.b-holdknot.on, .lane.sel .b-holdknot.on { fill: var(--t1); stroke: var(--t1); }
+.b-bones { fill: none; stroke: var(--t2); stroke-width: 1; stroke-dasharray: 3 3; stroke-linejoin: round; opacity: .6; }
+.b-bones.on { stroke: var(--t1); stroke-dasharray: none; opacity: .95; }
+.b-bone { fill: var(--t2); shape-rendering: crispEdges; }
+.b-bone.on { fill: var(--t1); }
+.b-frame { fill: none; stroke: var(--t1); stroke-width: 1; shape-rendering: crispEdges; }
+/* hold mode: every endpoint of the drawing can be picked; gold is the point picked, the selection */
+.b-target { fill: var(--navy); stroke: var(--t1); stroke-width: 1; shape-rendering: crispEdges; }
+.lane.sel .b-target { fill: var(--raised); }
+.b-target.hot { stroke-width: 2; fill: var(--t1); }
+.b-target.pend, .lane.sel .b-target.pend { fill: var(--gold); stroke: var(--gold); }
+.b-bodyhit { fill: var(--t1); fill-opacity: .1; stroke: var(--t2); stroke-width: 1; stroke-dasharray: 2 2; shape-rendering: crispEdges; }
+.holding .lane.draw .lane-svg { cursor: crosshair; }
+.holding .lane.draw .lane-svg.over-target { cursor: pointer; }
+svg.moving .b-holdknot, svg.moving .b-bone, svg.moving .b-frame, svg.moving .b-target, svg.moving .b-bodyhit { shape-rendering: auto; }
+.quiet[aria-pressed='true'] { color: var(--t1); box-shadow: inset 0 -1px 0 var(--t1); }
+.enc.tog { border-left: 1px solid var(--line); }
+.enc.tog[aria-pressed='true'] { background: var(--wash-2); }
+.enc.tog .val { color: var(--t2); }
+.enc.tog[aria-pressed='true'] .val { color: var(--t1); }
+/* the holds term: each hold in words with its release, then the skeleton and the stretch as steppers */
+.bench .pop.wide { min-width: 348px; max-width: 440px; }
+.pop .holds .hrow { display: flex; align-items: center; justify-content: space-between; gap: 22px; padding: 8px 14px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.pop .holds .hrow.none .what { color: var(--t3); }
+.pop .stepper { display: inline-flex; align-items: center; gap: 6px; }
+.pop .stepper button { width: 22px; height: 22px; color: var(--t2); font: 400 15px/1 var(--mono); transition: color var(--t-short) var(--ease), background-color var(--t-short) var(--ease); }
+.pop .stepper button:hover:not(:disabled) { color: var(--t1); background: var(--wash-2); }
+.pop .stepper button:disabled { opacity: .3; }
+.pop .stepper .fig { min-width: 58px; text-align: center; font: 400 12px var(--mono); font-variant-numeric: tabular-nums; }
+.bench .pop footer { display: flex; justify-content: space-between; gap: 18px; }
+.composer .heldlist { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px 14px; align-items: baseline; margin-top: 10px; font-size: 12.5px; }
+.composer .heldlist .k { color: var(--t2); }
+.composer .heldlist .k.on { color: var(--t1); }
+.readout b.none { color: var(--t2); }
+.ruled td.breaks { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--t2); font-size: 12px; }
+
+/* an answer that no longer matches the drawing stays in place, dimmed, until the new one arrives */
+#lanes.stale .lane-svg .b-sharebar, #lanes.stale .lane-svg .b-pool, #lanes.stale .lane-svg .b-fan, #lanes.stale .lane-svg .b-mid, #lanes.stale .lane-svg .b-share { opacity: .35; transition: opacity var(--t) var(--ease); }
+#lanes.stale .lane-track { opacity: .45; transition: opacity var(--t) var(--ease); }
+.lane.wait .lane-track { opacity: .45; }
+
+/* the names that fit the drawing, in the cell beside the column track */
+.band .names { cursor: default; flex-direction: column; align-items: flex-start; justify-content: center; gap: 3px; overflow: hidden; }
+.band .names:hover { background: transparent; }
+.band .names .label { color: var(--t3); }
+.band .names .list { display: flex; flex-wrap: wrap; gap: 2px 14px; max-height: 36px; overflow: hidden; font-size: 13px; color: var(--t1); }
+.band .names .list .who { color: var(--t3); font: 400 11px var(--mono); margin-right: 6px; }
+.band .names .list button:hover { color: var(--gold); }
+.band .names .none { color: var(--t3); font-size: 12.5px; }
+
+/* terms bar: a stepper in place of a menu where a value only goes up or down */
+.enc.step { gap: 6px; cursor: default; }
+.enc.step:hover { background: transparent; }
+.enc.step button { width: 20px; height: 20px; color: var(--t2); font: 400 15px/1 var(--mono); transition: color var(--t-short) var(--ease), background-color var(--t-short) var(--ease); }
+.enc.step button:hover { color: var(--t1); background: var(--wash-2); }
+.encbar .gap { flex: 1; }
+.encbar .enc.right { border-left: 1px solid var(--line); }
+
+/* inspector */
+.composer .block h3 { font: 400 15px/1.35 var(--sans); margin: 0 0 2px; }
+.composer .rows { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 7px 16px; align-items: baseline; font-size: 12.5px; margin: 10px 0 0; }
+.composer .rows .k { color: var(--t2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.composer .rows .v { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; color: var(--t1); }
+.composer .rows .b { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; color: var(--t3); }
+.composer .rows .bar { grid-column: 1 / -1; height: 2px; margin: -3px 0 3px; background: var(--line); position: relative; }
+.composer .rows .bar::before { content: ''; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--t3); }
+.composer .rows .bar i { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, #F7F6F2 72%, transparent); transition: left var(--t) var(--ease), width var(--t) var(--ease); }
+.composer .rows .bar i.below { background: color-mix(in srgb, #F7F6F2 36%, transparent); }
+.composer .rate { margin-top: 12px; }
+.composer .rate .line { display: flex; align-items: baseline; gap: 10px; }
+.composer .rate .line b { font: 400 20px/1.1 var(--mono); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.composer .rate .line span { color: var(--t2); font-size: 12.5px; }
+.composer .rate .track { position: relative; height: 2px; margin: 8px 0 5px; background: var(--line); }
+.composer .rate .track i { position: absolute; top: 0; bottom: 0; left: 0; background: color-mix(in srgb, #F7F6F2 72%, transparent); transition: width var(--t) var(--ease); }
+.composer .rate .track u { position: absolute; top: -3px; bottom: -3px; background: color-mix(in srgb, #F7F6F2 30%, transparent); transition: left var(--t) var(--ease), width var(--t) var(--ease); }
+.composer .rate small { color: var(--t3); font: 400 11px/1.4 var(--mono); }
+.composer .paths { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 7px 12px; align-items: center; margin-top: 10px; font-size: 12.5px; }
+.composer .paths .seq { display: inline-grid; grid-template-columns: repeat(6, 9px); grid-template-rows: repeat(3, 5px); gap: 1px; }
+.composer .paths .seq i { background: var(--line); }
+.composer .paths .seq i.on { background: var(--t1); }
+.composer .paths .w { color: var(--t2); font: 400 11.5px var(--mono); letter-spacing: .04em; }
+.composer .paths .v { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+
+/* catalogue rows keep Query's .pat; the drawing's own names are marked current */
+.composer .pat .glyph { width: 34px; }
+.composer .side .frame { display: flex; align-items: baseline; gap: 10px; padding: 9px 18px; border-bottom: 1px solid var(--line); color: var(--t2); font-size: 12px; }
+.composer .side .frame .quiet { margin-left: auto; }
+
+/* drawer */
+.composer .g1 { padding: 16px 0; display: grid; gap: 14px; max-width: 980px; }
+.composer .g1 code { display: block; font: 400 14px/1.6 var(--mono); color: var(--t1); overflow-wrap: anywhere; user-select: all; }
+.composer .g1 dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 18px; margin: 0; font: 400 12px/1.5 var(--mono); }
+.composer .g1 dt { color: var(--t3); } .composer .g1 dd { margin: 0; color: var(--t2); }
+
+@media (max-width: 900px) { .composer #canvas[data-fit] { --head: 150px; --track: 0px; } .composer .lane-track, .composer #trackhead, .composer #collabel { display: none; } .composer .foot .keys { display: none; } }
+
+.readout.stale { opacity: .45; transition: opacity var(--t) var(--ease); }
+.readout { transition: opacity var(--t) var(--ease); }

@@ -39,6 +39,12 @@ PAGES = {
     '/forecast.js': ('forecast.js', 'text/javascript; charset=utf-8'),
     '/context.js': ('context.js', 'text/javascript; charset=utf-8'),
 }
+# The bench: the same matcher and bars behind a full-screen console, beside the page above.
+BENCH = {'index.html': 'text/html', 'base.css': 'text/css', 'bench.css': 'text/css', 'composer.css': 'text/css',
+         'bench.js': 'text/javascript', 'lanes.js': 'text/javascript', 'engine.js': 'text/javascript',
+         'model.js': 'text/javascript', 'motion.js': 'text/javascript', 'dom.js': 'text/javascript'}
+PAGES.update({f'/bench/{name}': (f'bench/{name}', f'{kind}; charset=utf-8') for name, kind in BENCH.items()})
+PAGES['/bench'] = PAGES['/bench/'] = PAGES['/bench/index.html']
 REFRESH_SECONDS = 3600
 
 
@@ -265,11 +271,23 @@ def handler(state: Bars, pages: dict[str, tuple[bytes, str]]):
     return Handler
 
 
+class LivePages(dict):
+    """The pages read from disk on every request, for development: an edit shows on reload."""
+
+    def __contains__(self, path: object) -> bool:
+        return path in PAGES
+
+    def __getitem__(self, path: str) -> tuple[bytes, str]:
+        name, kind = PAGES[path]
+        return (ROOT / name).read_bytes(), kind
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--port', type=int, default=8488)
+    parser.add_argument('--reload', action='store_true', help='read the pages from disk on every request (development)')
     args = parser.parse_args()
-    pages = {path: ((ROOT / name).read_bytes(), kind) for path, (name, kind) in PAGES.items()}
+    pages = LivePages() if args.reload else {path: ((ROOT / name).read_bytes(), kind) for path, (name, kind) in PAGES.items()}
     state = Bars(cache_dir=Path(os.environ.get('COMPOSER_CACHE_DIR', str(Path.home() / '.cache' / 'composer'))))
     restored = state.restore()
     log('serving cached history' if restored else 'history is loading in the background')
