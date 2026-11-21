@@ -277,9 +277,30 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
   .ctl .v { min-width: 0; }
   .nextctl { height: auto; flex-wrap: wrap; white-space: normal; padding-block: 5px; row-gap: 6px; }
 }
+
+#pattern-browser{box-sizing:border-box;width:min(550px,calc(100% - 24px));max-height:85vh;overflow:auto;padding:20px;color:var(--ink);background:var(--paper);border:1px solid var(--hair);border-radius:8px}
+#pattern-browser::backdrop{background:#181a1a82}
+.pattern-heading,.pattern-pickers{display:flex;align-items:center;gap:12px;justify-content:space-between}
+#pattern-browser h2,#pattern-browser h3{margin:0;font-family:inherit}
+#pattern-browser p{margin:8px 0 16px;line-height:1.45}
+#pattern-browser label{display:block;font-size:13px}
+#pattern-browser select,#pattern-browser input{display:block;box-sizing:border-box;width:100%;min-height:34px;margin:4px 0 12px;background:var(--paper);color:var(--ink);border:1px solid var(--hair);border-radius:3px;padding:4px 8px;font:inherit}
+.pattern-pickers label:first-child{flex:1;min-width:0}
+#pattern-results details{border-top:1px solid var(--hair);padding:5px 0;font-size:13px}
+#pattern-results summary{cursor:pointer}#pattern-results details p{margin:6px 0}
+button.nm{font:inherit;color:inherit;text-align:left;background:transparent;border:0;padding:0;cursor:pointer}
 </style>
 <link rel="stylesheet" href="panes.css">
 <link rel="stylesheet" href="motion.css">
+
+<dialog id="pattern-browser" aria-labelledby="pattern-heading">
+  <div class="pattern-heading"><h2 id="pattern-heading">Named candle patterns</h2><button id="close-patterns" type="button" aria-label="Close pattern browser">Close</button></div>
+  <p>Search completed BTCUSDT candles by geometry. Each match ends at the close of its final bar.</p>
+  <label for="pattern-filter">English or Japanese name</label><input id="pattern-filter" type="search" autocomplete="off" placeholder="Hammer, カラカサ…">
+  <div class="pattern-pickers"><label>Pattern<select id="pattern-list"></select></label><label>Timeframe<select id="pattern-frame"></select></label></div>
+  <h3 id="pattern-title"></h3><p id="pattern-aliases" hidden></p><p id="pattern-rule"></p>
+  <p id="pattern-status" role="status"></p><div id="pattern-results"></div>
+</dialog>
 
 <div class="app">
   <header class="top">
@@ -292,6 +313,7 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
       <div class="seg" id="mode" role="group" aria-label="Direction"><button type="button" data-v="1">Up / down<span class="ja" lang="ja">陽陰</span></button><button type="button" data-v="0">Shape only<span class="ja" lang="ja">形</span></button></div>
       <button class="icon" type="button" id="undo" aria-label="Undo" title="Undo (⌘Z)">↶</button>
       <button class="icon" type="button" id="redo" aria-label="Redo" title="Redo (⇧⌘Z)">↷</button>
+      <button type="button" class="link" id="browse-patterns">Named patterns</button>
       <button class="icon" type="button" id="reftoggle" aria-label="Reference" aria-expanded="false" aria-pressed="false" aria-controls="ref" title="Reference: how to read the panels"><svg viewBox="0 0 16 16" width="17" height="17" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="8" cy="8" r="6.3"/><path d="M8 7.2v4M8 4.6v.4"/></svg></button>
       <button class="icon" type="button" id="theme" aria-label="Switch between washi and sumi" title="Washi or sumi">◐</button>
     </div>
@@ -431,6 +453,8 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
 <script src="pane-designs.js"></script>
 <script src="forecast.js"></script>
 <script src="context.js"></script>
+<script src="patterns.js"></script>
+<script src="pattern-browser.js"></script>
 <script>
 (() => {
 'use strict';
@@ -581,7 +605,6 @@ function identity() {
   return { r: dense(vals), d: S.bars.map(b => (b.v[1] === b.v[2] ? 'z' : b.d)), n: S.bars.length };
 }
 const codeOf = id => `g1:${S.colored ? 'o' : 'u'}:` + Array.from({ length: id.n }, (_, i) => id.r.slice(i * 4, i * 4 + 4).join(',') + (S.colored ? ',' + id.d[i] : '')).join(';');
-const formOf = q => (q[0] < q[1] ? 1 : 0) | (q[1] < q[2] ? 2 : 0) | (q[2] < q[3] ? 4 : 0);
 function epName(d, k) {
   if (k === 0) return 'low'; if (k === 3) return 'high';
   if (!S.colored) return k === 1 ? 'body bottom' : 'body top';
@@ -727,31 +750,18 @@ function pairSentence(id, i, j) {
   const ties = new Set(q.filter(x => p.includes(x))).size;
   return `Bar ${j + 1}'s body ${BODY[band(q[1], q[2], p[1], p[2])]}, and it ${RANGE[band(q[0], q[3], p[0], p[3])]}: ${w(q[3], p[3], 'higher high', 'equal high', 'lower high')}, ${w(q[0], p[0], 'higher low', 'equal low', 'lower low')}` + (ties ? `; ${ties === 1 ? 'one shared level' : ties + ' shared levels'}.` : '.');
 }
-// classical Japanese names whose geometric core the composition satisfies (trend context aside)
-function namesOf(id) {
-  const out = [], col = S.colored, bar = i => id.r.slice(i * 4, i * 4 + 4);
-  for (let i = 0; i < id.n; i++) {
-    const f = formOf(bar(i)), who = `Bar ${i + 1}`, d = id.d[i];
-    if (f === 2) out.push([who, '丸坊主', 'Marubozu', '']);
-    else if (f === 5) out.push([who, '十字線', 'Doji', '']);
-    else if (f === 1) out.push([who, 'トンボ', 'Dragonfly doji', '']);
-    else if (f === 4) out.push([who, '塔婆', 'Gravestone doji', '']);
-    else if (col && (f === 3 || f === 6)) out.push((d === 'u') === (f === 6) ? [who, '寄付坊主', 'Opening marubozu', ''] : [who, '大引坊主', 'Closing marubozu', '']);
+// Check the drawing's actual distances as well as its endpoint order.
+function namesOf() {
+  const [o,h,l,c] = [0,1,2,3].map(k => S.bars.map((_,i) => ohlcOf(i)[k]));
+  const names = [];
+  for (let i = 0; i < S.bars.length; i++) {
+    for (const p of CandlePatterns.patterns) {
+      if (p.group || (p.oriented && !S.colored) || !CandlePatterns.compile(p.id)(o,h,l,c,i)) continue;
+      const who = p.bars === 1 ? 'Bar ' + (i+1) : 'Bars ' + (i-p.bars+2) + '–' + (i+1);
+      names.push([who,p]);
+    }
   }
-  for (let i = 1; i < id.n; i++) {
-    const p = bar(i - 1), q = bar(i), dp = id.d[i - 1], dq = id.d[i], who = `Bars ${i}–${i + 1}`;
-    const opp = col && dp !== 'z' && dq !== 'z' && dp !== dq;
-    const close = (x, d) => x[d === 'u' ? 2 : 1], open = (x, d) => x[d === 'u' ? 1 : 2];
-    if (opp && band(q[1], q[2], p[1], p[2]) === 2) out.push([who, '包み線', 'Engulfing', dq === 'u' ? 'bullish' : 'bearish']);
-    if (q[1] > p[1] && q[2] < p[2]) out.push([who, 'はらみ線', q[1] < q[2] ? 'Harami' : 'Harami cross', '']);
-    if (q[0] > p[3]) out.push([who, '窓', 'Window', 'gap up']);
-    if (q[3] < p[0]) out.push([who, '窓', 'Window', 'gap down']);
-    if (q[3] === p[3]) out.push([who, '毛抜き天井', 'Tweezer top', '']);
-    if (q[0] === p[0]) out.push([who, '毛抜き底', 'Tweezer bottom', '']);
-    if (opp && close(p, dp) === close(q, dq)) out.push([who, '出会い線', 'Meeting lines', '']);
-    if (opp && open(p, dp) === open(q, dq)) out.push([who, '行き違い線', 'Separating lines', '']);
-  }
-  return out;
+  return names;
 }
 
 /* ================= the paper ================= */
@@ -1758,13 +1768,15 @@ const Match = {
   },
   key() { return JSON.stringify(this.query().q); },
   fail(msg) {
+    namedPatterns.failed(msg);
     this.flushPresentation();
     this.failed = true; $('#prog').hidden = true; $('#mmsg').textContent = msg; $('#emaki').classList.add('stale');
     if (!this.result) { $('#emaki').innerHTML = ''; Panes.clear(); }
     App.redraw();
   },
   onmsg(m) {
-    if (m.type === 'ready') { this.ready = true; this.until = m.to; if (!this.result) $('#mmsg').textContent = `Searching the BTCUSDT history, ${day(m.from)} to ${day(m.to)}…`; return; }
+    if (m.type === 'named-pattern') { namedPatterns.result(m); return; }
+    if (m.type === 'ready') { this.ready = true; namedPatterns.ready(); this.until = m.to; if (!this.result) $('#mmsg').textContent = `Searching the BTCUSDT history, ${day(m.from)} to ${day(m.to)}…`; return; }
     if (m.type === 'error') { this.fail(`The BTCUSDT klines could not be read: ${m.message}`); return; }
     if (m.type === 'progress') { if (m.id === this.id) { $('#prog').hidden = false; $('#prog i').style.width = `${(m.f * 100).toFixed(1)}%`; } return; }
     if (m.type === 'readings') { Panes.readings = 'ready'; if (this.sent) { this.sentKey = ''; this.send(); } return; }
@@ -2287,10 +2299,10 @@ function setPinMode(on) {
 /* ================= the footer: identity ================= */
 function updateFooter() {
   const id = identity(), n = id.n;
-  const names = namesOf(id);
+  const names = namesOf();
   Flow.patch($('#names'),names.length
-    ? names.map(([who, ja, en, note]) => `<span class="nm"><span class="who">${who}</span><span lang="ja">${ja}</span>${en}${note ? ` <span class="note">· ${note}</span>` : ''}</span>`).join('')
-    : '<span class="nm none">No classical name fits these bars</span>',false);
+    ? names.map(([who,p]) => `<button type="button" class="nm" data-pattern="${p.id}"><span class="who">${who}</span><span lang="ja">${p.ja}</span>${p.name}</button>`).join('')
+    : '<span class="nm none">No catalog name fits these bars</span>',false);
   const lines = [];
   if (S.sel > 0) lines.push(pairSentence(id, S.sel - 1, S.sel));
   if (S.sel < n - 1) lines.push(pairSentence(id, S.sel, S.sel + 1));
@@ -2382,6 +2394,10 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', onTheme);
 
 // inside Portal (served under /composer/), offer the way back to the Portal landing
 if (/^\/composer(\/|$)/.test(location.pathname)) $('#home').hidden = false;
+const namedPatterns = installPatternBrowser(query => {
+  if (Match.failed) { queueMicrotask(() => namedPatterns.failed('The market data could not be loaded.')); return; }
+  if (Match.ready) Match.worker.postMessage({type:'named-pattern', ...query, catalogURL:new URL('patterns.js', document.baseURI).href});
+}, TF_LABELS);
 Panes.init();
 Forecast.init();
 $('#space').dataset.tip='Width of the drawn root candle bodies only. Their centers, future columns and fan stay fixed. [ and ] or pinch change the same setting.';

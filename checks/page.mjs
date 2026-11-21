@@ -2,6 +2,7 @@
 // (or is drawn by the panes once there are results, like a row of readings).
 // Usage: node checks/page.mjs [INDEX_HTML]
 import fs from 'node:fs';
+import './named-patterns.mjs';
 const file = process.argv[2] && process.argv[2].endsWith('.html') ? process.argv[2] : 'index.html';
 const html = fs.readFileSync(file, 'utf8');
 const script = html.slice(html.lastIndexOf('<script>') + 8, html.lastIndexOf('</script>'));

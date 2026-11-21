@@ -9,7 +9,7 @@ import { chromium, webkit } from 'playwright';
 import referenceThumbnail from './thumbnail-reference.mjs';
 
 const html=fs.readFileSync('index.html','utf8').replace('Panes.init();','window.__perf={S,Stage,Match,Panes,Ref,Forecast,Ops,App,Flow,PaneDesigns};\nPanes.init();');
-const assets=new Set(['motion.js','motion.css','panes.css','pane-designs.js','forecast.js','context.js']);
+const assets=new Set(['motion.js','motion.css','panes.css','pane-designs.js','forecast.js','context.js','patterns.js','pattern-browser.js']);
 function fixture(n){
   const keys=['vol','trades','size','maker','range','body','day'];
   const sequences=Array.from({length:729},(_,i)=>{
