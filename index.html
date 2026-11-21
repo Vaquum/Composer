@@ -278,15 +278,15 @@ input[type="range"]:disabled { cursor: default; opacity: .4; }
   .nextctl { height: auto; flex-wrap: wrap; white-space: normal; padding-block: 5px; row-gap: 6px; }
 }
 
-#pattern-browser{box-sizing:border-box;width:min(550px,calc(100% - 24px));max-height:85vh;overflow:auto;padding:20px;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:8px}
+#pattern-browser{box-sizing:border-box;width:min(550px,calc(100% - 24px));max-height:85vh;overflow:auto;padding:20px;color:var(--ink);background:var(--paper);border:1px solid var(--hair);border-radius:8px}
 #pattern-browser::backdrop{background:#181a1a82}
 .pattern-heading,.pattern-pickers{display:flex;align-items:center;gap:12px;justify-content:space-between}
 #pattern-browser h2,#pattern-browser h3{margin:0;font-family:inherit}
 #pattern-browser p{margin:8px 0 16px;line-height:1.45}
 #pattern-browser label{display:block;font-size:13px}
-#pattern-browser select,#pattern-browser input{display:block;box-sizing:border-box;width:100%;min-height:34px;margin:4px 0 12px;background:var(--paper);color:var(--ink);border:1px solid var(--line);border-radius:3px;padding:4px 8px;font:inherit}
+#pattern-browser select,#pattern-browser input{display:block;box-sizing:border-box;width:100%;min-height:34px;margin:4px 0 12px;background:var(--paper);color:var(--ink);border:1px solid var(--hair);border-radius:3px;padding:4px 8px;font:inherit}
 .pattern-pickers label:first-child{flex:1;min-width:0}
-#pattern-results details{border-top:1px solid var(--line);padding:5px 0;font-size:13px}
+#pattern-results details{border-top:1px solid var(--hair);padding:5px 0;font-size:13px}
 #pattern-results summary{cursor:pointer}#pattern-results details p{margin:6px 0}
 button.nm{font:inherit;color:inherit;text-align:left;background:transparent;border:0;padding:0;cursor:pointer}
 </style>
@@ -605,7 +605,6 @@ function identity() {
   return { r: dense(vals), d: S.bars.map(b => (b.v[1] === b.v[2] ? 'z' : b.d)), n: S.bars.length };
 }
 const codeOf = id => `g1:${S.colored ? 'o' : 'u'}:` + Array.from({ length: id.n }, (_, i) => id.r.slice(i * 4, i * 4 + 4).join(',') + (S.colored ? ',' + id.d[i] : '')).join(';');
-const formOf = q => (q[0] < q[1] ? 1 : 0) | (q[1] < q[2] ? 2 : 0) | (q[2] < q[3] ? 4 : 0);
 function epName(d, k) {
   if (k === 0) return 'low'; if (k === 3) return 'high';
   if (!S.colored) return k === 1 ? 'body bottom' : 'body top';

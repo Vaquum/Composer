@@ -50,7 +50,10 @@ function installPatternBrowser(request, timeframeNames) {
   const inbound = new URLSearchParams(location.search).get('pattern');
   if (inbound !== null) {
     if (CandlePatterns.resolve(inbound)) open(CandlePatterns.resolve(inbound).id);
-    else { open(); search.value = inbound; filter(); }
+    else {
+      dialog.showModal(); filter(); search.value = inbound; list.selectedIndex = -1;
+      select(''); title.textContent = 'Unknown pattern'; rule.textContent = 'Choose a catalog entry to start a search.'; search.focus();
+    }
   }
   return {
     ready() { if (dialog.open && current) select(current.id); },
