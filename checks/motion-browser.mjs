@@ -12,7 +12,7 @@ Object.assign(result.panes.cont,{fan:Array.from({length:6},(_,i)=>[-.2-i*.05,.2,
 Object.assign(result,{mode:'nearest',counts:[12,0,0,0,0],countsF:[12,0,0,0,0],ms:10,
   results:Array.from({length:12},(_,i)=>({tf:'15m',start:1700000000+i*900,raw:[[30,68,18,56],[56,80,18,36]],drawn:[[30,68,18,56],[56,80,18,36]],picks:[0,1],broken:[],flips:0,off:i*.01,next:null,nextWhy:'end'}))});
 const screenshots=fs.mkdtempSync(path.join(os.tmpdir(),'composer-motion-'));
-const assets=new Set(['motion.js','motion.css','panes.css','pane-designs.js','forecast.js','context.js']);
+const assets=new Set(['motion.js','motion.css','panes.css','pane-designs.js','forecast.js','context.js','patterns.js','pattern-browser.js']);
 const server=http.createServer((request,response)=>{
   const path=new URL(request.url,'http://localhost').pathname.slice(1);
   if(!path){response.setHeader('Content-Type','text/html');response.end(html);return;}

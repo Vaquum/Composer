@@ -740,6 +740,31 @@ if (typeof self !== 'undefined' && typeof self.postMessage === 'function' && typ
       } catch (err) { if (version === activityVersion && tables === BARS) self.postMessage({ type: 'readings-error', message: String(err.message || err) }); }
       return;
     }
+    if (m.type === 'named-pattern') {
+      try {
+        if (!globalThis.CandlePatterns) importScripts(m.catalogURL);
+        const p = CandlePatterns.resolve(m.pattern);
+        const T = BARS?.find(t => t.name === m.timeframe);
+        if (!p || !T) throw new Error('Pattern or timeframe unavailable in the recording.');
+        const test = CandlePatterns.compile(p.id), samples = [];
+        let count = 0, eligible = 0;
+        for (let i = T.n - 1; i >= 0; i--) {
+          if (T.run[i] < p.bars) continue;
+          eligible++;
+          if (!test(T.O,T.H,T.L,T.C,i)) continue;
+          count++;
+          if (samples.length < 8) {
+            const bars = [];
+            for (let j = i-p.bars+1; j <= i; j++) bars.push([T.O[j],T.H[j],T.L[j],T.C[j]]);
+            samples.push({close: T.ts[i] + T.sec, bars});
+          }
+        }
+        self.postMessage({type:'named-pattern', id:m.id, count, eligible, samples});
+      } catch (err) {
+        self.postMessage({type:'named-pattern', id:m.id, error:String(err.message || err)});
+      }
+      return;
+    }
     if (m.type === 'query') {
       latest = m.id;
       if (!BARS) { pending = m; return; }
