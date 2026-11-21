@@ -48,6 +48,8 @@ for (const a of grid) for (const b of grid) {
 assert.equal(observed.size,24);
 assert.equal(catalog.resolve('  ハンマー  ').id,'hammer');
 assert.equal(catalog.resolve('ｶﾗｶｻ').id,'hammer');
+for (const [reading,id] of [['Karakasa','hammer'],['Tonbo','dragonfly-doji'],['Tsutsumi-sen','engulfing'],['Tonkachi','inverted-hammer'],['Koma','spinning-top']])
+  assert.equal(catalog.resolve(reading).id,id);
 assert.equal(catalog.resolve('unknown'),undefined);
 assert.throws(()=>catalog.compile('unknown'));
 assert(catalog.matches('hammer',[[4,7,0,6]])); // both exact ratio boundaries

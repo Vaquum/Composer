@@ -24,7 +24,7 @@
   add('doji', 'Doji', '十字線', 1, 'Open equals close, with a wick strictly above and below. Composer names the one-sided and four-price cases separately.',
     all(flat, lower, upper));
   add('dragonfly-doji', 'Dragonfly doji', 'トンボ', 1, 'Open, high and close are equal. The low is strictly lower.',
-    all(flat, lower, noUpper), {aliases:['トンボ線']});
+    all(flat, lower, noUpper), {aliases:['トンボ線','Tonbo']});
   add('gravestone-doji', 'Gravestone doji', '塔婆', 1, 'Open, low and close are equal. The high is strictly higher.',
     all(flat, noLower, upper), {aliases:['塔婆線']});
   add('opening-marubozu', 'Opening marubozu', '寄付坊主', 1, 'The opening end has no wick and the closing end has a wick. Either body direction qualifies.',
@@ -32,7 +32,7 @@
   add('closing-marubozu', 'Closing marubozu', '大引坊主', 1, 'The closing end has no wick and the opening end has a wick. Either body direction qualifies.',
     any(all(up, noUpper, lower), all(down, noLower, upper)), {oriented:true});
   add('engulfing', 'Engulfing', '包み線', 2, 'Opposite-colored nonzero bodies. The second body covers the first, extending strictly beyond at least one end.',
-    engulf, {oriented:true, group:true, aliases:['抱き線']});
+    engulf, {oriented:true, group:true, aliases:['抱き線','Tsutsumi','Tsutsumi-sen','Tsutsumi sen']});
   add('bullish-engulfing', 'Bullish engulfing', '陽の包み線', 2, 'A rising body covers a falling body, extending strictly beyond at least one end.',
     all(engulf, up), {oriented:true});
   add('bearish-engulfing', 'Bearish engulfing', '陰の包み線', 2, 'A falling body covers a rising body, extending strictly beyond at least one end.',
@@ -54,11 +54,11 @@
   add('separating-lines', 'Separating lines', '行き違い線', 2, 'Opposite-colored nonzero bodies open at the same price.',
     all(opposite, is('open', '==', 'prev.open')), {oriented:true});
   add('hammer', 'Hammer', 'ハンマー', 1, 'Shape only. The body is nonzero, the lower wick is at least twice the body, and the upper wick is at most half the body. Prior decline and reversal confirmation are outside this rule.',
-    longWick('lower', 'upper'), {kind:'ratio', aliases:['カラカサ','Hammer shape']});
+    longWick('lower', 'upper'), {kind:'ratio', aliases:['カラカサ','Karakasa','Hammer shape']});
   add('inverted-hammer', 'Inverted hammer', '逆ハンマー', 1, 'Shape only. The body is nonzero, the upper wick is at least twice the body, and the lower wick is at most half the body. Prior decline and reversal confirmation are outside this rule.',
-    longWick('upper', 'lower'), {kind:'ratio', aliases:['トンカチ','Inverted hammer shape']});
+    longWick('upper', 'lower'), {kind:'ratio', aliases:['トンカチ','Tonkachi','Inverted hammer shape']});
   add('spinning-top', 'Spinning top', 'コマ', 1, 'Both wicks are strictly longer than the nonzero body. Either body direction qualifies.',
-    all(body, is('lower','>','body'), is('upper','>','body')), {kind:'ratio'});
+    all(body, is('lower','>','body'), is('upper','>','body')), {kind:'ratio',aliases:['Koma']});
   add('inside-bar', 'Inside bar', 'インサイドバー', 2, 'The second complete range lies inside the first. One equal endpoint is allowed, but identical ranges are excluded.',
     all(is('low','>=','prev.low'), is('high','<=','prev.high'), any(is('low','>','prev.low'), is('high','<','prev.high'))));
   add('outside-bar', 'Outside bar', 'アウトサイドバー', 2, 'The second complete range contains the first. One equal endpoint is allowed, but identical ranges are excluded.',

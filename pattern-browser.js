@@ -11,6 +11,9 @@ function installPatternBrowser(request, timeframeNames) {
   function select(id) {
     current = CandlePatterns.resolve(id);
     results.replaceChildren();
+    const aliases = $('pattern-aliases');
+    aliases.textContent = current?.aliases.length ? 'Also listed as ' + current.aliases.join(' · ') : '';
+    aliases.hidden = !aliases.textContent;
     if (send) send.disabled = !current;
     if (!current) {
       title.textContent = 'No matching name'; rule.textContent = ''; status.textContent = '';
@@ -42,7 +45,10 @@ function installPatternBrowser(request, timeframeNames) {
   frame.addEventListener('change', () => select(list.value));
   $('browse-patterns').addEventListener('click', () => open());
   $('close-patterns').addEventListener('click', () => dialog.close());
-  dialog.addEventListener('keydown', e => e.stopPropagation());
+  dialog.addEventListener('keydown', e => {
+    e.stopPropagation();
+    if (e.key === 'Escape') { e.preventDefault(); dialog.close(); }
+  });
   $('names').addEventListener('click', e => {
     const button = e.target.closest('button[data-pattern]');
     if (button) open(button.dataset.pattern);
