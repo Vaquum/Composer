@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import '../patterns.js';
 const catalog = globalThis.CandlePatterns;
 const grid = [];
-for (let lo=0; lo<=4; lo++) for (let hi=lo; hi<=4; hi++)
+for (let lo=0; lo<=5; lo++) for (let hi=lo; hi<=5; hi++)
   for (let o=lo; o<=hi; o++) for (let c=lo; c<=hi; c++) grid.push([o,hi,lo,c]);
 const expected = (a,b) => {
   const [po,ph,pl,pc] = a, [o,h,l,c] = b;
