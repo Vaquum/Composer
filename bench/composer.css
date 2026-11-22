@@ -183,6 +183,9 @@ svg.moving .b-holdknot, svg.moving .b-bone, svg.moving .b-frame, svg.moving .b-t
 .composer .foot .keys { flex: 0 1 auto; min-width: 0; overflow: hidden; margin: 0 auto; }
 .composer .foot .key { flex: none; }
 .composer .foot .key.hint { color: var(--t2); }
+/* the way back to the original page: one quiet link beside the status, never in the aspects nav */
+.composer .foot #to-page { flex: none; color: var(--t3); text-decoration: none; border-bottom: 1px solid var(--line-2); }
+.composer .foot #to-page:hover, .composer .foot #to-page:focus-visible { color: var(--t1); border-bottom-color: var(--t3); }
 /* terms bar: a stepper in place of a menu where a value only goes up or down */
 .enc.step { gap: 6px; cursor: default; }
 .enc.step:hover { background: transparent; }

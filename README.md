@@ -112,6 +112,7 @@ python3 checks/with_bars.py checks/similarity-windows.mjs
 python3 checks/with_bars.py checks/similarity-look.mjs
 python3 checks/with_bars.py checks/similarity-equivalence.mjs
 python3 checks/with_bars.py checks/panes.mjs
+python3 checks/with_bars.py checks/bench.mjs
 ```
 
 `with_bars.py` reads the current bars as the server does, once, and runs the check on them.

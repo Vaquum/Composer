@@ -10,6 +10,10 @@ const DEPLOYED = location.hostname.endsWith('.vaquum.fi');
 const CUBE = DEPLOYED ? 'https://cube.vaquum.fi/' : 'http://localhost:8791/';
 const QUERY = DEPLOYED ? 'https://query.vaquum.fi/' : 'http://localhost:8790/';
 
+// A link can name a catalogue pattern, as the page's own /?pattern= does: Query's nav sends the one a question is about.
+// An id the catalogue does not know names nothing, and nothing changes.
+let wanted = (() => { const id = new URLSearchParams(location.search).get('pattern'); return (id && globalThis.CandlePatterns?.resolve(id)) || null; })();
+
 const saved = (() => { try { return JSON.parse(localStorage.getItem('composer.bench') || '{}'); } catch { return {}; } })();
 const ui = { left: saved.left ?? false, right: saved.right ?? window.innerWidth >= 1100, drawer: saved.drawer ?? null };
 const state = { rows: saved.rows ?? 'timeframes', track: saved.track ?? 'range', lane: 'draw', col: null, page: 0,
@@ -42,10 +46,10 @@ const fresh = () => !!hero && heroKey === wantKey;
 let wasReady = false;
 const engine = createEngine({ onState: (st) => {
   // the matcher counts the catalogue: a Patterns panel opened before the history was ready starts counting now
-  if (st.ready && !wasReady) { wasReady = true; if (ui.left) countCatalogue(); }
+  if (st.ready && !wasReady) { wasReady = true; if (wanted) openNamed(); else if (ui.left) countCatalogue(); }
   // the readings arrive after the bars: every answer so far lacks them, so the drawing is asked again
   if (st.readings === 'ready' && !wantKey.startsWith('[true')) { ask(); return; }
-  renderBars(); statusLine();
+  renderBars(); statusLine(); mark();
 } });
 
 /** Ask the matcher about the drawing as it stands, then about each row's cohort. */
@@ -190,8 +194,18 @@ function render() {
   $('#left').hidden = !ui.left; $('#right').hidden = !ui.right; $('#drawer').hidden = !ui.drawer;
   const lanes = buildLanes();
   ctx = { lanes, all: lanes, sel: null };
-  renderBars(); renderCanvas(); renderLeft(); renderRight(); renderDrawer(); statusLine();
+  renderBars(); renderCanvas(); renderLeft(); renderRight(); renderDrawer(); statusLine(); mark();
   try { history.replaceState(null, '', '#' + encode()); } catch { /* the address is optional */ }
+}
+// What the page says of itself to anything reading it from outside, a check above all: whether the history is in,
+// whether the answer on screen is the drawing's own, how many rows still wait for theirs, and what is picked.
+// A check waits on these instead of guessing with a pause.
+function mark() {
+  const d = $('#canvas').dataset; const st = engine.state;
+  d.history = st.failed ? 'failed' : st.ready ? 'ready' : 'loading'; d.readings = st.readings;
+  d.answer = !hero ? 'none' : fresh() ? 'current' : 'stale';
+  d.waiting = String(ctx ? ctx.lanes.filter((l) => l.wait).length : 0);
+  d.bar = String(M.sel + 1); d.col = !state.col ? '' : state.col.after ? `+${state.col.after}` : `bar ${state.col.bar + 1}`;
 }
 
 // ---------------------------------------------------------------- address
@@ -349,7 +363,13 @@ function laneTrack(lane) {
     // the picks narrow this cohort to the windows that closed there: the track reads those windows, not the cohort
     const count = h('div', { title: cd.picks ? `${int(cd.n)} of ${int(cd.base)} complete windows closed where the picks say` : `${int(cd.n)} windows have all six later bars` },
       h('b', { class: cd.n < 30 ? 'thin' : '' }, int(cd.n)), h('small', null, cd.picks ? 'given' : 'complete'), h('div', { class: 'meter' }, h('i', { style: `width:${Math.min(100, (cd.n / Math.max(1, cd.base)) * 100)}%` })));
-    if (state.rows === 'paths') return lead2([count, h('div', { title: 'Every one of them took one of the paths below' }, h('b', { class: 'thin' }, '100%'), h('small', null, 'all paths')), cd.picks ? rateCell(rateOf(cd.n, cd.base), 'closed where the picks say') : h('div')]);
+    if (state.rows === 'paths') {
+      // the rows below are these windows, path by path. With none there are no paths, and under 30 nothing is given
+      // as a share: neither is "all of them"
+      const all = cd.n >= 30 ? h('div', { title: 'Every one of them took one of the paths below' }, h('b', { class: 'thin' }, '100%'), h('small', null, 'all paths'))
+        : h('div', { title: cd.n ? 'Fewer than 30 windows: no share is shown' : 'No window closed where the picks say, so there is no path to show' }, h('b', { class: 'thin' }, '—'), h('small', null, h('span', { class: 'dim' }, cd.n ? 'under 30' : 'no windows')));
+      return lead2([count, all, cd.picks ? rateCell(rateOf(cd.n, cd.base), 'closed where the picks say') : h('div')]);
+    }
     return lead2([count, rateCell(rateOf(cd.n, cd.base), 'closed where the picks say'),
       rateCell(rateOf(cd.grid[AFTER - 1][0], cd.n), `that closed there closed bar +${AFTER} above the shape’s high`), rateCell(rateOf(cd.grid[AFTER - 1][2], cd.n), `that closed there closed bar +${AFTER} below the shape’s low`)]);
   }
@@ -749,6 +769,18 @@ function drawNamed(p) {
   model.record(); P.c[i] = open + (c - o) * k; P.h[i] = open + (hi - o) * k; P.l[i] = open + (lo - o) * k; model.setParams(P);
   state.message = `${p.name}: bar ${i + 1} drawn from ${TF[state.frame]} · ${when(sample.close)}`; state.lane = 'draw'; ask();
 }
+/** Open on the catalogue pattern the address named: the Patterns panel, and the pattern on the canvas as a click there puts it. */
+async function openNamed() {
+  const p = wanted; wanted = null;
+  ui.left = true; render();
+  const key = `${p.id}|${state.frame}`;
+  if (!counted.has(key)) counted.set(key, await engine.named(p.id, TF[state.frame]));
+  if (infoOf(p)?.samples?.[0]) drawNamed(p); else { state.message = `${p.name}: no ${TF[state.frame]} close fits it`; render(); }
+  // the pattern is on the canvas and in the address now: left in the query string, a reload would draw it over whatever came after
+  try { history.replaceState(null, '', location.pathname + location.hash); } catch { /* the address is optional */ }
+  $(`#left [data-pattern="${p.id}"]`)?.scrollIntoView({ block: 'center' });
+  countCatalogue();
+}
 async function countCatalogue() {
   const C = globalThis.CandlePatterns; if (!C || !engine.state.ready) return;
   const mine = ++counting; const frame = state.frame;
@@ -768,7 +800,7 @@ function renderLeft() {
   const row = (p) => {
     const info = infoOf(p); const glyph = h('span'); const none = info && !info.error && !info.count;
     if (info?.samples?.[0]) drawGlyph(glyph, info.samples[0].bars);
-    return h('div', { class: 'pat' + (none ? ' none' : ''), role: 'button', tabindex: '0', 'aria-current': String(current.has(p.id)), title: `${p.rule}${info?.count ? ` Click to draw its most recent ${TF[state.frame]} example.` : ''}`,
+    return h('div', { class: 'pat' + (none ? ' none' : ''), role: 'button', tabindex: '0', 'data-pattern': p.id, 'aria-current': String(current.has(p.id)), title: `${p.rule}${info?.count ? ` Click to draw its most recent ${TF[state.frame]} example.` : ''}`,
       onclick: () => drawNamed(p), onkeydown: (e) => { if (e.key === 'Enter' && e.target === e.currentTarget) drawNamed(p); } },
     glyph, h('span', { class: 'name' }, p.name, h('small', null, `${p.ja} · ${p.bars} ${p.bars === 1 ? 'bar' : 'bars'}`)),
     h('span', { class: 'n' }, h('b', null, info ? (info.error ? '—' : int(info.count)) : ''), h('i', { class: 'freq' }, h('u', { style: `width:${info?.count ? Math.min(100, (Math.sqrt(info.count / most) / Math.sqrt(0.2)) * 100) : 0}%` }))));
