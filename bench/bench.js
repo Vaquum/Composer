@@ -1,7 +1,7 @@
 // Composer bench. One canvas locked on the drawn shape and what it became; rows are cohorts of that shape.
 // Panels around it toggle: the named patterns, the inspector, and a drawer for windows, the g1 string and Limen.
 import { h, mount, $, label, note, quiet, menu, popover, closeMenu, menuOpen } from './dom.js';
-import { createModel, ohlc, extent, g1, namesOf, fromRows, chainBars, copyParams, moveParams, partPrice, PARTS, KIND_NAME, TF, TF_LONG, MIN_BARS, MAX_BARS, MAX_STRETCH, AFTER, NO_GIVEN } from './model.js';
+import { createModel, ohlc, extent, g1, namesOf, fromRows, chainBars, copyParams, moveParams, partPrice, PARTS, KIND_NAME, TF, TF_LONG, MIN_BARS, MAX_BARS, MAX_STRETCH, AFTER, NO_GIVEN, PACKET_MAX } from './model.js';
 import { createEngine } from './engine.js';
 import { drawLane, drawAxis, drawColumnTrack, drawGlyph, drawExample, conditioned, sharesOf, domainOf, differsFrom } from './lanes.js';
 
@@ -221,7 +221,9 @@ function showDrawing() { state.lane = 'draw'; state.col = null; state.page = 0; 
 // ---- the shape, carried to and from the query bench. One packet, the engine's own, under the names the study page
 // uses: `drawing` and `g1`, and `pin-relations` when the question is what is pinned rather than the exact shape.
 // Only the shape and its pins cross. Query answers on its own recording, so no count is carried either way.
-const queryLink = (held) => `${QUERY}?drawing=${encodeURIComponent(JSON.stringify(model.toPacket()))}&g1=${encodeURIComponent(g1(M.bars, M.oriented))}${held ? '&pin-relations=1' : ''}`;
+// Null when the drawing holds more than a packet may carry: the reader on either side would refuse it, so no link is made.
+const queryLink = (held) => { const text = JSON.stringify(model.toPacket()); return text.length > PACKET_MAX ? null : `${QUERY}?drawing=${encodeURIComponent(text)}&g1=${encodeURIComponent(g1(M.bars, M.oriented))}${held ? '&pin-relations=1' : ''}`; };
+const TOO_MUCH = 'Too much is pinned to carry this shape to Query: release some pins';
 const NOT_CARRIED = 'Carried: the bars and the pins. Not carried: the skeleton, stretch, the next-bar term, timeframes and picks. Query counts on its own 15m recording.';
 /** Take the drawing a link carried in, or say why it could not be read. The link is spent either way. */
 function takeCarried(text) {
@@ -246,7 +248,8 @@ function renderBars() {
   const st = engine.state; const r = hero; const n = M.bars.length;
   $('#to-cube').href = CUBE; $('#to-cube').title = 'Open the Cube explorer';
   // Query opens on this shape: on the relations held when something is pinned, else on the exact shape
-  $('#to-query').href = queryLink(model.pinned()); $('#to-query').title = model.pinned() ? 'Ask in Query: the relations pinned here, on fixed candles' : 'Ask in Query: this exact shape';
+  { const link = queryLink(model.pinned()); $('#to-query').href = link || QUERY;
+    $('#to-query').title = !link ? `${TOO_MUCH}. Query opens without it.` : model.pinned() ? 'Ask in Query: the relations pinned here, on fixed candles' : 'Ask in Query: this exact shape'; }
   $('#chip').textContent = st.ready ? `BTCUSDT · Binance · 15m to 4h · ${day.format(new Date(st.from * 1000))} to ${day.format(new Date(st.to * 1000))} · ${int(st.bars)} bars` : 'BTCUSDT · Binance · 15m to 4h';
   const rd = $('#readout'); rd.classList.toggle('stale', !fresh());
   if (!r) mount(rd, note(st.failed ? st.failed : st.ready ? 'Searching the history' : 'Loading the BTCUSDT history'));
@@ -988,7 +991,7 @@ function renderDrawer() {
     windowsTable(body);
   } else if (ui.drawer === 'g1') {
     mount(el, head('g1', 'Every endpoint ranked, equal prices sharing a rank, then each bar’s direction.', copy), body);
-    const pinned = model.pinned(); const out = (held, text, title) => h('a', { class: 'link', href: queryLink(held), target: '_blank', rel: 'noopener', title }, text);
+    const pinned = model.pinned(); const out = (held, text, title) => { const link = queryLink(held); return link ? h('a', { class: 'link', href: link, target: '_blank', rel: 'noopener', title }, text) : h('span', { class: 'dim', title: TOO_MUCH }, text.replace(' ↗', '')); };
     mount(body, h('div', { class: 'g1' }, h('code', null, code),
       h('div', { class: 'askq' }, label('Ask in Query'),
         out(false, 'The exact shape ↗', 'Windows whose endpoints have this order, these ties and these directions'),

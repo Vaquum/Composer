@@ -147,7 +147,7 @@ export const MAX_STRETCH = 4;
 // term and the number of closest windows. It names the revision of the drawing format it was written in, and the
 // engine refuses any other. This is that revision; the format is the one this model already keeps.
 export const DRAWING_REVISION = '133e3017ba9143f7dc255df7218ff7bfe46d9d06';
-const PACKET_MAX = 96000;
+export const PACKET_MAX = 96000;
 /** Read a packet as the engine's decoder reads it: the packet, or an Error that says what is wrong with it. */
 export function decodePacket(text) {
   const need = (ok, why) => { if (!ok) throw new Error(why); };
@@ -272,7 +272,9 @@ export function createModel() {
       let p; try { p = decodePacket(text); } catch (e) { return String(e.message || e); }
       if (p.bars.length < MIN_BARS) return `this bench draws ${MIN_BARS} bars or more`;
       m.bars = rechain(p.bars.map((b) => bar(b.v, b.d))); m.sel = m.bars.length - 1; m.oriented = p.oriented;
-      m.pins = p.pins.filter((q) => q.color || q.a.bar !== q.b.bar || q.a.part !== q.b.part).map((q) => (q.color ? { bar: q.bar, color: true } : { a: { bar: q.a.bar, part: q.a.part }, b: { bar: q.b.bar, part: q.b.part } }));
+      // a pin is a colour pin only as the decoder judged it one (`color === true`): any other pin was checked as two
+      // endpoints, and is taken as two endpoints, whatever else it carries
+      m.pins = p.pins.filter((q) => q.color === true || q.a.bar !== q.b.bar || q.a.part !== q.b.part).map((q) => (q.color === true ? { bar: q.bar, color: true } : { a: { bar: q.a.bar, part: q.a.part }, b: { bar: q.b.bar, part: q.b.part } }));
       m.skel = Math.min(p.skeleton, skelLevels(ohlc(m.bars)).length); m.stretch = p.stretch;
       m.next = { dir: p.next.dir, measure: p.next.measure, bps: p.next.bps, atr: p.next.atr }; m.x = p.limit; m.given = NO_GIVEN;
       return null;
