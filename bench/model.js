@@ -141,6 +141,39 @@ export function fromRows(rows, lo = 18, hi = 80) {
 }
 
 export const MAX_STRETCH = 4;
+
+/* ---- the drawing packet: how a shape is carried to and from the query bench ---- */
+// The packet is Filang's own (its study/composer/drawing.js): bars as drawn, pins, skeleton, stretch, the next-bar
+// term and the number of closest windows. It names the revision of the drawing format it was written in, and the
+// engine refuses any other. This is that revision; the format is the one this model already keeps.
+export const DRAWING_REVISION = '133e3017ba9143f7dc255df7218ff7bfe46d9d06';
+export const PACKET_MAX = 96000;
+/** Read a packet as the engine's decoder reads it: the packet, or an Error that says what is wrong with it. */
+export function decodePacket(text) {
+  const need = (ok, why) => { if (!ok) throw new Error(why); };
+  const obj = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
+  const whole = (x, lo, hi) => Number.isInteger(x) && x >= lo && x <= hi;
+  need(typeof text === 'string' && text.length > 0 && text.length <= PACKET_MAX, 'it has an invalid size');
+  let p; try { p = JSON.parse(text); } catch { p = null; }
+  need(obj(p) && p.version === 1 && p.revision === DRAWING_REVISION, 'it is not a drawing in the format this bench reads');
+  need(typeof p.oriented === 'boolean' && Array.isArray(p.bars) && whole(p.bars.length, 1, MAX_BARS), `a drawing has 1 to ${MAX_BARS} bars`);
+  need(p.coordinates === undefined || p.coordinates === 'ordinal', 'its coordinate source is not known');
+  let last;
+  for (const b of p.bars) {
+    need(obj(b) && ['u', 'd'].includes(b.d) && Array.isArray(b.v) && b.v.length === 4 && b.v.every((x, i) => Number.isFinite(x) && Math.abs(x) <= 1e12 && (!i || x >= b.v[i - 1])), 'a bar has an invalid price or direction');
+    need(last === undefined || last === openOf(b.v, b.d), 'a bar opens away from the previous close');
+    last = closeOf(b.v, b.d);
+  }
+  const n = p.bars.length;
+  need(whole(p.skeleton, 0, n) && whole(p.stretch, 0, n === 1 ? 0 : MAX_STRETCH), 'its skeleton or stretch is out of range');
+  need(Array.isArray(p.pins) && p.pins.length <= n * (4 * n + 1) * 2, 'its pins are not valid');
+  const point = (x) => obj(x) && whole(x.bar, 0, n - 1) && PARTS.includes(x.part);
+  for (const pin of p.pins) need(obj(pin) && (pin.color === true ? whole(pin.bar, 0, n - 1) : point(pin.a) && point(pin.b)), 'a pin is not valid');
+  need(obj(p.next) && [-1, 0, 1].includes(p.next.dir) && ['any', 'bps', 'atr'].includes(p.next.measure) && Number.isFinite(p.next.bps) && p.next.bps > 0 && Number.isFinite(p.next.atr) && p.next.atr > 0, 'its next-bar term is not valid');
+  need([12, 24, 48].includes(p.limit), 'its number of closest windows is not valid');
+  return p;
+}
+/* ---- end of the drawing packet ---- */
 /** Later bars a closing state can be picked for, and the pick string with none: one character per later bar. */
 export const AFTER = 6;
 export const NO_GIVEN = '-'.repeat(AFTER);
@@ -220,6 +253,31 @@ export function createModel() {
       const nx = m.next; const next = nx.dir ? { dir: nx.dir, measure: nx.measure, value: nx.measure === 'bps' ? nx.bps : nx.measure === 'atr' ? nx.atr : 0 } : null;
       const rows = over.rows || ohlc(m.bars);
       return { bars: rows, oriented: m.oriented, holds: over.holds || api.held(rows).map((x) => x.h), stretch: m.stretch, x: m.x, tfs: (over.tfs || m.tfOn).map(Number), next };
+    },
+
+    /** The drawing as the packet the query bench reads: what is drawn and what is held on it, nothing rounded. */
+    toPacket() {
+      return { version: 1, revision: DRAWING_REVISION, oriented: m.oriented, bars: m.bars.map((b) => ({ v: Array.from(b.v), d: b.d })),
+        pins: m.pins.map((q) => (q.color ? { bar: q.bar, color: true } : { a: { bar: q.a.bar, part: q.a.part }, b: { bar: q.b.bar, part: q.b.part } })),
+        skeleton: m.skel, stretch: m.stretch, next: { dir: m.next.dir, measure: m.next.measure, bps: m.next.bps, atr: m.next.atr }, limit: m.x };
+    },
+    /** Whether a pin holds something the engine reads as a rule on fixed candles: a colour pin does only with directions kept. */
+    pinned: () => m.pins.some((q) => !q.color || m.oriented),
+    /**
+     * Take the drawing a packet carries: the bars, whether directions are kept, the pins, the skeleton, the stretch,
+     * the next-bar term and the number of closest windows. The timeframes stay as they are; picks go, since they were
+     * read off another shape. Null when it was taken; otherwise the reason, with nothing changed. History is left alone.
+     */
+    readPacket(text) {
+      let p; try { p = decodePacket(text); } catch (e) { return String(e.message || e); }
+      if (p.bars.length < MIN_BARS) return `this bench draws ${MIN_BARS} bars or more`;
+      m.bars = rechain(p.bars.map((b) => bar(b.v, b.d))); m.sel = m.bars.length - 1; m.oriented = p.oriented;
+      // a pin is a colour pin only as the decoder judged it one (`color === true`): any other pin was checked as two
+      // endpoints, and is taken as two endpoints, whatever else it carries
+      m.pins = p.pins.filter((q) => q.color === true || q.a.bar !== q.b.bar || q.a.part !== q.b.part).map((q) => (q.color === true ? { bar: q.bar, color: true } : { a: { bar: q.a.bar, part: q.a.part }, b: { bar: q.b.bar, part: q.b.part } }));
+      m.skel = Math.min(p.skeleton, skelLevels(ohlc(m.bars)).length); m.stretch = p.stretch;
+      m.next = { dir: p.next.dir, measure: p.next.measure, bps: p.next.bps, atr: p.next.atr }; m.x = p.limit; m.given = NO_GIVEN;
+      return null;
     },
 
     /**
