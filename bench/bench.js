@@ -773,9 +773,18 @@ function drawNamed(p) {
 async function openNamed() {
   const p = wanted; wanted = null;
   ui.left = true; render();
-  const key = `${p.id}|${state.frame}`;
-  if (!counted.has(key)) counted.set(key, await engine.named(p.id, TF[state.frame]));
-  if (infoOf(p)?.samples?.[0]) drawNamed(p); else { state.message = `${p.name}: no ${TF[state.frame]} close fits it`; render(); }
+  // The answer must be for the timeframe on screen when it arrives: if "Counted on" changed while it was asked,
+  // ask again for that one. A lookup that failed is not kept, so it is never read as a pattern with no matches.
+  let info; let frame;
+  do {
+    frame = state.frame; const key = `${p.id}|${frame}`; info = counted.get(key);
+    if (!info || info.error) { info = await engine.named(p.id, TF[frame]); if (info.error) counted.delete(key); else counted.set(key, info); }
+  } while (frame !== state.frame);
+  if (info.error) {
+    // say that the lookup failed, and leave the pattern in the address so a reload asks again
+    state.message = `${p.name}: could not be looked up (${info.error})`; render(); countCatalogue(); return;
+  }
+  if (info.samples?.[0]) drawNamed(p); else { state.message = `${p.name}: no ${TF[frame]} close fits it`; render(); }
   // the pattern is on the canvas and in the address now: left in the query string, a reload would draw it over whatever came after
   try { history.replaceState(null, '', location.pathname + location.hash); } catch { /* the address is optional */ }
   $(`#left [data-pattern="${p.id}"]`)?.scrollIntoView({ block: 'center' });
