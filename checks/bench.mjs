@@ -362,8 +362,78 @@ try{
     assert.ok(!n.left&&n.hash===START&&await p.evaluate(()=>location.search)==='?pattern=no-such-candle','an unknown pattern name must change nothing');
     calm(f,'an unknown pattern');await context.close();}
 
+  // ---- 7. a shape crosses to the query bench and back as Filang's own drawing packet
+  {const DRAWN='s=15,20,40,50,u;30,40,60,85,u&o=1&tf=11111&x=12&n=0&p=0H.1H,c1';
+    // the packet as Filang's study/composer/drawing.js writes one for this drawing, to the letter
+    const PACKET='{"version":1,"revision":"133e3017ba9143f7dc255df7218ff7bfe46d9d06","oriented":true,"bars":[{"v":[15,20,40,50],"d":"u"},{"v":[30,40,60,85],"d":"u"}],"pins":[{"a":{"bar":0,"part":"H"},"b":{"bar":1,"part":"H"}},{"bar":1,"color":true}],"skeleton":0,"stretch":0,"next":{"dir":0,"measure":"any","bps":10,"atr":1},"limit":12}';
+    const link=(page,sel='#to-query')=>page.evaluate(sel=>{const a=document.querySelector(sel);if(!a)return null;const u=new URL(a.href);return {to:u.origin+u.pathname,drawing:u.searchParams.get('drawing'),g1:u.searchParams.get('g1'),held:u.searchParams.get('pin-relations'),title:a.title};},sel);
+    {const {page:p,faults:f,context}=await open();
+      await p.goto(`${base}/bench/#${DRAWN}`,{waitUntil:'domcontentloaded'});await settled(p);
+      let l=await link(p);
+      assert.equal(l.drawing,PACKET,'to the query bench: the packet, to the letter');
+      assert.equal(l.g1,'g1:o:0,1,3,4,u;2,3,5,6,u','to the query bench: the g1 the packet must agree with');
+      assert.equal(l.held,'1','to the query bench: something pinned asks for the held relations');assert.match(l.title,/pinned/);
+      // the g1 drawer offers both forms while something is pinned, and says what does not cross
+      await p.keyboard.press('g');
+      const [exact,pinned]=await Promise.all([link(p,'#drawer .askq a:nth-of-type(1)'),link(p,'#drawer .askq a:nth-of-type(2)')]);
+      assert.deepEqual([exact.drawing,exact.held,pinned.drawing,pinned.held],[PACKET,null,PACKET,'1'],'the g1 drawer: the exact shape, and what is pinned');
+      assert.match(await p.locator('#drawer .askq .note').textContent(),/Not carried: the skeleton, stretch, the next-bar term, timeframes and picks\. Query counts on its own/);
+      // with nothing pinned the link asks for the exact shape; what is not carried still rides in the packet for the way back
+      await go(p,START+'&k=1&st=1');await settled(p);l=await link(p);const sent=JSON.parse(l.drawing);
+      assert.equal(l.held,null,'nothing pinned: the exact shape');assert.equal(l.g1,'g1:o:1,3,4,5,u;0,2,4,6,d');
+      assert.deepEqual([sent.bars.length,sent.pins.length,sent.skeleton,sent.stretch],[2,0,1,1]);
+      assert.equal(await p.locator('#drawer .askq a').count(),1,'nothing pinned: one form to ask');
+      calm(f,'the link to the query bench');await context.close();}
+    // a drawing carried in is taken whole, says where it came from, and leaves the query string
+    {const {page:p,faults:f,context}=await open();
+      await p.goto(`${base}/bench/?drawing=${encodeURIComponent(PACKET)}`,{waitUntil:'domcontentloaded'});
+      await p.waitForFunction(()=>location.search==='',null,{timeout:90000});await settled(p);const n=await see(p);
+      assert.equal(n.hash,DRAWN,'?drawing=: the bars and the pins it carries');
+      assert.match(n.status,/^Drawn from Query · 2 bars · 2 pins · counted on this history$/,'?drawing=: it says where the shape came from');
+      assert.equal((await link(p)).drawing,PACKET,'?drawing=: sent back, it is the same packet');
+      // carried terms: skeleton, stretch, the next-bar term and the number of closest windows come with it
+      const terms=JSON.stringify({...JSON.parse(PACKET),pins:[],skeleton:1,stretch:1,next:{dir:1,measure:'bps',bps:25,atr:1},limit:24});
+      await p.goto(`${base}/bench/?drawing=${encodeURIComponent(terms)}`,{waitUntil:'domcontentloaded'});
+      await p.waitForFunction(()=>location.search==='',null,{timeout:90000});await settled(p);const m=await see(p);
+      assert.deepEqual([m.s,m.x,m.n,m.k,m.st,m.p],['15,20,40,50,u;30,40,60,85,u','24','1,bps,25','1','1',''],'?drawing=: the terms a packet carries');
+      calm(f,'a drawing carried in');await context.close();}
+    // a packet that cannot be read changes nothing and says so
+    const broken={
+      'another format':JSON.stringify({...JSON.parse(PACKET),revision:'0000000000000000000000000000000000000000'}),
+      'an opening gap':JSON.stringify({...JSON.parse(PACKET),bars:[{v:[15,20,40,50],d:'u'},{v:[30,45,60,85],d:'u'}],pins:[]}),
+      'one bar':JSON.stringify({...JSON.parse(PACKET),bars:[{v:[15,20,40,50],d:'u'}],pins:[]}),
+      'a pin on no bar':JSON.stringify({...JSON.parse(PACKET),pins:[{bar:2,color:true}]}),
+      'not a packet':'drawing',
+    };
+    for(const [what,text] of Object.entries(broken)){
+      const {page:p,faults:f,context}=await open();
+      await p.goto(`${base}/bench/?drawing=${encodeURIComponent(text)}`,{waitUntil:'domcontentloaded'});
+      await p.waitForFunction(()=>location.search==='',null,{timeout:90000});await settled(p);const n=await see(p);
+      assert.equal(n.hash,START,`?drawing= with ${what}: the drawing must not change`);
+      assert.match(n.status,/^The drawing in the link could not be read: /,`?drawing= with ${what}: it must say so`);
+      calm(f,`?drawing= with ${what}`);await context.close();
+    }
+    // the model's packet reads back as itself, whatever is drawn and held
+    const {createModel,decodePacket,g1:codeOf}=await import('../bench/model.js');
+    let seed=20261122;const rnd=()=>(seed=(seed*1664525+1013904223)>>>0)/4294967296;
+    for(let i=0;i<2000;i++){
+      const a=createModel(),n=2+Math.floor(rnd()*7),tie=rnd()<0.4;
+      const price=()=>tie?Math.round(rnd()*12)*5:rnd()*100;
+      let close=price();const bars=[];
+      for(let k=0;k<n;k++){const o=close,c=price(),lo=Math.min(o,c),hi=Math.max(o,c);bars.push({v:[lo-(rnd()<0.3?0:price()/4),lo,hi,hi+(rnd()<0.3?0:price()/4)],d:c>=o?'u':'d'});close=c;}
+      a.setBars(bars,false);a.state.oriented=rnd()<0.85;
+      for(let k=0;k<Math.floor(rnd()*4);k++){if(rnd()<0.3)a.colorPin(Math.floor(rnd()*n));else a.pin({bar:Math.floor(rnd()*n),part:'LBTH'[Math.floor(rnd()*4)]},{bar:Math.floor(rnd()*n),part:'LBTH'[Math.floor(rnd()*4)]});}
+      a.setSkel(Math.floor(rnd()*3));a.setStretch(Math.floor(rnd()*5));a.state.x=[12,24,48][Math.floor(rnd()*3)];
+      const packet=a.toPacket(),text=JSON.stringify(packet);
+      assert.deepEqual(decodePacket(text),packet,'a packet reads back as written');
+      const b=createModel();assert.equal(b.readPacket(text),null,'the model takes its own packet');
+      assert.equal(codeOf(b.state.bars,b.state.oriented),codeOf(a.state.bars,a.state.oriented),'the same g1 after the trip');
+      assert.equal(JSON.stringify(b.toPacket()),text,'and the same packet again');
+    }
+  }
+
   for(const f of allFaults)calm(f,'at the end');
-  console.log(`Bench: the page's answers, every key, five rows modes, picks, addresses and review's findings passed in ${((Date.now()-began)/1000).toFixed(1)} s.`);
+  console.log(`Bench: the page's answers, every key, five rows modes, picks, addresses, review's findings and the hand-off with Query passed in ${((Date.now()-began)/1000).toFixed(1)} s.`);
 }finally{
   clearTimeout(startupTimer);
   try{await browser?.close();}

@@ -13,6 +13,9 @@ const QUERY = DEPLOYED ? 'https://query.vaquum.fi/' : 'http://localhost:8790/';
 // A link can name a catalogue pattern, as the page's own /?pattern= does: Query's nav sends the one a question is about.
 // An id the catalogue does not know names nothing, and nothing changes.
 let wanted = (() => { const id = new URLSearchParams(location.search).get('pattern'); return (id && globalThis.CandlePatterns?.resolve(id)) || null; })();
+// A link can also carry a whole drawing, as the query bench sends one: the engine's drawing packet, under the same name
+// the study page uses. It is taken once the model exists, below.
+const carried = new URLSearchParams(location.search).get('drawing');
 
 const saved = (() => { try { return JSON.parse(localStorage.getItem('composer.bench') || '{}'); } catch { return {}; } })();
 const ui = { left: saved.left ?? false, right: saved.right ?? window.innerWidth >= 1100, drawer: saved.drawer ?? null };
@@ -215,6 +218,20 @@ const encode = () => model.address();
 /** Leave what was picked or pointed at behind, and show the drawing as it now stands. */
 function showDrawing() { state.lane = 'draw'; state.col = null; state.page = 0; state.seek = null; state.pend = null; state.hot = null; state.message = ''; }
 
+// ---- the shape, carried to and from the query bench. One packet, the engine's own, under the names the study page
+// uses: `drawing` and `g1`, and `pin-relations` when the question is what is pinned rather than the exact shape.
+// Only the shape and its pins cross. Query answers on its own recording, so no count is carried either way.
+const queryLink = (held) => `${QUERY}?drawing=${encodeURIComponent(JSON.stringify(model.toPacket()))}&g1=${encodeURIComponent(g1(M.bars, M.oriented))}${held ? '&pin-relations=1' : ''}`;
+const NOT_CARRIED = 'Carried: the bars and the pins. Not carried: the skeleton, stretch, the next-bar term, timeframes and picks. Query counts on its own 15m recording.';
+/** Take the drawing a link carried in, or say why it could not be read. The link is spent either way. */
+function takeCarried(text) {
+  const why = model.readPacket(text);
+  if (why) state.message = `The drawing in the link could not be read: ${why}`;
+  else { wanted = null; showDrawing(); const k = M.pins.length; state.message = `Drawn from Query · ${M.bars.length} bars${k ? ` · ${k} ${k === 1 ? 'pin' : 'pins'}` : ''} · counted on this history`; }
+  // left in the query string, a reload would draw it over whatever came after
+  try { history.replaceState(null, '', location.pathname + location.hash); } catch { /* the address is optional */ }
+}
+
 // ---------------------------------------------------------------- bars
 
 const NEXT = [['0', 'Any', 'Every window counts'], ['1,any', 'Closed higher', null], ['-1,any', 'Closed lower', null],
@@ -227,7 +244,9 @@ const ROWS = { timeframes: 'Timeframes', variants: 'One comparison away', window
 function edit(fn) { fn(); ask(); }
 function renderBars() {
   const st = engine.state; const r = hero; const n = M.bars.length;
-  $('#to-cube').href = CUBE; $('#to-cube').title = 'Open the Cube explorer'; $('#to-query').href = QUERY; $('#to-query').title = 'Open the query bench';
+  $('#to-cube').href = CUBE; $('#to-cube').title = 'Open the Cube explorer';
+  // Query opens on this shape: on the relations held when something is pinned, else on the exact shape
+  $('#to-query').href = queryLink(model.pinned()); $('#to-query').title = model.pinned() ? 'Ask in Query: the relations pinned here, on fixed candles' : 'Ask in Query: this exact shape';
   $('#chip').textContent = st.ready ? `BTCUSDT · Binance · 15m to 4h · ${day.format(new Date(st.from * 1000))} to ${day.format(new Date(st.to * 1000))} · ${int(st.bars)} bars` : 'BTCUSDT · Binance · 15m to 4h';
   const rd = $('#readout'); rd.classList.toggle('stale', !fresh());
   if (!r) mount(rd, note(st.failed ? st.failed : st.ready ? 'Searching the history' : 'Loading the BTCUSDT history'));
@@ -969,7 +988,13 @@ function renderDrawer() {
     windowsTable(body);
   } else if (ui.drawer === 'g1') {
     mount(el, head('g1', 'Every endpoint ranked, equal prices sharing a rank, then each bar’s direction.', copy), body);
-    mount(body, h('div', { class: 'g1' }, h('code', null, code), h('dl', null, terms())));
+    const pinned = model.pinned(); const out = (held, text, title) => h('a', { class: 'link', href: queryLink(held), target: '_blank', rel: 'noopener', title }, text);
+    mount(body, h('div', { class: 'g1' }, h('code', null, code),
+      h('div', { class: 'askq' }, label('Ask in Query'),
+        out(false, 'The exact shape ↗', 'Windows whose endpoints have this order, these ties and these directions'),
+        pinned ? out(true, 'What is pinned, on fixed candles ↗', 'Windows that keep each pinned relation and colour. Only which side each level lies on is kept.') : null,
+        note(NOT_CARRIED)),
+      h('dl', null, terms())));
   } else {
     mount(el, head('Limen', 'Hand-off of this shape as a rule. Not connected: nothing is sent anywhere.',
       h('button', { type: 'button', disabled: true, title: 'The Limen connection is not wired in this bench' }, 'Send to Limen')), body);
@@ -1043,6 +1068,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 model.readAddress(location.hash);   // an unreadable address starts from the opening drawing
+if (carried !== null) takeCarried(carried);
 ask();
 // A link opened in a tab that already shows the bench names the drawing to show. The bench writes its own address
 // with replaceState, which raises no hashchange; a fragment that names what is already shown changes nothing.
