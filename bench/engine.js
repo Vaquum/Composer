@@ -1,6 +1,5 @@
-// The matcher, behind promises. It is Composer's own worker (matcher.js) with the same payloads the page gives it:
-// the bars, then the activity for the readings. The worker answers only its latest query, so queries run one at a
-// time here, in order; `clear()` drops the ones not yet sent when the drawing has moved on.
+// The worker (matcher.js) receives the bars, then the activity for the readings.
+// It answers only its latest query, so queries run one at a time here. `clear()` drops unsent queries.
 
 async function loadPayload(path) {
   for (let attempt = 0; ; attempt++) {

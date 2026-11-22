@@ -10,7 +10,7 @@ const DEPLOYED = location.hostname.endsWith('.vaquum.fi');
 const CUBE = DEPLOYED ? 'https://cube.vaquum.fi/' : 'http://localhost:8791/';
 const QUERY = DEPLOYED ? 'https://query.vaquum.fi/' : 'http://localhost:8790/';
 
-// A link can name a catalogue pattern, as the page's own /?pattern= does: Query's nav sends the one a question is about.
+// Query can link to a catalogue pattern at /?pattern=.
 // An id the catalogue does not know names nothing, and nothing changes.
 let wanted = (() => { const id = new URLSearchParams(location.search).get('pattern'); return (id && globalThis.CandlePatterns?.resolve(id)) || null; })();
 // A link can also carry a whole drawing, as the query bench sends one: the engine's drawing packet, under the same name

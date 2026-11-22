@@ -1,8 +1,7 @@
 // The drawing: a chained run of bars with free prices, and what the matcher is asked about it.
-// The chain functions are Composer's own, unchanged (index.html, "the chain"): BTCUSDT trades around the clock,
-// so every bar opens where the previous bar closed.
+// BTCUSDT trades around the clock, so the drawing puts every later open at the previous close.
 
-/* ---- the chain: pure functions, as in index.html ---- */
+/* ---- the chain ---- */
 // A drawn bar is [low, body bottom, body top, high] with a direction; its open and close are the body's ends in that
 // direction. The free prices of a drawing are the first bar's open and every bar's close, low and high; every later
 // open is the previous close.
@@ -64,7 +63,7 @@ export function namesOf(bars, oriented) {
   }
   return out;
 }
-/* ---- what a match holds: Composer's own definitions (index.html, "what a match holds"), over recorded rows ---- */
+/* ---- what a match holds ---- */
 // A pin names two drawn endpoints by part: L low, B body bottom, T body top, H high. The matcher reads prices by kind:
 // 0 open, 1 high, 2 low, 3 close, 4 body bottom, 5 body top. With colours kept, a body end is the open or the close.
 export const PARTS = ['L', 'B', 'T', 'H'];
@@ -246,7 +245,7 @@ export function createModel() {
     /** Everything held on the drawing, or on other rows read with the drawing's pins and skeleton level. */
     held(rows) { return heldOf(rows || ohlc(m.bars), { pins: m.pins, skel: m.skel, oriented: m.oriented }); },
     /**
-     * What the matcher is asked, exactly as the page asks it: the bars, the held relations, and the stretch.
+     * The matcher's query includes the drawn bars, held relations, and search terms.
      * `over.rows` asks about other bars with the same pins; `over.holds` sends a chosen part of what is held.
      */
     query(over = {}) {

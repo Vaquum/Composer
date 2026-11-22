@@ -3,10 +3,10 @@
 Compose bar patterns in Filang's g1 language and find the closest ones in BTCUSDT history, at
 `https://composer.vaquum.fi` behind the Vaquum portal login.
 
-Draw any number of bars, chained as BTCUSDT bars are: the market trades around the clock, so every
-bar after the first opens exactly where the previous one closed. You place each bar's close and
-shadows, and a bar is green when it closes above its open and red when below; each joint is an exact
-tie in the g1 pattern, which matching compares exactly. History is read the same way when it is
+Draw two to twenty bars in a chain. Every bar after the first opens exactly where the previous
+one closed. You place each bar's close and shadows. A bar is green when it closes above its open
+and red when below. Each joint is an exact tie in the g1 pattern, which matching compares exactly.
+History is read the same way when it is
 compared with a drawing: a window's first bar is read as recorded, and every later bar opens at the
 close of the recorded bar just before it, with its low and high widened to include that open. A
 recorded open is often a cent away from the previous close, and read as recorded that cent would
@@ -17,53 +17,14 @@ searches the 15m, 30m, 1h, 2h and 4h BTCUSDT bars in the browser and shows the c
 ranked by how they look: colours first, then shape, then sizes, with a small charge for each
 comparison that flips. Prices are compared exactly as the engine does, in integer cents.
 
-Two panes read the windows that match. **What sets them apart** (left) reads them the way the
-Market State Cube Explorer reads a cell: each drawn bar's volume, trades and trade size against
-the eleven bars before it, its maker share, its range and body in ATR, and where the last bar
-closed in the prior UTC day's range, against every window, the largest difference first, then
-what came next. **What it became** (right) is what only a composed shape can show: the next six
-bars after the matches, drawn on the canvas as a fan in the drawing's own scale, how often they
-broke the shape's high and low, and the drawings one comparison away, each of which can be put on
-the canvas. Every number follows Grid: 95% intervals, Wilson for rates, t for means, nothing for
-fewer than 30 windows.
+Use **Rows** to switch between timeframes, matched windows, shapes one comparison away, holds and
+closing paths. **Inspect** shows readings for the selected row and column. Pick where any of the
+six later bars closes relative to the drawing's range to narrow the closing paths. Composer shows
+estimates for cohorts with at least 30 complete windows.
 
-On the canvas, the **Paths / Branches / States** icon control replaces only the shared six-column
-forecast field. Paths always keeps up to four complete six-bar closing-state sequences visible,
-with their probabilities in a separate gutter. Branches conditions later columns on the earlier
-closing states you choose. States shows each future close above the original matching combo's
-highest wick, inside its inclusive range, or below its lowest wick; column areas total 100%.
-The independent **Fan** switch places softly tinted closing-price quantiles underneath any mode.
-Width changes only the root candle bodies; their centers and all forecast geometry stay fixed.
-
-Probability counts use every complete six-bar continuation, including windows outside the fan's
-sample. Hover a mark, label or control for 500 ms for its definition, denominator, conditioning and
-Wilson 95% interval. Keyboard focus and touch explain immediately; leaving, scrolling or Escape
-dismisses the tooltip. Fan explanations identify its sample size and normalized per-bar quantiles.
-No estimate is shown for fewer than 30 supporting windows.
-
-Loading keeps the same field and never fabricates probabilities. Updates retain and label the
-previous snapshot; outcome selection waits for the new result. Sparse results clear stale odds,
-and Retry preserves the drawing and mode preferences. Mode changes retain the camera and shared
-column positions, including at narrow widths. Reduced motion is respected.
-
-Each pane has its own design pill and previous/next arrows: **Signal first** highlights the
-largest finding, **Comparison ledger** aligns selected and all-window values, and **Bar by bar**
-organizes readings by drawn bar and continuation by time. The pill also offers direct selection.
-Choices are remembered independently in this browser; changing a design never changes the cohort.
-Measurement details and the remaining readings expand below the primary findings.
-
-The reference (the ⓘ in the header) explains how to read the panels, in the pattern of the cube
-explorer's System reference: a full-height pane on the left that pushes the workspace right, one
-Purpose, Read and Use per topic, and Show, which highlights the part a topic is about and dims the
-rest.
-
-## Motion
-
-Composer follows the Tactile flow used in Poise and eightchord-com. The shared
-spring, interaction coverage and lifecycle policy are recorded in
-[docs/Natural-Flow.md](docs/Natural-Flow.md). Drawing and native scrolling remain
-direct; retained results, disclosures, panels and forecast transitions share
-the motion model.
+The address records the drawing, search terms and closing-state picks for sharing. Existing
+`/bench/` links open at `/` with their drawing or pattern intact. Use **Query** to carry the drawing
+and its holds to the Filang query bench.
 
 ## Data
 
@@ -89,29 +50,18 @@ Bars download before activity so the first matches need only the matching payloa
 
 ## Files
 
-- `index.html`: the page.
-- `matcher.js`: the matcher, run by the page as a Web Worker.
-- `pane-designs.js` and `panes.css`: the three pane layouts, using the matcher's live results.
-- `forecast.js`: canvas sequence, conditional-branch and probability-grid presentations.
-- `bars.py`: reads the kline files and encodes them for the page.
-- `server.py`: serves the page, `matcher.js`, `/bars`, `/activity` (each bar's volume, quote
-  volume, trades and maker volume, for the panes) and `/healthz` on `127.0.0.1` only.
-- `tests/`: unit tests for reading, encoding and serving.
-- `checks/`: the matcher's checks on the real bars: an independent brute force of the ranking,
-  the bounded search against the unbounded one, the two-bar colour and proportion checks, and the
-  panes against an independent recomputation.
+- `bench/` contains the page, drawing model and interface.
+- `matcher.js` runs the matcher as a Web Worker.
+- `bars.py` reads the kline files and encodes them for the matcher.
+- `server.py` serves the page, the worker, `/bars`, `/activity` and `/healthz` on `127.0.0.1` only.
+- `tests/` and `checks/` cover reading, encoding, serving, matching and browser behavior.
 
 ## Checks
 
 ```sh
 npm ci
-npx playwright install chromium webkit
-npm run test:motion
+npx playwright install chromium
 python3 -m unittest discover -s tests -v
-node checks/page.mjs
-node checks/pane-designs.mjs
-node checks/forecast.mjs
-node checks/forecast-ux.mjs
 python3 checks/with_bars.py checks/similarity-windows.mjs
 python3 checks/with_bars.py checks/similarity-look.mjs
 python3 checks/with_bars.py checks/similarity-equivalence.mjs
@@ -143,7 +93,7 @@ as the Market State Cube Explorer does. `DEPLOY_DIR` names the directory on the 
 
 ### Named candle patterns
 
-Open **Named patterns** to browse the English and Japanese names or open a link such as `/?pattern=hammer`. Choose a timeframe to count every complete window satisfying the displayed rule and inspect its most recent closes in UTC. Clicking a name under the drawing opens the same rule. Gaps reset two-bar windows. These counts use observed OHLC prices, recorded opens included (the shape matcher reads a window as a chain; named patterns do not), independently of the paper's nearest matches, pins, next-bar filters and continuation panes.
+Open **Patterns** to browse the English and Japanese names or open a link such as `/?pattern=hammer`. Choose a timeframe to count every complete window satisfying the displayed rule and inspect its most recent closes in UTC. Clicking a name under the drawing opens the same rule. Gaps reset two-bar windows. These counts use observed OHLC prices, including recorded opens, independently of the drawing's nearest matches, pins, next-bar filters and closing paths.
 
 [patterns.js](patterns.js) defines profile v1. Every entry has a stable ID, names, a window length and an executable comparison tree. Operands are integer price levels, body or wick lengths, direction, and positive integral multiples; `prev.` refers to the preceding bar. Relations use exact price ticks, including ties. A changed rule needs a new version. Downstream clients pin and copy this file without rewriting its predicates. A G1 string expresses endpoint order; wick-to-body length ratios require measured OHLC distances.
 
