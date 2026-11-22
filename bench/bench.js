@@ -834,7 +834,7 @@ document.addEventListener('keydown', (e) => {
     if (at.closest('.pop, table')) return;
     e.preventDefault();
     if (e.shiftKey) { const [lo, hi] = extent(ohlc(M.bars)); model.nudge(M.sel, (e.key === 'ArrowUp' ? 1 : -1) * (hi - lo) * 0.03); state.lane = 'draw'; ask(); return; }
-    const at = ctx.all.findIndex((l) => l.id === state.lane); const next = ctx.all[at + (e.key === 'ArrowDown' ? 1 : -1)];
+    const row = ctx.all.findIndex((l) => l.id === state.lane); const next = ctx.all[row + (e.key === 'ArrowDown' ? 1 : -1)];
     if (next) { state.col = null; selectLane(next); }
   }
 });
@@ -845,7 +845,7 @@ ask();
 // with replaceState, which raises no hashchange; a fragment that names what is already shown changes nothing.
 window.addEventListener('hashchange', () => {
   if (location.hash.slice(1) === encode()) return;
-  const was = model.snapshot();
+  const was = model.snapshot(true);   // with the terms: a link replaces them, and undo must bring them back
   if (!model.readAddress(location.hash)) { render(); return; }   // unreadable: the bench stays as it is, and says so in the address
   model.record(was); closeMenu(); showDrawing(); ask();
 });

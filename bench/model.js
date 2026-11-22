@@ -149,9 +149,14 @@ export function createModel() {
     skel: 0,      // 0 off, then 1 (the extremes) up to every swing
     stretch: 0,   // recorded bars the drawn bars may skip between the first and the last; counts only while something is held
   };
-  const snap = () => ({ bars: m.bars.map((b) => bar(b.v, b.d)), pins: JSON.parse(JSON.stringify(m.pins)), skel: m.skel, stretch: m.stretch });
+  // What is asked of the drawing besides the drawing itself. Changing a term is not an undo step, so an ordinary
+  // snapshot leaves the terms alone; following a link replaces them, so that snapshot takes them too (`all`).
+  const terms = () => ({ oriented: m.oriented, tfOn: m.tfOn.slice(), x: m.x, next: { ...m.next } });
+  const snap = (all = false) => ({ bars: m.bars.map((b) => bar(b.v, b.d)), pins: JSON.parse(JSON.stringify(m.pins)), skel: m.skel, stretch: m.stretch, ...(all === true ? { terms: terms() } : {}) });
   const push = (was) => { m.past.push(was || snap()); if (m.past.length > 400) m.past.shift(); m.future = []; };
-  const restore = (st) => { m.bars = st.bars.map((b) => bar(b.v, b.d)); m.pins = JSON.parse(JSON.stringify(st.pins)); m.skel = st.skel; m.stretch = st.stretch; m.sel = Math.min(m.sel, m.bars.length - 1); };
+  const restore = (st) => { m.bars = st.bars.map((b) => bar(b.v, b.d)); m.pins = JSON.parse(JSON.stringify(st.pins)); m.skel = st.skel; m.stretch = st.stretch; m.sel = Math.min(m.sel, m.bars.length - 1);
+    if (st.terms) { m.oriented = st.terms.oriented; m.tfOn = st.terms.tfOn.slice(); m.x = st.terms.x; m.next = { ...st.terms.next }; }
+  };
   // a pin lives on its bars: when a bar goes, so do the pins that named it, and the skeleton cannot be finer than the shape has swings
   const tidy = () => {
     const n = m.bars.length; m.pins = m.pins.filter((p) => (p.color ? p.bar < n : p.a.bar < n && p.b.bar < n));
@@ -175,8 +180,9 @@ export function createModel() {
     remove() { if (m.bars.length <= MIN_BARS) return false; push(); m.bars = rechain(m.bars.slice(0, -1)); m.sel = Math.min(m.sel, m.bars.length - 1); tidy(); return true; },
     flip() { push(); m.bars = chainBars(flipParams(chainParams(m.bars))).map((b) => bar(b.v, b.d)); },
     nudge(i, dv) { push(); m.bars = chainBars(moveParams(chainParams(m.bars), i, dv)).map((b) => bar(b.v, b.d)); },
-    undo() { if (!m.past.length) return false; m.future.push(snap()); restore(m.past.pop()); return true; },
-    redo() { if (!m.future.length) return false; m.past.push(snap()); restore(m.future.pop()); return true; },
+    // a step that carries the terms is undone and redone with them, so both directions restore the whole question
+    undo() { if (!m.past.length) return false; const st = m.past.pop(); m.future.push(snap(!!st.terms)); restore(st); return true; },
+    redo() { if (!m.future.length) return false; const st = m.future.pop(); m.past.push(snap(!!st.terms)); restore(st); return true; },
 
     /** Hold the relation between two drawn endpoints, whichever way they lie. False when it is already held. */
     pin(a, b) { if ((a.bar === b.bar && a.part === b.part) || m.pins.some(same(a, b))) return false; push(); m.pins.push({ a: { ...a }, b: { ...b } }); return true; },
