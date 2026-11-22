@@ -46,6 +46,39 @@ body.composer { --head: 284px; --track: 328px; }
 .lane.sel .b-sharebar.off { fill-opacity: .62; }
 .b-sharebar { transition: fill-opacity var(--t) var(--ease); }
 .b-pool { fill: var(--t1); fill-opacity: .8; shape-rendering: crispEdges; }
+/* what is given: a picked cell carries the selection, the other two cells of its bar are ruled out, and the fan,
+   which a pick cannot narrow, steps back. A closing path is a line through the cells it passes. */
+.b-col.on { fill-opacity: .06; }
+.b-wash.out { fill-opacity: .025; }
+.b-given { fill: none; stroke: var(--gold); stroke-width: 1.5; shape-rendering: crispEdges; }
+.b-share.given, .b-num.given { fill: var(--gold); letter-spacing: .1em; font-size: 9.5px; }
+.b-fan.loose { opacity: .4; }
+.b-mid.loose { opacity: .4; stroke-dasharray: 3 3; }
+.b-fan, .b-mid { transition: opacity var(--t) var(--ease); }
+.b-sharebar.step { fill-opacity: .5; }
+.lane.sel .b-sharebar.step { fill-opacity: .62; }
+.b-path { fill: none; stroke: var(--t1); stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
+.b-path.over { stroke: var(--gold); }
+.lane.compact .b-path { stroke-width: 1; }
+.lane .lane-svg.over-cell { cursor: pointer; }
+#coltrack { cursor: default; }
+svg.moving .b-given { shape-rendering: auto; }
+#lanes.stale .lane-svg .b-path, #lanes.stale .lane-svg .b-given { opacity: .35; transition: opacity var(--t) var(--ease); }
+/* a track that leads with a count and its share keeps both when the canvas is tight */
+.composer #canvas[data-fit='tight'] .cols.lead2 > :nth-child(2) { display: block; }
+.composer #canvas[data-fit='tight'] #trackhead.cols.lead2 > :nth-child(2) { display: inline; }
+.composer #canvas[data-fit='tight'] .cols.lead2 > :nth-child(4) { display: none; }
+/* the inspector: picking by button, a recorded example of a path, and a way on to the rows */
+.composer .pickrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; }
+.composer .pickrow .seg { display: inline-flex; border: 1px solid var(--line-2); }
+.composer .pickrow .seg button { padding: 4px 10px; font: 400 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--t2); border-left: 1px solid var(--line-2); transition: color var(--t-short) var(--ease), background-color var(--t-short) var(--ease); }
+.composer .pickrow .seg button:first-child { border-left: 0; }
+.composer .pickrow .seg button:hover { color: var(--t1); background: var(--wash-2); }
+.composer .pickrow .seg button[aria-pressed='true'] { color: var(--gold); box-shadow: inset 0 -1px 0 var(--gold); }
+.composer .example-host { margin-top: 10px; }
+.composer .example { display: block; max-width: 100%; }
+.composer .note.more { margin-top: 10px; }
+.composer .heldlist .k.on { color: var(--t1); }
 /* the one comparison a variant changes */
 .b-ref { stroke: var(--t2); stroke-width: 1; stroke-dasharray: 2 3; shape-rendering: crispEdges; }
 .b-now { stroke: var(--t1); stroke-width: 1.5; shape-rendering: crispEdges; }
@@ -145,6 +178,11 @@ svg.moving .b-holdknot, svg.moving .b-bone, svg.moving .b-frame, svg.moving .b-t
 .band .names .list button:hover { color: var(--gold); }
 .band .names .none { color: var(--t3); font-size: 12.5px; }
 
+/* the footer keeps its ends: the legend gives way, the keys before the swatches, and the status is never pushed out */
+.composer .foot #chip, .composer .foot #status { flex: none; }
+.composer .foot .keys { flex: 0 1 auto; min-width: 0; overflow: hidden; margin: 0 auto; }
+.composer .foot .key { flex: none; }
+.composer .foot .key.hint { color: var(--t2); }
 /* terms bar: a stepper in place of a menu where a value only goes up or down */
 .enc.step { gap: 6px; cursor: default; }
 .enc.step:hover { background: transparent; }
@@ -189,6 +227,8 @@ svg.moving .b-holdknot, svg.moving .b-bone, svg.moving .b-frame, svg.moving .b-t
 .composer .g1 dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 18px; margin: 0; font: 400 12px/1.5 var(--mono); }
 .composer .g1 dt { color: var(--t3); } .composer .g1 dd { margin: 0; color: var(--t2); }
 
+/* a narrow window keeps the keys and drops the swatches */
+@media (max-width: 1280px) { .composer .foot .keys { display: flex; } .composer .foot .key:not(.hint) { display: none; } }
 @media (max-width: 900px) { .composer #canvas[data-fit] { --head: 150px; --track: 0px; } .composer .lane-track, .composer #trackhead, .composer #collabel { display: none; } .composer .foot .keys { display: none; } }
 
 .readout.stale { opacity: .45; transition: opacity var(--t) var(--ease); }

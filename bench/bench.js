@@ -1,9 +1,9 @@
 // Composer bench. One canvas locked on the drawn shape and what it became; rows are cohorts of that shape.
 // Panels around it toggle: the named patterns, the inspector, and a drawer for windows, the g1 string and Limen.
 import { h, mount, $, label, note, quiet, menu, popover, closeMenu, menuOpen } from './dom.js';
-import { createModel, ohlc, extent, g1, namesOf, fromRows, chainBars, copyParams, moveParams, partPrice, PARTS, KIND_NAME, TF, TF_LONG, MIN_BARS, MAX_BARS, MAX_STRETCH } from './model.js';
+import { createModel, ohlc, extent, g1, namesOf, fromRows, chainBars, copyParams, moveParams, partPrice, PARTS, KIND_NAME, TF, TF_LONG, MIN_BARS, MAX_BARS, MAX_STRETCH, AFTER, NO_GIVEN } from './model.js';
 import { createEngine } from './engine.js';
-import { drawLane, drawAxis, drawColumnTrack, drawGlyph, statesOf, domainOf, differsFrom, geom } from './lanes.js';
+import { drawLane, drawAxis, drawColumnTrack, drawGlyph, drawExample, conditioned, sharesOf, domainOf, differsFrom } from './lanes.js';
 
 // The other two aspects of the tool. On a vaquum.fi host they are the deployed sites behind the same Portal login.
 const DEPLOYED = location.hostname.endsWith('.vaquum.fi');
@@ -115,6 +115,14 @@ function laneSpecs() {
     if (!groups.length) return [{ id: 'offer', kind: 'offer', title: 'Nothing is held', rows }];
     return groups.map((gp, k) => { acc = acc.concat(gp.items.map((x) => x.h)); return { id: 'hold.' + gp.id, kind: 'hold', k, gp, title: gp.text, rows, q: model.query({ holds: acc.slice() }) }; });
   }
+  if (state.rows === 'paths') {
+    // one line per complete six-bar closing path of the drawing's cohort, as the picks leave it, most common first.
+    // The paths are read from the drawing's answer, so they stay in place, dimmed with it, while a new one is on its way.
+    if (!hero) return [];
+    const cd = conditioned(hero.panes.cont, M.given); const rows = ohlc(M.bars);
+    if (!cd || !cd.n) return [{ id: 'nopath', kind: 'nopath', title: 'No closing paths', rows }];
+    return cd.sequences.map(([key, n], i) => ({ id: 'path' + key, kind: 'path', i, key, n, of: cd.n, base: cd.base, most: cd.sequences[0][1], title: pathText(key), rows }));
+  }
   if (!hero || !fresh()) return [];
   if (state.rows === 'variants') return hero.panes.near.filter((v) => v.bars.length === M.bars.length).map((v, i) => ({ id: `var${v.a}.${v.b}.${v.rel}`, kind: 'variant', i, v, title: variantText(v), rows: v.bars, q: model.query({ rows: v.bars }) }));
   return hero.results.map((w, i) => ({ id: `win${w.tf}.${w.start}`, kind: 'window', i, w, title: `${w.tf} · ${when(w.end)}`, rows: w.drawn, next: w.next?.bar || null }));
@@ -150,6 +158,23 @@ function buildLanes() {
 // a ledger line that no window keeps has no cohort: the matcher's nearest windows are not shown as if they held
 const contOf = (lane) => (lane.kind === 'hold' && lane.res?.mode !== 'held' ? null : lane.res?.panes?.cont || null);
 
+// ---- what is given: closing states picked for the later bars. A pick narrows every cohort to the complete windows
+// that closed there; the matcher is not asked again, since each answer already counts every six-bar closing path.
+const STATE = ['above', 'inside', 'below']; const STATE_LONG = ['above the shape’s high', 'inside the shape', 'below the shape’s low'];
+const givenAny = () => M.given !== NO_GIVEN;
+const givenList = (text = M.given) => [...text].map((ch, k) => (ch === '-' ? null : { j: k + 1, z: 'UID'.indexOf(ch) })).filter(Boolean);
+const givenWords = (text = M.given) => givenList(text).map((x) => `+${x.j} ${STATE[x.z]}`).join(' · ');
+const condOf = (lane) => conditioned(contOf(lane), M.given);
+/** A share of n windows with its Wilson 95% interval, as the matcher writes one: null under 30 windows. */
+const rateOf = (k, n) => (n >= 30 ? [k / n, ...wilson(k, n), n] : null);
+/** Pick a closing state for later bar +j, or free the bar when it is the one already picked. */
+function give(j, z) { model.give(j, z < 0 ? '-' : 'UID'[z]); state.message = ''; render(); }
+/** A six-bar closing path in words: its runs, in order. */
+function pathText(key) {
+  const runs = []; for (const ch of key) { const z = 'UID'.indexOf(ch); if (runs.length && runs[runs.length - 1][0] === z) runs[runs.length - 1][1]++; else runs.push([z, 1]); }
+  return runs.length === 1 ? `${cap(STATE[runs[0][0]])} throughout` : runs.map(([z, k], i) => `${i ? STATE[z] : cap(STATE[z])} ${k}`).join(' → ');
+}
+
 // Hold mode's picked point and the point under the pointer live on the drawing. When their bar is removed, or the
 // hold a knot stood for is released, they go too: nothing may be read from a bar that is no longer there.
 function tidyPicks() {
@@ -183,7 +208,7 @@ const NEXT = [['0', 'Any', 'Every window counts'], ['1,any', 'Closed higher', nu
   ['1,atr,0.5', 'Up half an ATR or more', null], ['-1,atr,0.5', 'Down half an ATR or more', null], ['1,atr,1', 'Up one ATR or more', null], ['-1,atr,1', 'Down one ATR or more', null]];
 const nextValue = () => (M.next.dir ? [M.next.dir, M.next.measure, ...(M.next.measure === 'any' ? [] : [M.next.measure === 'bps' ? M.next.bps : M.next.atr])].join(',') : '0');
 const TRACKS = [['range', 'Range'], ['body', 'Body'], ['vol', 'Volume'], ['trades', 'Trades'], ['size', 'Trade size'], ['maker', 'Maker share']];
-const ROWS = { timeframes: 'Timeframes', variants: 'One comparison away', windows: 'Matched windows', holds: 'Holds' };
+const ROWS = { timeframes: 'Timeframes', variants: 'One comparison away', windows: 'Matched windows', holds: 'Holds', paths: 'Closing paths' };
 
 function edit(fn) { fn(); ask(); }
 function renderBars() {
@@ -199,8 +224,12 @@ function renderBars() {
     const lead = c.mode === 'nearest' ? [h('b', null, int(c.n)), note(c.n === 1 ? 'exact twin' : 'exact twins')]
       : c.mode === 'held' ? [h('b', null, int(c.n)), note(`${c.n === 1 ? 'window keeps' : 'windows keep'} ${every}`)]
         : [h('b', { class: 'none' }, '0'), note(c.raw ? `windows keep ${every} and pass the next-bar filter` : `windows keep ${every}`)];
+    // with a later bar picked, the readout says how many windows closed there; the whole cohort's rates would misstate them
+    const cd = conditioned(p.cont, M.given); const share = cd?.picks ? rateOf(cd.n, cd.base) : null;
     mount(rd, lead, p.kind === 'closest' ? note(c.mode === 'fallback' ? `· reading the ${int(p.n)} nearest windows instead` : `· reading the ${int(p.n)} closest windows`) : null,
-      p.next || p.cont ? h('span', { class: 'sep' }) : null, rate(p.next, 'next bar up'), rate(p.cont?.aboveHigh, 'broke the high'), rate(p.cont?.belowLow, 'broke the low'));
+      p.next || p.cont ? h('span', { class: 'sep' }) : null,
+      cd?.picks ? [h('span', { class: 'sub', title: `${int(cd.n)} of ${int(cd.base)} complete windows closed where the picks say` }, `given ${givenList().length > 2 ? `${givenList().length} later bars` : givenWords()} `, h('b', { class: 'fig' }, int(cd.n)), ` of ${int(cd.base)}`), share ? h('span', { class: 'sub' }, h('b', { class: 'fig' }, pct(share[0]))) : null]
+        : [rate(p.next, 'next bar up'), rate(p.cont?.aboveHigh, 'broke the high'), rate(p.cont?.belowLow, 'broke the low')]);
   }
   for (const b of document.querySelectorAll('.toggles button')) { const k = b.dataset.panel; b.setAttribute('aria-pressed', String(k === 'left' ? ui.left : k === 'right' ? ui.right : ui.drawer === k)); }
   const enc = (name, value, open, cls = '') => { const b = h('button', { class: 'enc ' + cls, type: 'button', 'data-menu': '1', 'data-enc': name, onclick: () => open(b) }, label(name), h('span', { class: 'val' }, value), h('i', null, '▼')); return b; };
@@ -220,12 +249,14 @@ function renderBars() {
       onChange: (k) => { if (M.tfOn[k] && on === 1) return; M.tfOn[k] = !M.tfOn[k]; ask(); document.querySelector('[data-enc="Timeframes"]')?.click(); } })),
     enc('Holds', holdsValue(), (b) => holdsPopover(b)),
     h('button', { class: 'enc tog', type: 'button', 'aria-pressed': String(state.hold), title: 'Pick points on the drawing to hold · H', onclick: () => toggleHold() }, label('Hold mode'), h('span', { class: 'val' }, state.hold ? 'On' : 'Off')),
+    enc('Given', givenValue(), (b) => givenPopover(b), givenAny() ? 'on' : ''),
     h('span', { class: 'gap' }),
     enc('Rows', ROWS[state.rows], (b) => menu(b, { title: 'Rows', hint: 'What each row under the drawing holds.', value: state.rows,
       options: [{ value: 'timeframes', label: 'Timeframes', detail: 'The same shape on each timeframe searched' },
         { value: 'variants', label: 'One comparison away', detail: 'Shapes that differ from the drawing in a single comparison' },
         { value: 'windows', label: 'Matched windows', detail: 'The closest recorded windows, one per row' },
-        { value: 'holds', label: 'Holds', detail: 'One line per held relation, each keeping the ones above it' }],
+        { value: 'holds', label: 'Holds', detail: 'One line per held relation, each keeping the ones above it' },
+        { value: 'paths', label: 'Closing paths', detail: 'The six-bar closing paths of the cohort, most common first' }],
       onChange: (v) => { state.rows = v; state.lane = 'draw'; state.col = null; state.page = 0; persist(); askLanes(); render(); } }), 'right'),
     enc('Columns', TRACKS.find((t) => t[0] === state.track)[1], (b) => menu(b, { title: 'Column track', hint: 'The reading under each drawn bar, for the selected row against every window.', value: state.track,
       options: TRACKS.map(([value, text]) => ({ value, label: text, detail: cap(READ_NOTE[value]) })), onChange: (v) => { state.track = v; persist(); render(); } })),
@@ -238,6 +269,21 @@ function holdsValue() {
   return any ? [pins ? `${pins} pinned` : '', M.skel ? `skeleton ${M.skel}` : '', M.stretch ? `stretch ${M.stretch}` : ''].filter(Boolean).join(' · ') : 'None';
 }
 const reopenHolds = () => document.querySelector('[data-enc="Holds"]')?.click();
+// What is given, as the terms bar says it.
+function givenValue() { const list = givenList(); return !list.length ? 'Nothing' : list.length > 2 ? `${list.length} later bars` : givenWords(); }
+/** The picks, in words, each with its release, and how many of the drawing's windows closed there. */
+function givenPopover(anchor) {
+  const list = givenList(); const cd = hero && fresh() ? conditioned(hero.panes.cont, M.given) : null;
+  const change = (fn) => { if (fn() !== false) { render(); document.querySelector('[data-enc="Given"]')?.click(); } };
+  const body = h('div', { class: 'holds' },
+    list.map((x) => h('div', { class: 'hrow' }, h('span', { class: 'what' }, `Bar +${x.j} closed ${STATE_LONG[x.z]}`), h('button', { class: 'quiet', type: 'button', onclick: () => change(() => model.give(x.j, '-')) }, 'Release'))),
+    !list.length ? h('div', { class: 'hrow none' }, h('span', { class: 'what' }, 'No later bar is picked')) : null,
+    cd?.picks ? h('div', { class: 'hrow' }, h('span', { class: 'what' }, `${int(cd.n)} of ${int(cd.base)} complete windows closed there`), h('span', { class: 'fig' }, cd.base >= 30 ? pct(cd.n / cd.base) : '')) : null);
+  const pop = popover(anchor, { title: 'Given', hint: 'Closing states picked for later bars. Every row then reads only the windows that closed there.', body,
+    footer: [h('span', { class: 'note' }, 'Pick a cell of a later bar, or press 1 2 3 on a picked column'),
+      list.length ? h('button', { class: 'quiet', type: 'button', onclick: () => change(() => model.giveAll(NO_GIVEN)) }, 'Release all') : null] });
+  (pop.querySelector('.hrow button') || pop.querySelector('footer button'))?.focus({ preventScroll: true });
+}
 /** The holds, in words, each with its release; the skeleton and the stretch as steppers. */
 function holdsPopover(anchor) {
   const { held, groups } = ledger(); const top = model.skelTop(); const any = held.length > 0;
@@ -272,6 +318,8 @@ function rateCell(v, text, centred) {
     : h('div', { class: 'meter' }, h('i', { style: `width:${Math.min(100, v[0] * 100)}%` }));
   return h('div', { title: `${pct(v[0])} of ${int(v[3])} windows ${text}. 95% interval ${pct(v[1])} to ${pct(v[2])}.` }, h('b', null, pct(v[0])), h('small', null, `${pct(v[1], 0)}–${pct(v[2], 0)}`), meter);
 }
+// A track whose second column must stay when the canvas is tight: a share that the count beside it is not without.
+const lead2 = (cells) => Object.assign(cells, { lead2: true });
 function laneTrack(lane) {
   if (lane.kind === 'window') {
     const w = lane.w; const nx = w.next;
@@ -280,9 +328,25 @@ function laneTrack(lane) {
       h('div', null, h('b', { class: nx && nx.bps < 0 ? 'neg' : '' }, nx ? `${nx.bps > 0 ? '+' : nx.bps < 0 ? '−' : ''}${Math.abs(nx.bps).toFixed(0)}` : '—'), h('small', null, nx ? 'next, bps' : w.nextWhy === 'gap' ? 'gap' : 'no next bar')),
       h('div', null, h('b', { class: nx && nx.atrx < 0 ? 'neg' : '' }, nx && nx.atrx === nx.atrx ? `${nx.atrx > 0 ? '+' : nx.atrx < 0 ? '−' : ''}${Math.abs(nx.atrx).toFixed(2)}` : '—'), h('small', null, 'next, ATR'))];
   }
+  if (lane.kind === 'path') {
+    // a closing path: the windows that took all six closes, as a share of the cohort the picks leave, and of the whole cohort
+    return lead2([h('div', { title: `${int(lane.n)} complete windows closed this way at all six later bars` }, h('b', null, int(lane.n)), h('small', null, lane.n === 1 ? 'window' : 'windows'), h('div', { class: 'meter' }, h('i', { style: `width:${Math.min(100, (lane.n / Math.max(1, lane.most)) * 100)}%` }))),
+      rateCell(rateOf(lane.n, lane.of), givenAny() ? 'that closed where the picks say took this whole path' : 'took this whole path'),
+      givenAny() ? rateCell(rateOf(lane.n, lane.base), 'of the whole cohort took this whole path') : h('div')]);
+  }
+  if (lane.kind === 'nopath') return [];
   const r = lane.res; const p = r?.panes;
   if (lane.kind === 'offer') return [];
   if (!r) return [h('div', null, h('b', { class: 'thin' }, lane.kind === 'variant' ? int(lane.v.n) : '—'), h('small', null, lane.wait ? 'searching' : 'windows'))];
+  const cd = condOf(lane);
+  if (cd && (cd.picks || state.rows === 'paths')) {
+    // the picks narrow this cohort to the windows that closed there: the track reads those windows, not the cohort
+    const count = h('div', { title: cd.picks ? `${int(cd.n)} of ${int(cd.base)} complete windows closed where the picks say` : `${int(cd.n)} windows have all six later bars` },
+      h('b', { class: cd.n < 30 ? 'thin' : '' }, int(cd.n)), h('small', null, cd.picks ? 'given' : 'complete'), h('div', { class: 'meter' }, h('i', { style: `width:${Math.min(100, (cd.n / Math.max(1, cd.base)) * 100)}%` })));
+    if (state.rows === 'paths') return lead2([count, h('div', { title: 'Every one of them took one of the paths below' }, h('b', { class: 'thin' }, '100%'), h('small', null, 'all paths')), cd.picks ? rateCell(rateOf(cd.n, cd.base), 'closed where the picks say') : h('div')]);
+    return lead2([count, rateCell(rateOf(cd.n, cd.base), 'closed where the picks say'),
+      rateCell(rateOf(cd.grid[AFTER - 1][0], cd.n), `that closed there closed bar +${AFTER} above the shape’s high`), rateCell(rateOf(cd.grid[AFTER - 1][2], cd.n), `that closed there closed bar +${AFTER} below the shape’s low`)]);
+  }
   if (lane.kind === 'hold') {
     // a ledger line: the windows that keep this hold and those above it, and how much of the line above that is
     const kept = lane.prev ? Math.min(1, lane.n / lane.prev) : null; const none = r.mode !== 'held'; const no = () => h('div', { title: 'No window keeps these relations: nothing is estimated' }, h('b', { class: 'thin' }, '—'), h('small', null, h('span', { class: 'dim' }, 'none hold')));
@@ -311,6 +375,10 @@ function laneHead(lane) {
       [quiet('Undo', () => model.undo() && ask(), 'Undo the last change · ⌘Z'), quiet('Flip', () => { model.flip(); ask(); }, 'Trade the first bar’s open and close · Space'),
         h('button', { class: 'quiet', type: 'button', 'aria-pressed': String(state.hold), title: 'Pick points on the drawing to hold · H', onclick: (e) => { e.stopPropagation(); toggleHold(); } }, 'Hold')]);
   }
+  if (lane.kind === 'path') return head(pad(lane.i + 1), 'Path', lane.title, `${int(lane.n)} of ${int(lane.of)} windows`,
+    [quiet('Given this path', () => { model.giveAll(lane.key); state.lane = 'draw'; state.col = null; render(); }, 'Pick this path’s close at every later bar')]);
+  if (lane.kind === 'nopath') { const none = !hero?.panes?.cont; return head('', 'Paths', none ? 'No closing paths' : 'No window closed there', none ? 'Fewer than 30 complete windows' : 'No complete window closed where every pick says',
+    givenAny() ? [quiet('Release the picks', () => { model.giveAll(NO_GIVEN); render(); }, 'Free every later bar')] : []); }
   if (lane.kind === 'offer') return head('', 'Holds', 'Nothing is held', 'Every window is ranked by how close it looks',
     [quiet('Pick on the drawing', () => toggleHold(true), 'Pick two points to hold their relation, or a body to hold its colour · H'), model.skelTop() ? quiet('Hold the skeleton', () => { if (model.setSkel(1)) ask(); }, 'Hold the order of the shape’s extremes') : null]);
   if (lane.kind === 'hold') {
@@ -339,7 +407,13 @@ function nodeFor(id) {
   const n = { head: h('div', { class: 'lane-head' }), svgHost: h('div', { class: 'lane-svg' }), track: h('div', { class: 'lane-track cols' }), lane: null, geo: null, hCur: null, hVel: 0, hTarget: null };
   n.el = h('div', { class: 'lane row3', tabindex: '0' }, n.head, n.svgHost, n.track);
   n.born = !document.hidden;
-  n.el.addEventListener('click', (e) => { if (e.target.closest('button, input, a') || n.dragged) { n.dragged = false; return; } selectLane(n.lane, e.target.closest('.lane-svg') ? columnAt(n, e) : undefined); });
+  n.el.addEventListener('click', (e) => {
+    if (e.target.closest('button, input, a') || n.dragged) { n.dragged = false; return; }
+    const onCanvas = !!e.target.closest('.lane-svg'); const cell = onCanvas ? cellOf(n, e) : null;
+    // a state cell of a later bar is a pick: every row then reads the windows that closed there
+    if (cell) { state.lane = n.lane.id; state.col = { after: cell.after }; give(cell.after, cell.z); return; }
+    selectLane(n.lane, onCanvas ? columnAt(n, e) : undefined);
+  });
   n.el.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target === n.el) selectLane(n.lane); });
   n.svgHost.addEventListener('mousemove', (e) => hover(n, e));
   n.svgHost.addEventListener('pointerdown', (e) => { if (n.lane.kind !== 'draw') return; if (state.hold) holdDown(n, e); else heroDown(n, e); });
@@ -347,6 +421,11 @@ function nodeFor(id) {
   return n;
 }
 const columnAt = (n, e) => (n.geo ? n.geo.g.at(e.clientX - n.svgHost.getBoundingClientRect().left) : null);
+/** The state cell under the pointer, on the drawing's row or the selected one: compact rows are selected first. */
+function cellOf(n, e) {
+  const lane = n.lane; if (!n.geo?.cellAt || state.hold || !contOf(lane) || !(lane.kind === 'draw' || lane.id === state.lane)) return null;
+  const box = n.svgHost.getBoundingClientRect(); return n.geo.cellAt(e.clientX - box.left, e.clientY - box.top);
+}
 const sameCol = (a, b) => !!a && !!b && a.bar === b.bar && a.after === b.after;
 
 // Lane heights move on the same spring as the marks. Reduced motion and hidden pages get the heights at once.
@@ -386,9 +465,9 @@ function selectLane(lane, col) {
 }
 
 function drawOne(lane, n, domain, height, direct = false, ext = null) {
-  const cont = contOf(lane); const sel = lane.id === state.lane; const states = statesOf(cont);
+  const cont = contOf(lane); const sel = lane.id === state.lane; const cd = conditioned(cont, M.given); const states = sharesOf(cd);
   // a cohort is compared with the drawing's pooled answer, once both stand for the drawing as it is now
-  const pooled = lane.kind !== 'draw' && fresh() && !lane.wait ? statesOf(contOf(ctx.lanes[0])) : null;
+  const pooled = lane.kind !== 'draw' && fresh() && !lane.wait ? sharesOf(condOf(ctx.lanes[0])) : null;
   const ex = scaled(lane.rows, ext); const draws = lane.kind === 'draw'; const line = ctx?.sel?.kind === 'hold' ? ctx.sel.gp : null; let marks = {};
   if (draws) {
     // every pin on the drawing, quiet; the one whose ledger line is selected, or that the pointer is on, stands out
@@ -399,9 +478,12 @@ function drawOne(lane, n, domain, height, direct = false, ext = null) {
   } else if (lane.kind === 'hold') marks = { frame: lane.gp.kind === 'colour' ? lane.gp.items[0].h.bar : -1, bones: lane.gp.kind === 'skeleton' ? bonesOf(ex) : null, bonesOn: true };
   else if (lane.kind === 'offer' && model.skelTop()) marks = { bones: bonesOf(ex, 1) };
   n.geo = drawLane(n.svgHost, { bars: ex, cont, states, next: lane.next ? scaled([lane.next], extent(lane.rows))[0] : null, domain, height, ...marks,
-    mark: markOf(lane), pooled, diff: pooled && cont ? differsFrom(states, cont.n, pooled) : null,
+    mark: markOf(lane), pooled, diff: pooled && states ? differsFrom(states, cd.n, pooled) : null,
+    given: cont ? M.given : NO_GIVEN, loose: !!cd?.picks, path: lane.kind === 'path' ? lane.key : null, overlay: lane.kind === 'draw' && ctx?.sel?.kind === 'path' ? ctx.sel.key : null, col: state.col?.after || 0,
     hero: lane.kind === 'draw', pick: lane.kind === 'draw' && (state.lane === 'draw' || !!drag) ? M.sel : -1, direct, wait: lane.wait, numbers: lane.kind === 'draw' || (sel && height >= 120),
-    why: lane.kind === 'window' ? (lane.next ? '' : 'NO NEXT BAR') : lane.kind === 'offer' ? 'NOTHING IS HELD · A HOLD ADDS A LINE HERE' : lane.kind === 'hold' && lane.res && lane.res.mode !== 'held' ? (tally(lane.res).raw ? 'NONE THAT KEEPS IT PASSES THE NEXT-BAR FILTER' : 'NO WINDOW KEEPS THIS') : lane.res && !cont ? 'FEWER THAN 30 COMPLETE WINDOWS' : '' });
+    why: lane.kind === 'window' ? (lane.next ? '' : 'NO NEXT BAR') : lane.kind === 'offer' ? 'NOTHING IS HELD · A HOLD ADDS A LINE HERE' : lane.kind === 'hold' && lane.res && lane.res.mode !== 'held' ? (tally(lane.res).raw ? 'NONE THAT KEEPS IT PASSES THE NEXT-BAR FILTER' : 'NO WINDOW KEEPS THIS') : lane.res && !cont ? 'FEWER THAN 30 COMPLETE WINDOWS'
+      : lane.kind === 'nopath' ? (hero?.panes?.cont ? 'NO WINDOW CLOSED WHERE THE PICKS SAY' : 'FEWER THAN 30 COMPLETE WINDOWS')
+        : cont && !states ? `${int(cd.n)} CLOSED THERE · UNDER 30, NO ESTIMATE` : '' });
 }
 /** The skeleton as a line: the first open, the swings it keeps in order of time, the last close. Rows are in shape units. */
 function bonesOf(ex, level = M.skel) {
@@ -430,16 +512,18 @@ function renderCanvas() {
   // the selected row is drawn tall, as the drawing is; the others stay compact and share what is left
   const heroFor = (expanded) => Math.round(Math.max(expanded ? 168 : 190, Math.min(340, avail * (expanded ? 0.34 : 0.42))));
   const tallH = Math.round(Math.max(128, Math.min(232, avail * 0.27)));
-  if (state.rows === 'windows' && rest.length) {
+  const paged = rest.length > 0 && (state.rows === 'windows' || (state.rows === 'paths' && rest[0].kind === 'path'));
+  if (paged) {
     // a page holds what fits when one of its rows is open
     const per = Math.max(2, 1 + Math.floor((avail - heroFor(true) - tallH) / (MIN + 8))); const pages = Math.max(1, Math.ceil(rest.length / per));
     // a window picked in the drawer may be on another page of the canvas: the page turns to the one that holds it
     if (state.seek) { const at = rest.findIndex((l) => l.id === state.seek); if (at >= 0) state.page = Math.floor(at / per); state.seek = null; }
     state.page = Math.min(state.page, pages - 1);
     const total = rest.length; const from = state.page * per; rest = rest.slice(from, from + per);
-    mount($('#pager'), h('span', { class: 'fig' }, `Windows ${from + 1}–${from + rest.length} of ${total}`),
-      h('button', { class: 'quiet', type: 'button', title: 'Previous windows', 'aria-label': 'Previous windows', disabled: state.page === 0, onclick: () => { state.page--; render(); } }, '←'),
-      h('button', { class: 'quiet', type: 'button', title: 'Next windows', 'aria-label': 'Next windows', disabled: state.page >= pages - 1, onclick: () => { state.page++; render(); } }, '→'));
+    const what = state.rows === 'paths' ? 'Paths' : 'Windows';
+    mount($('#pager'), h('span', { class: 'fig' }, `${what} ${from + 1}–${from + rest.length} of ${total}`),
+      h('button', { class: 'quiet', type: 'button', title: `Previous ${what.toLowerCase()}`, 'aria-label': `Previous ${what.toLowerCase()}`, disabled: state.page === 0, onclick: () => { state.page--; render(); } }, '←'),
+      h('button', { class: 'quiet', type: 'button', title: `Next ${what.toLowerCase()}`, 'aria-label': `Next ${what.toLowerCase()}`, disabled: state.page >= pages - 1, onclick: () => { state.page++; render(); } }, '→'));
   } else mount($('#pager'));
   const all = [lanes[0], ...rest]; ctx.all = all;
   if (!all.some((l) => l.id === state.lane)) state.lane = 'draw';
@@ -458,22 +542,29 @@ function renderCanvas() {
     const height = lane.id === 'draw' ? heroH : lane.id === sel.id ? openH : laneH; heights.set(lane.id, height);
     n.el.className = 'lane row3' + (n.born ? ' m-enter' : '') + (lane.id === 'draw' ? ' pinned draw' : '') + (lane.id === state.lane ? ' sel' : '') + (height < 112 ? ' compact' : '') + (height < 84 ? ' short' : '') + (lane.wait ? ' wait' : '');
     setHeight(n, height); n.born = false;
-    mount(n.head, laneHead(lane)); mount(n.track, laneTrack(lane));
+    const cells = laneTrack(lane); n.track.classList.toggle('lead2', !!cells.lead2);
+    mount(n.head, laneHead(lane)); mount(n.track, cells);
   });
   if (host.querySelectorAll(':scope > .lane').length !== all.length) host.append(...slots.map((id) => nodes.get(id).el));
   for (const lane of all) drawOne(lane, lane.node, domain, heights.get(lane.id) - 1);
   host.onmouseleave = unhover; unhover();
 
   drawAxis($('#axis'), { n: M.bars.length, pick: state.lane === 'draw' ? M.sel : -1 });
-  $('#rowlabel').textContent = { timeframes: 'The shape, on each timeframe', variants: 'Shapes one comparison away', windows: '', holds: 'What each hold keeps, in order' }[state.rows];
-  mount($('#trackhead'), ...(state.rows === 'windows' && sel.kind === 'window' ? ['Shape', 'Order', 'Next', 'Next'] : ['Windows', 'Broke high', 'Broke low', 'Next up']).map((t) => h('span', null, t)));
+  $('#rowlabel').textContent = { timeframes: 'The shape, on each timeframe', variants: 'Shapes one comparison away', windows: '', holds: 'What each hold keeps, in order', paths: paged ? '' : 'The closing paths, most common first' }[state.rows];
+  // the track's columns are named for what the rows read: a path's share, the windows the picks leave, or the cohort
+  const narrowed = !!condOf(lanes[0])?.picks;
+  const heads = state.rows === 'paths' ? ['Windows', 'Probability', narrowed ? 'Of all' : '', ''] : state.rows === 'windows' && sel.kind === 'window' ? ['Shape', 'Order', 'Next', 'Next']
+    : narrowed ? ['Given', 'Of cohort', `+${AFTER} above`, `+${AFTER} below`] : ['Windows', 'Broke high', 'Broke low', 'Next up'];
+  $('#trackhead').classList.toggle('lead2', state.rows === 'paths' || (narrowed && !(state.rows === 'windows' && sel.kind === 'window')));
+  mount($('#trackhead'), ...heads.map((t) => h('span', null, t)));
   // the column track reads the selected row; a window, or a hold no window keeps, has no cohort, so it falls back to the drawing's
   const read = sel.res?.panes && !(sel.kind === 'hold' && sel.res.mode !== 'held') ? sel : lanes[0]; const p = read.res?.panes; const nb = M.bars.length;
   const readings = Array.from({ length: nb }, (_, i) => { const w = p?.rows.find((x) => x.bar === i && x.key === state.track); return w ? { d: w.d, text: readText(w, w.set[0]), all: readText(w, w.all[0]) } : null; });
-  drawColumnTrack($('#coltrack'), { n: nb, readings, states: statesOf(p?.cont || null) });
-  ctx.read = read;
+  const rcd = conditioned(p?.cont || null, M.given);
+  ctx.trackGeo = drawColumnTrack($('#coltrack'), { n: nb, readings, states: sharesOf(rcd), given: rcd ? M.given : NO_GIVEN, cells: !!rcd, col: state.col?.after || 0 });
+  ctx.read = read; ctx.readCd = rcd;
   const st = engine.state.readings;
-  mount($('#collabel'), label(`${READ[state.track]} · closing states`), note(!p ? '' : st === 'ready' ? `${read.title}, against every window` : st === 'failed' ? 'Readings unavailable' : 'Readings are loading'));
+  mount($('#collabel'), label(`${READ[state.track]} · closing states${rcd?.picks ? ', given the picks' : ''}`), note(!p ? '' : st === 'ready' ? `${read.title}, against every window` : st === 'failed' ? 'Readings unavailable' : 'Readings are loading'));
   const names = namesOf(M.bars, M.oriented);
   mount($('#names'), label('Named'), names.length
     ? h('span', { class: 'list' }, names.map((x) => h('button', { type: 'button', title: x.p.rule, onclick: () => { state.catalog = x.p.name; togglePanel('left', true); } }, h('span', { class: 'who' }, x.who), x.p.name)))
@@ -487,6 +578,7 @@ function hover(n, e) {
   const host = $('#lanes'); const cursor = $('#cursor'); const tip = $('#tip'); const G = n.geo.g;
   const box = n.svgHost.getBoundingClientRect(); const hostBox = host.getBoundingClientRect(); const col = G.at(e.clientX - box.left);
   if (lane.kind === 'draw') { const hit = hitTest(n, e.clientX - box.left, e.clientY - box.top); n.svgHost.classList.toggle('over-level', !!hit && hit.kind !== 'move' && hit.kind !== 'select'); n.svgHost.classList.toggle('over-body', !!hit && hit.kind === 'move'); }
+  const cell = e.currentTarget === n.svgHost ? cellOf(n, e) : null; n.svgHost.classList.toggle('over-cell', !!cell);
   const x = box.left - hostBox.left + (col.bar !== undefined ? G.xb(col.bar) : G.xa(col.after));
   cursor.style.left = x + 'px'; cursor.style.height = host.scrollHeight + 'px';
   // one cursor through every lane and the column track under them
@@ -502,8 +594,17 @@ function hover(n, e) {
   } else {
     const j = col.after; title = `${lane.title} · +${j}`;
     if (lane.kind === 'window') lines = j === 1 && lane.w.next ? [`O ${lane.w.next.bar[0].toFixed(2)}  H ${lane.w.next.bar[1].toFixed(2)}`, `L ${lane.w.next.bar[2].toFixed(2)}  C ${lane.w.next.bar[3].toFixed(2)}`, `${lane.w.next.bps.toFixed(1)} bps from the last close`] : [j === 1 ? 'no next bar' : 'only the next bar is kept for a window'];
-    else if (!cont) lines = [lane.wait ? 'searching' : 'fewer than 30 complete windows'];
-    else { const stt = statesOf(cont)[j - 1]; const q = cont.fan[j - 1]; lines = [`above the high ${pct(stt[0])}`, `inside ${pct(stt[1])}`, `below the low ${pct(stt[2])}`, `median close ${q[2].toFixed(2)} · middle half ${q[1].toFixed(2)} to ${q[3].toFixed(2)}`, `n ${int(cont.n)}`]; }
+    else if (lane.kind === 'path') { const z = 'UID'.indexOf(lane.key[j - 1]); const w = rateOf(lane.n, lane.of); lines = [`closed ${STATE_LONG[z]}`, `${int(lane.n)} of ${int(lane.of)} windows took the whole path`, w ? `${pct(w[0])} · 95% interval ${pct(w[1])} to ${pct(w[2])}` : 'fewer than 30 windows: nothing is estimated']; }
+    else if (!cont) lines = [lane.wait ? 'searching' : lane.kind === 'nopath' ? 'no closing paths' : 'fewer than 30 complete windows'];
+    else {
+      // every share with its count and its denominator: the windows of this row that closed where the picks say
+      const cd = conditioned(cont, M.given); const q = cont.fan[j - 1]; const NAME = ['above the high', 'inside', 'below the low'];
+      lines = cd.picks ? [`given ${givenWords()}`] : [];
+      for (let z = 0; z < 3; z++) { const k = cd.grid[j - 1][z]; const w = rateOf(k, cd.n); lines.push(`${cell?.z === z ? '› ' : ''}${NAME[z]} ${w ? pct(w[0]) : '—'} · ${int(k)} of ${int(cd.n)}${cell?.z === z && w ? ` · 95% ${pct(w[1])} to ${pct(w[2])}` : ''}`); }
+      if (cd.n < 30) lines.push('fewer than 30 windows: nothing is estimated');
+      lines.push(`median close ${q[2].toFixed(2)} · middle half ${q[1].toFixed(2)} to ${q[3].toFixed(2)}${cd.picks ? ' · whole cohort' : ''}`);
+      if (cell) lines.push(M.given[j - 1] === 'UID'[cell.z] ? 'given · click to free this bar' : `click: given it closed ${STATE[cell.z]}`);
+    }
   }
   mount(tip, h('b', null, title), lines.map((t) => h('span', null, t)));
   tip.style.top = n.el.offsetTop + 8 + 'px';
@@ -689,6 +790,15 @@ function renderRight() {
   const sel = ctx.sel; const top = el.scrollTop; const p = sel.res?.panes; const col = state.col; const blocks = [];
   const title = (kind, text, sub) => h('div', { class: 'block' }, h('div', { class: 'sec' }, label(kind), col ? quiet('All columns', () => { state.col = null; render(); }, 'Show the whole row') : null), h('h3', null, text), sub ? h('p', { class: 'note' }, sub) : null);
   const KIND = { draw: 'Shape', tf: 'Timeframe', variant: 'One comparison away', hold: 'Held', offer: 'Holds' };
+  // what is given: how many of a cohort's complete windows closed where the picks say, and each pick with its release
+  const givenBlock = (cd) => h('div', { class: 'block' }, h('div', { class: 'sec' }, label('Given'), note(`${int(cd.n)} of ${int(cd.base)} complete windows`)),
+    rate(rateOf(cd.n, cd.base), 'closed where the picks say'),
+    h('div', { class: 'heldlist' }, givenList().map((x) => [h('span', { class: 'k' + (col?.after === x.j ? ' on' : '') }, `Bar +${x.j} closed ${STATE_LONG[x.z]}`), quiet('Release', () => give(x.j, -1), 'Free this bar')])));
+  // the closing paths of a cohort as the picks leave it, most common first, each a share of those windows
+  const pathList = (cd) => (cd.sequences.length ? [label(cd.picks ? 'Most common closing paths, given the picks' : 'Most common closing paths', 'sub-label'), h('div', { class: 'paths' }, cd.sequences.slice(0, 4).flatMap(([key, k]) => { const w = rateOf(k, cd.n); return [
+    h('span', { class: 'seq', title: 'Each column is a later bar: closed above the high, inside, or below the low' }, [0, 1, 2].flatMap((row) => [...key].map((ch) => h('i', { class: 'UID'.indexOf(ch) === row ? 'on' : '' })))),
+    h('span', { class: 'w', title: `${int(k)} of ${int(cd.n)} windows` }, key.replaceAll('U', '▲').replaceAll('I', '·').replaceAll('D', '▼')), h('span', { class: 'v' }, w ? pct(w[0]) : `${int(k)}`)]; })),
+  state.rows === 'paths' ? null : h('p', { class: 'note more' }, quiet('Every path, as rows', () => { state.rows = 'paths'; state.lane = 'draw'; state.col = null; state.page = 0; persist(); render(); }, 'Show each closing path on its own row'))] : null);
   // what is held, for the drawing and for the line selected: each in words, with its release
   const heldBlock = () => { const { groups, held } = ledger(); if (!groups.length) return null;
     return h('div', { class: 'block' }, h('div', { class: 'sec' }, label('Held'), note(`${held.length} ${held.length === 1 ? 'relation' : 'relations'}${hero?.stretch ? ` · up to ${hero.stretch} ${hero.stretch === 1 ? 'bar' : 'bars'} skipped` : ''}`)),
@@ -702,6 +812,21 @@ function renderRight() {
       h('div', { class: 'block' }, h('div', { class: 'sec' }, label('Recorded bars, USDT')),
         h('div', { class: 'rows' }, w.drawn.flatMap((b, i) => [h('span', { class: 'k' }, `Bar ${i + 1}`), h('span', { class: 'v' }, `${f(b[0])} → ${f(b[3])}`), h('span', { class: 'b' }, `${f(b[2])}–${f(b[1])}`)]),
           w.next ? [h('span', { class: 'k' }, 'Next bar'), h('span', { class: 'v' }, `${f(w.next.bar[0])} → ${f(w.next.bar[3])}`), h('span', { class: 'b' }, `${w.next.bps > 0 ? '+' : ''}${w.next.bps.toFixed(1)} bps`)] : [h('span', { class: 'k' }, 'Next bar'), h('span', { class: 'v' }, '—'), h('span', { class: 'b' }, w.nextWhy === 'gap' ? 'gap in the record' : 'end of the record')])));
+  } else if (sel.kind === 'path') {
+    // one closing path: the share of windows that took all six closes, and one recorded window that did
+    const ex = hero?.panes?.cont?.examples?.[sel.key]; const host = h('div', { class: 'example-host' }); if (ex) drawExample(host, ex);
+    const cd = conditioned(hero?.panes?.cont || null, M.given);
+    blocks.push(title('Closing path', sel.title, [...sel.key].map((ch, k) => `+${k + 1} ${STATE['UID'.indexOf(ch)]}`).join(' · ')),
+      h('div', { class: 'block' }, h('div', { class: 'sec' }, label('Probability'), note(givenAny() ? 'among the windows the picks leave' : 'of all six closes together')),
+        rate(rateOf(sel.n, sel.of), 'took this whole path'), givenAny() ? rate(rateOf(sel.n, sel.base), 'of the whole cohort took it') : null,
+        h('p', { class: 'note', style: 'margin-top:10px' }, 'Counted over every complete window. The six shares of a column are not multiplied together.'),
+        h('p', { class: 'note more' }, quiet('Given this path', () => { model.giveAll(sel.key); state.lane = 'draw'; state.col = null; render(); }, 'Pick this path’s close at every later bar'))),
+      ex ? h('div', { class: 'block' }, h('div', { class: 'sec' }, label('One recorded window'), note('in the shape’s own scale')), host,
+        h('p', { class: 'note', style: 'margin-top:6px' }, 'The six bars after one window that closed this way. An example, not the cohort.')) : null,
+      cd?.picks ? givenBlock(cd) : null);
+  } else if (sel.kind === 'nopath') {
+    const cd = conditioned(hero?.panes?.cont || null, M.given);
+    blocks.push(title('Closing paths', cd ? 'No window closed there' : 'No closing paths', cd ? 'No complete window closed where every pick says. Release a pick to see paths again.' : 'Fewer than 30 complete windows: nothing is estimated.'), cd?.picks ? givenBlock(cd) : null);
   } else if (!p) {
     blocks.push(title(KIND[sel.kind], sel.kind === 'tf' ? TF_LONG[sel.k] : sel.title, engine.state.failed || (engine.state.ready ? 'Searching the history.' : 'The history is loading.')));
   } else {
@@ -716,22 +841,29 @@ function renderRight() {
       res.mode === 'held' && p.kind === 'hold' && sel.kind !== 'hold' ? h('p', { class: 'note', style: 'margin-top:8px' }, `${int(sel.kind === 'tf' ? res.exactF[sel.k] : sumOn(res.exactF))} of them are exact twins of the whole shape.`) : null,
       sel.kind === 'tf' ? null : h('div', { class: 'rows' }, TF.flatMap((t, k) => (p.tfN[k] ? [h('span', { class: 'k' }, t), h('span', { class: 'v' }, int(p.tfN[k])), h('span', { class: 'b' }, p.byTf[k] ? `${pct(p.byTf[k][0])} next up` : 'under 30')] : [])))));
     if (sel.kind === 'draw' || sel.kind === 'hold') { const hb = heldBlock(); if (hb) blocks.push(hb); }
+    // picks narrow what this row reads to the windows that closed there
+    const c = p.cont; const cd = conditioned(c, M.given); const picks = !!cd?.picks;
+    if (picks) blocks.push(givenBlock(cd));
     if (col?.after) {
-      const j = col.after; const c = p.cont;
-      blocks.push(h('div', { class: 'block' }, h('div', { class: 'sec' }, label(`Bar +${j}`), note('where it closed')),
-        c ? (() => { const st = statesOf(c)[j - 1]; const q = c.fan[j - 1]; const w = (v) => [v, ...wilson(v * c.n, c.n), c.n];
-          return [rate(w(st[0]), 'closed above the shape’s high'), rate(w(st[1]), 'closed inside the shape'), rate(w(st[2]), 'closed below the shape’s low'),
-            h('div', { class: 'rows' }, [['Median close', q[2]], ['Middle half', null], ['Middle 80%', null]].flatMap(([k, v], i) => [h('span', { class: 'k' }, k), h('span', { class: 'v' }, i === 0 ? v.toFixed(2) : i === 1 ? `${q[1].toFixed(2)} to ${q[3].toFixed(2)}` : `${q[0].toFixed(2)} to ${q[4].toFixed(2)}`), h('span', { class: 'b' }, i === 0 ? 'shape heights' : '')]))]; })()
+      // a bar that is itself picked is read without its own pick: what the pick was chosen from, given the others
+      const j = col.after; const own = M.given[j - 1] !== '-'; const cj = own ? conditioned(c, M.given.slice(0, j - 1) + '-' + M.given.slice(j)) : cd;
+      blocks.push(h('div', { class: 'block' }, h('div', { class: 'sec' }, label(`Bar +${j}`), note(own ? (cj?.picks ? 'where it closed, given the other picks' : 'where it closed, before this pick') : picks ? 'where it closed, given the picks' : 'where it closed')),
+        c ? (() => { const q = c.fan[j - 1];
+          return [[0, 1, 2].map((z) => rate(rateOf(cj.grid[j - 1][z], cj.n), `closed ${STATE_LONG[z]}`)),
+            h('div', { class: 'pickrow' }, label('Given it closed', 'sub-label'), h('span', { class: 'seg' }, [0, 1, 2].map((z) => h('button', { type: 'button', 'aria-pressed': String(M.given[j - 1] === 'UID'[z]), title: `Read only the windows that closed ${STATE_LONG[z]} at +${j} · ${z + 1}`, onclick: () => give(j, z) }, cap(STATE[z]))))),
+            h('div', { class: 'rows' }, [['Median close', q[2]], ['Middle half', null], ['Middle 80%', null]].flatMap(([k, v], i) => [h('span', { class: 'k' }, k), h('span', { class: 'v' }, i === 0 ? v.toFixed(2) : i === 1 ? `${q[1].toFixed(2)} to ${q[3].toFixed(2)}` : `${q[0].toFixed(2)} to ${q[4].toFixed(2)}`), h('span', { class: 'b' }, i === 0 ? 'shape heights' : '')])),
+            picks ? h('p', { class: 'note', style: 'margin-top:8px' }, 'The closes above are the whole cohort’s: the matcher keeps their quantiles, which a pick cannot narrow.') : null]; })()
           : h('p', { class: 'note', style: 'margin-top:8px' }, 'Fewer than 30 complete windows: nothing is estimated.')));
     } else {
-      const c = p.cont;
-      if (col?.bar === undefined) blocks.push(h('div', { class: 'block' }, h('div', { class: 'sec' }, label('What followed'), note(c ? `${int(c.n)} complete windows` : '')),
+      if (col?.bar === undefined && picks) blocks.push(h('div', { class: 'block' }, h('div', { class: 'sec' }, label('What followed, given the picks'), note(`${int(cd.n)} windows`)),
+        rate(rateOf(cd.grid[AFTER - 1][0], cd.n), `closed bar +${AFTER} above the shape’s high`), rate(rateOf(cd.grid[AFTER - 1][2], cd.n), `closed bar +${AFTER} below the shape’s low`),
+        pathList(cd),
+        h('p', { class: 'note', style: 'margin-top:10px' }, 'The next bar, the high and low traded through, and the fan are the whole cohort’s: a pick does not narrow them.')));
+      else if (col?.bar === undefined) blocks.push(h('div', { class: 'block' }, h('div', { class: 'sec' }, label('What followed'), note(c ? `${int(c.n)} complete windows` : '')),
         rate(p.next, 'closed higher on the next bar'), rate(c?.aboveHigh || null, 'traded above the shape’s high within six bars'), rate(c?.belowLow || null, 'traded below the shape’s low within six bars'), rate(c?.aboveClose || null, 'closed bar +6 above the last drawn close'),
-        c?.paths?.length ? [label('Most common closing paths', 'sub-label'), h('div', { class: 'paths' }, c.paths.flatMap((x) => [
-          h('span', { class: 'seq', title: 'Each column is a later bar: closed above the high, inside, or below the low' }, [0, 1, 2].flatMap((row) => [...x.key].map((ch) => h('i', { class: 'UID'.indexOf(ch) === row ? 'on' : '' })))),
-          h('span', { class: 'w' }, x.key.replaceAll('U', '▲').replaceAll('I', '·').replaceAll('D', '▼')), h('span', { class: 'v' }, x.rate ? pct(x.rate[0]) : `${int(x.n)}`)]))] : null));
+        cd ? pathList(cd) : null));
       const st = engine.state.readings; const rows = p.rows.filter((w) => col?.bar === undefined || w.bar === col.bar).slice().sort((a, b) => Math.abs(b.d) - Math.abs(a.d));
-      blocks.push(h('div', { class: 'block' }, h('div', { class: 'sec' }, label(col?.bar !== undefined ? `Bar ${col.bar + 1}, against every window` : 'What differs'), note(rows.length ? 'this row · all' : '')),
+      blocks.push(h('div', { class: 'block' }, h('div', { class: 'sec' }, label(col?.bar !== undefined ? `Bar ${col.bar + 1}, against every window` : picks ? 'What differs, whole cohort' : 'What differs'), note(rows.length ? 'this row · all' : '')),
         rows.length ? h('div', { class: 'rows' }, rows.slice(0, col?.bar !== undefined ? 12 : 9).flatMap((w) => { const d = (Math.max(-0.6, Math.min(0.6, w.d)) / 0.6) * 50;
           return [h('span', { class: 'k', title: cap(READ_NOTE[w.key]) }, col?.bar !== undefined ? READ[w.key] : `Bar ${w.bar + 1} · ${READ[w.key]}`), h('span', { class: 'v' }, readText(w, w.set[0])), h('span', { class: 'b' }, readText(w, w.all[0])),
             h('span', { class: 'bar', title: `${w.d >= 0 ? '+' : '−'}${Math.abs(w.d).toFixed(2)} standard deviations of every window` }, h('i', { class: d < 0 ? 'below' : '', style: d >= 0 ? `left:50%;width:${d}%` : `left:${50 + d}%;width:${-d}%` }))]; }))
@@ -782,6 +914,7 @@ function renderDrawer() {
     h('dt', null, 'timeframes'), h('dd', null, TF.filter((_, k) => M.tfOn[k]).join(' · ')),
     h('dt', null, 'next bar'), h('dd', null, NEXT.find((x) => x[0] === nextValue())?.[1] || 'Any'),
     h('dt', null, 'held'), h('dd', null, model.held().length ? `${model.held().map((x) => x.label).join(' · ')}${M.stretch ? ` · stretch ${M.stretch}` : ''}` : 'nothing'),
+    h('dt', null, 'given'), h('dd', null, givenAny() ? `${givenWords()} (read from the answer, not asked of the matcher)` : 'nothing'),
     h('dt', null, 'named'), h('dd', null, names.length ? names.map((x) => `${x.who}: ${x.p.name}`).join(' · ') : 'no catalogue name fits')];
   if (ui.drawer === 'windows') {
     mount(el, head('Windows', hero ? `${hero.mode === 'nearest' ? 'The closest recorded windows, distinct in time' : hero.mode === 'held' ? 'Windows that keep everything held, closest in shape first' : 'No window keeps everything held: the nearest, each with what it breaks'} · click a column to sort, a row to inspect it` : ''), body);
@@ -819,13 +952,33 @@ document.addEventListener('keydown', (e) => {
   const mod = e.metaKey || e.ctrlKey; const k = e.key.toLowerCase();
   if (mod && (k === 'z' || k === 'y')) { e.preventDefault(); if ((k === 'y' || e.shiftKey ? model.redo() : model.undo())) { state.message = ''; ask(); } return; }
   if (mod || e.altKey) return;
-  if (e.key === 'Escape') { if (menuOpen()) closeMenu(); else if (state.pend) { state.pend = null; render(); } else if (state.hold) toggleHold(false); else if (state.col) { state.col = null; render(); } return; }
+  if (e.key === 'Escape') {
+    // one thing at a time, nearest first: a menu, a half-made hold, hold mode, the pick on the picked later bar, the column, every pick
+    if (menuOpen()) closeMenu(); else if (state.pend) { state.pend = null; render(); } else if (state.hold) toggleHold(false);
+    else if (state.col?.after && M.given[state.col.after - 1] !== '-') give(state.col.after, -1);
+    else if (state.col) { state.col = null; render(); }
+    else if (givenAny()) { model.giveAll(NO_GIVEN); render(); }
+    return;
+  }
   if (k === 'h' && !at.closest('.pop')) { e.preventDefault(); closeMenu(); toggleHold(); return; }
   if (state.hold && !at.closest('.pop, table, button, a, [role="button"]') && holdKey(e)) return;
   const map = { p: 'left', i: 'right', w: 'windows', g: 'g1', l: 'limen' };
   if (map[k]) { e.preventDefault(); togglePanel(map[k]); return; }
   if (e.key === ',' || e.key === '.' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-    e.preventDefault(); const d = e.key === ',' || e.key === 'ArrowLeft' ? -1 : 1; M.sel = Math.max(0, Math.min(M.bars.length - 1, M.sel + d)); state.lane = 'draw'; state.col = ui.right ? { bar: M.sel } : null; render(); return;
+    // the columns in order: the drawn bars, then the six bars after them
+    e.preventDefault(); const d = e.key === ',' || e.key === 'ArrowLeft' ? -1 : 1; const bars = M.bars.length;
+    const from = state.col?.after ? bars - 1 + state.col.after : M.sel; const to = Math.max(0, Math.min(bars - 1 + AFTER, from + d));
+    if (to >= bars) state.col = { after: to - bars + 1 };
+    else { M.sel = to; state.lane = 'draw'; state.col = ui.right ? { bar: M.sel } : null; }
+    render(); return;
+  }
+  if (['1', '2', '3', '0'].includes(e.key) && !at.closest('.pop')) {
+    // on a picked later bar: 1 above the high, 2 inside, 3 below the low, 0 frees it
+    e.preventDefault(); const j = state.col?.after;
+    if (!j) { state.message = 'Pick a later bar first: . moves to +1'; render(); return; }
+    if (!condOf(ctx.lanes[0])) { state.message = 'No complete windows to narrow'; render(); return; }
+    if (e.key === '0') { if (M.given[j - 1] !== '-') give(j, -1); } else give(j, +e.key - 1);
+    return;
   }
   if (e.key === '+' || e.key === '=') { e.preventDefault(); if (model.add()) ask(); return; }
   if (e.key === '-' || e.key === '_') { e.preventDefault(); if (model.remove()) ask(); return; }
@@ -851,4 +1004,9 @@ window.addEventListener('hashchange', () => {
 });
 $('#coltrack').addEventListener('mousemove', (e) => { const n = ctx?.read?.node; if (n) hover(n, e); });
 $('#coltrack').addEventListener('mouseleave', unhover);
+$('#coltrack').addEventListener('click', (e) => {
+  const g = ctx?.trackGeo; if (!g?.cellAt || !ctx.readCd || state.hold) return;
+  const box = $('#coltrack').getBoundingClientRect(); const cell = g.cellAt(e.clientX - box.left, e.clientY - box.top);
+  if (cell) { state.col = { after: cell.after }; give(cell.after, cell.z); }
+});
 let timer; window.addEventListener('resize', () => { clearTimeout(timer); timer = setTimeout(render, 120); });
