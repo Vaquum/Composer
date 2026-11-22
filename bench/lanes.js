@@ -2,6 +2,8 @@
 // drawn in the shape's own scale: its low is 0 and its high is 1. The drawn bars sit in a lens band fitted to the
 // lane's height; the two rails (the shape's high and low) funnel from the band into the aftermath's scale, so a
 // close above the high or below the low reads at once. Marks persist between redraws and move on a spring.
+// Under the drawing's candles, on the same columns, runs one track for each dimension switched on: a mark per bar,
+// whose height is its rank among the others and nothing more.
 import { s } from './dom.js';
 import { sceneFor } from './motion.js';
 
@@ -35,6 +37,24 @@ const setCandle = (el, v) => {
   wick.setAttribute('x1', f1(v[0])); wick.setAttribute('x2', f1(v[0])); wick.setAttribute('y1', f1(v[1])); wick.setAttribute('y2', f1(v[2]));
   body.setAttribute('x', f1(v[0] - v[5] / 2)); body.setAttribute('y', f1(v[3])); body.setAttribute('width', f1(Math.max(1, v[5]))); body.setAttribute('height', f1(Math.max(1, v[4] - v[3])));
 };
+
+/* ---- dimension tracks ---- */
+const TRACK_PAD = 8;
+/**
+ * The height of one dimension's track under n bars. It depends on the bars alone, not on where the marks are, so
+ * the canvas keeps its shape while marks are moved: room for every bar on a level of its own, and the zero line.
+ */
+export const trackHeight = (n, zero) => 2 * TRACK_PAD + Math.max(24, Math.min(54, (2 * (n + (zero ? 1 : 0)) + 1) * 3));
+/**
+ * The levels a track shows: from half a level under the lowest mark to half a level over the highest, the zero line
+ * counted with the marks where there is one. The half levels are where a dragged mark goes to stand between two
+ * levels, or beyond them all.
+ */
+export function trackScale(marks, zero) {
+  const at = zero ? [...marks, 0] : marks;
+  return [Math.min(...at) - 0.5, Math.max(...at) + 0.5];
+}
+/* ---- end of dimension tracks ---- */
 
 /** No later bar picked. A pick is one letter per later bar: U above the shape's high, I inside, D below its low. */
 export const NONE = '-'.repeat(AFTER);
@@ -79,16 +99,18 @@ export function domainOf(conts) {
  */
 export function drawLane(host, { bars, cont, states, next = null, domain, height, hero = false, pick = -1, direct = false, wait = false, why = '', numbers = false, mark = null, pooled = null, diff = null,
   holds = null, tints = null, frame = -1, bones = null, bonesOn = false, targets = false, pend = null, hot = null,
-  given = NONE, path = null, overlay = null, col = 0, loose = false }) {
+  given = NONE, path = null, overlay = null, col = 0, loose = false, dims = null }) {
   const W = Math.max(160, Math.floor(host.clientWidth)); const n = bars.length;
-  const sc = sceneFor(host, ['back', 'zones', 'fan', 'rails', 'candles', 'marks', 'knobs', 'text']); sc.size(W, height);
+  // the dimension tracks take the foot of the lane; the candles and what followed them keep the rest, as they were
+  const full = height; height = full - (dims || []).reduce((a, t) => a + t.height, 0);
+  const sc = sceneFor(host, ['back', 'zones', 'fan', 'rails', 'candles', 'marks', 'knobs', 'text']); sc.size(W, full);
   const g = geom(W, n); const small = height < 112;
   const padT = hero ? 14 : small ? 6 : 12; const padB = hero ? 24 : small ? 6 : 12; const inner = Math.max(20, height - padT - padB);
   const to = (d) => (v) => padT + (1 - (v - d[0]) / (d[1] - d[0])) * inner;
   const yb = to(BAND); const ya = to(domain); const clampA = (v) => Math.max(domain[0], Math.min(domain[1], v));
   const lastClose = bars[n - 1][3]; const text = [];
   sc.begin();
-  sc.put('band', 'back', () => s('rect', { class: 'b-pattern' }), [g.band[0], 0, g.band[1] - g.band[0], height], setRect);
+  sc.put('band', 'back', () => s('rect', { class: 'b-pattern' }), [g.band[0], 0, g.band[1] - g.band[0], full], setRect);
   // the two rails: the shape's high and low, carried through the lens into the aftermath
   for (const [key, v] of [['hi', 1], ['lo', 0]]) {
     sc.put('rail' + key, 'rails', () => s('polyline', { class: 'b-rail' }), [g.band[0], yb(v), g.band[1], yb(v), g.ax0, ya(v), W, ya(v)], setPoints);
@@ -223,6 +245,28 @@ export function drawLane(host, { bars, cont, states, next = null, domain, height
     const [o, hi, lo, c] = next.map(clampA);
     sc.put('n1', 'candles', () => s('g', {}, s('line'), s('rect')), [g.xa(1), ya(hi), ya(lo), ya(Math.max(o, c)), ya(Math.min(o, c)), Math.max(2.5, Math.min(18, g.unit * 0.46, cw))], setCandle, (c >= o ? 'b-up' : 'b-down') + ' b-after' + (small ? ' b-sm' : ''));
   }
+  // ---- one track for each dimension switched on, under the candles and on their columns. A mark is a level line
+  // as wide as a body: marks at one height are level, and a higher mark is a higher rank. A dimension that is ranked
+  // against zero has the zero line through its track.
+  const dimGeo = []; let ty = height;
+  for (const t of dims || []) {
+    const [lo, hi] = t.scale || trackScale(t.marks, t.zero); const top = ty + TRACK_PAD; const room = t.height - 2 * TRACK_PAD; ty += t.height;
+    const y = (level) => top + (1 - (level - lo) / (hi - lo)) * room; const mw = Math.max(7, Math.min(cw, g.bw * 0.62));
+    sc.put('tr' + t.name, 'back', () => s('line', { class: 'b-track' }), [0, top - TRACK_PAD + 0.5, W, top - TRACK_PAD + 0.5], setLine);
+    // the levels there are to stand on, as hairlines across the bars
+    for (let level = Math.ceil(lo); level <= Math.floor(hi); level++) {
+      if (t.zero && level === 0) continue;
+      sc.put(`tl${t.name}.${level}`, 'back', () => s('line', { class: 'b-level' }), [g.band[0], y(level), g.band[1], y(level)], setLine);
+    }
+    if (t.zero) {
+      sc.put('tz' + t.name, 'rails', () => s('line', { class: 'b-zero', 'data-dim': t.name }), [g.band[0], y(0), g.band[1] + 8, y(0)], setLine);
+      text.push(s('text', { class: 'b-scale', x: g.band[1] + 12, y: y(0) + 3.5 }, '0'));
+    }
+    t.marks.forEach((level, i) => {
+      sc.put(`tm${t.name}.${i}`, 'marks', () => s('line', { 'data-dim': t.name, 'data-bar': i + 1 }), [g.xb(i) - mw / 2, y(level), g.xb(i) + mw / 2, y(level)], setLine, 'b-dimmark' + (t.active ? ' on' : '') + (i === pick ? ' pick' : ''));
+    });
+    dimGeo.push({ name: t.name, zero: t.zero, y0: top - TRACK_PAD, height: t.height, lo, hi, y, levelAt: (py) => lo + (1 - (py - top) / room) * (hi - lo) });
+  }
   sc.end();
   if (direct) sc.settle();
   // the rails are named in the gap between the lens and the aftermath, clear of the share tracks
@@ -239,7 +283,9 @@ export function drawLane(host, { bars, cont, states, next = null, domain, height
     const z = tracks.findIndex(([y0, hh]) => py >= y0 - 3 && py <= y0 + hh + 3);
     return z < 0 ? null : { after: j, z };
   };
-  return { g, yb, ya, cw, padT, inner, height, n, knots, cellAt, price: (y) => BAND[0] + (1 - (y - padT) / inner) * (BAND[1] - BAND[0]) };
+  /** The dimension track under a point, if it is on one. */
+  const dimAt = (py) => dimGeo.find((t) => py >= t.y0 && py < t.y0 + t.height) || null;
+  return { g, yb, ya, cw, padT, inner, height: full, n, knots, cellAt, dims: dimGeo, dimAt, price: (y) => BAND[0] + (1 - (y - padT) / inner) * (BAND[1] - BAND[0]) };
 }
 
 /** Column labels: the drawn bars by number, then the bars after them. */

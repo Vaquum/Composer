@@ -41,6 +41,8 @@ jobs:
         run: node checks/chain.mjs
       - name: A recorded window read as a chain, on the vectors shared with Filang
         run: node checks/chained-vectors.mjs
+      - name: The g1 dimensions as the bench writes them and the matcher reads them, on the vectors shared with Filang
+        run: node checks/dimension-vectors.mjs
       - name: Similarity ranking against an independent brute force, on the current bars
         run: python checks/with_bars.py checks/similarity-windows.mjs
       - name: Two-bar colours and proportions

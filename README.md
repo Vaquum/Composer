@@ -17,6 +17,13 @@ searches the 15m, 30m, 1h, 2h and 4h BTCUSDT bars in the browser and shows the c
 ranked by how they look: colours first, then shape, then sizes, with a small charge for each
 comparison that flips. Prices are compared exactly as the engine does, in integer cents.
 
+**Dimensions** switches on what traded beside price: Volume, Trades, Delta, Trade size and Net taker
+imbalance, as Cube defines them. Each one switched on is a track under the candles with one mark per
+bar. Only the order of a dimension's marks is read, ties included; Delta and Net taker imbalance are
+also ranked against zero. The g1 code gains one part per dimension (`|volume:0,1|delta:0,2/1`), and a
+window then matches only if its bars stand in that order too. With every dimension off Composer is
+what it was.
+
 Use **Rows** to switch between timeframes, matched windows, shapes one comparison away, holds and
 closing paths. **Inspect** shows readings for the selected row and column. Pick where any of the
 six later bars closes relative to the drawing's range to narrow the closing paths. Composer shows
@@ -36,6 +43,12 @@ and missing bars stay missing, so no window crosses a gap. It looks for newer fi
 if a read fails it keeps serving the bars it has, logs why, and `/healthz` shows the failure.
 No data is committed to this repository.
 
+A dimension is read from each bar's exact counters, served as `/counters` and fetched only when a
+dimension is switched on: USDT traded (`liquidity_sum`), trades (`no_of_trades`) and taker-buy USDT
+(`liquidity_sum - maker_liquidity`). The readings under **Columns** come from `/activity`, which is
+quantized and so cannot carry an exact order: its Volume is the base volume in BTC, and its Maker
+share is `maker_volume` over that volume.
+
 ## Run locally
 
 ```sh
@@ -53,7 +66,7 @@ Bars download before activity so the first matches need only the matching payloa
 - `bench/` contains the page, drawing model and interface.
 - `matcher.js` runs the matcher as a Web Worker.
 - `bars.py` reads the kline files and encodes them for the matcher.
-- `server.py` serves the page, the worker, `/bars`, `/activity` and `/healthz` on `127.0.0.1` only.
+- `server.py` serves the page, the worker, `/bars`, `/activity`, `/counters` and `/healthz` on `127.0.0.1` only.
 - `tests/` and `checks/` cover reading, encoding, serving, matching and browser behavior.
 
 ## Checks
@@ -62,6 +75,7 @@ Bars download before activity so the first matches need only the matching payloa
 npm ci
 npx playwright install chromium
 python3 -m unittest discover -s tests -v
+node checks/dimension-vectors.mjs
 python3 checks/with_bars.py checks/similarity-windows.mjs
 python3 checks/with_bars.py checks/similarity-look.mjs
 python3 checks/with_bars.py checks/similarity-equivalence.mjs

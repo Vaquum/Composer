@@ -17,8 +17,8 @@ from pathlib import Path
 import bars, server
 assert os.getuid() == 65534
 sources=[bars.Source(name,sec,repo,'a'*40,'snapshot-fixture.parquet','b'*64,1) for name,sec,repo in bars.TIMEFRAMES]
-frames=[bars.Frame(name,sec,[1577836800],[100],[110],[90],[105],[1.0],[100.0],[10],[0.5]) for name,sec,_ in bars.TIMEFRAMES]
-state=server.Bars(lambda:sources,lambda _:(bars.encode(frames),bars.encode_activity(frames)),Path(os.environ['COMPOSER_CACHE_DIR']))
+frames=[bars.Frame(name,sec,[1577836800],[100],[110],[90],[105],[1.0],[100.0],[10],[0.5],[60.0]) for name,sec,_ in bars.TIMEFRAMES]
+state=server.Bars(lambda:sources,lambda _:(bars.encode(frames),bars.encode_activity(frames),bars.encode_counters(frames)),Path(os.environ['COMPOSER_CACHE_DIR']))
 state.refresh()
 assert (Path(os.environ['COMPOSER_CACHE_DIR'])/'history.snapshot').exists()
 '''
@@ -27,7 +27,7 @@ import json, urllib.request
 assert b'<script type="module" src="/bench/bench.js">' in urllib.request.urlopen('http://127.0.0.1:8488/',timeout=2).read()
 health=json.load(urllib.request.urlopen('http://127.0.0.1:8488/healthz',timeout=2))
 assert health['ready'] and len(health['files'])==5
-for path,magic in [('bars',b'CBAR1'),('activity',b'CACT1')]:
+for path,magic in [('bars',b'CBAR1'),('activity',b'CACT1'),('counters',b'CCNT1')]:
     assert urllib.request.urlopen('http://127.0.0.1:8488/'+path,timeout=2).read().startswith(magic)
 '''
 try:

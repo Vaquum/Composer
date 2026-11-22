@@ -1,5 +1,7 @@
 // The worker (matcher.js) receives the bars, then the activity for the readings.
 // It answers only its latest query, so queries run one at a time here. `clear()` drops unsent queries.
+// The exact counters a dimension is read from are a third payload. It is fetched the first time a question switches a
+// dimension on and not before, so a bench with every dimension off loads and asks exactly what it always did.
 
 async function loadPayload(path) {
   for (let attempt = 0; ; attempt++) {
@@ -11,14 +13,28 @@ async function loadPayload(path) {
 }
 
 export function createEngine({ onState }) {
-  const state = { ready: false, readings: 'loading', failed: '', bars: 0, from: 0, to: 0, note: '' };
+  // counters: 'idle' until a dimension is asked about, then 'loading', and 'ready' or 'failed' (why is in `counted`)
+  const state = { ready: false, readings: 'loading', failed: '', bars: 0, from: 0, to: 0, note: '', counters: 'idle', counted: '' };
   const waiting = []; let flight = null; let id = 0; let worker = null; const named = new Map();
   const tell = () => onState({ ...state });
+  const counts = (q) => Array.isArray(q.dims) && q.dims.length > 0;
   const pump = () => {
     if (flight || !waiting.length || !state.ready || state.failed) return;
+    // a question about a dimension waits for the counters; without them it cannot be answered, and is dropped
+    if (counts(waiting[0].q) && state.counters !== 'ready') {
+      if (state.counters === 'failed') { waiting.shift().resolve(null); pump(); }
+      return;
+    }
     flight = waiting.shift(); flight.id = ++id;
     worker.postMessage({ type: 'query', id: flight.id, q: flight.q });
   };
+  // asked for by the first question about a dimension, and again by a later one if the last try failed
+  function loadCounters() {
+    if (state.counters === 'loading' || state.counters === 'ready' || !worker) return;
+    state.counters = 'loading'; state.counted = ''; tell();
+    loadPayload('/counters').then((c) => worker.postMessage({ type: 'counters', buffer: c }, [c]))
+      .catch((err) => { state.counters = 'failed'; state.counted = err.message; tell(); pump(); });
+  }
   function start() {
     // The bench is still being set up while this runs, and what it does on a change of state reads the engine it
     // has not been handed yet. So a failure here is told once the caller has it; every other change arrives later.
@@ -30,6 +46,8 @@ export function createEngine({ onState }) {
       if (m.type === 'error') { state.failed = `The BTCUSDT klines could not be read: ${m.message}`; tell(); return; }
       if (m.type === 'readings') { state.readings = 'ready'; tell(); return; }
       if (m.type === 'readings-error') { state.readings = 'failed'; state.note = m.message; tell(); return; }
+      if (m.type === 'counters') { state.counters = 'ready'; tell(); pump(); return; }
+      if (m.type === 'counters-error') { state.counters = 'failed'; state.counted = m.message; tell(); pump(); return; }
       if (m.type === 'named-pattern') { const w = named.get(m.id); if (w) { named.delete(m.id); w(m); } return; }
       if (m.type === 'progress') { if (flight && m.id === flight.id && flight.onProgress) flight.onProgress(m.f); return; }
       if (m.type === 'result' && flight && m.id === flight.id) { const f = flight; flight = null; f.resolve(m); pump(); }
@@ -49,6 +67,7 @@ export function createEngine({ onState }) {
     query(q, { onProgress = null, group = '', first = false } = {}) {
       return new Promise((resolve) => {
         const item = { q, resolve, onProgress, group };
+        if (counts(q)) loadCounters();
         // `first` is the drawing's own question: it replaces whatever is in flight, as the worker itself would.
         if (first && flight && state.ready) { flight.resolve(null); flight = null; waiting.unshift(item); } else if (first) waiting.unshift(item); else waiting.push(item);
         pump();

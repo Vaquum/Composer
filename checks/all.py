@@ -8,6 +8,7 @@ checks = [
     [sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-v'],
     ['node', 'checks/chain.mjs'],
     ['node', 'checks/chained-vectors.mjs'],
+    ['node', 'checks/dimension-vectors.mjs'],
     *[[sys.executable, 'checks/with_bars.py', f'checks/{name}.mjs'] for name in
       ('similarity-windows', 'similarity-look', 'similarity-equivalence', 'panes', 'activity-preparation', 'search-performance', 'loading-performance', 'bench')],
     [sys.executable, 'checks/container.py'],

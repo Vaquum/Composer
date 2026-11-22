@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import gzip
+import hashlib
 import json
 import os
+import struct
 import sys
 import threading
 import tempfile
@@ -231,6 +233,73 @@ class Server(unittest.TestCase):
             restored = server.Bars(cache_dir=Path(directory))
             self.assertFalse(restored.restore())
             self.assertFalse(restored.health()['ready'])
+
+    def test_counters_are_served_beside_the_activity(self) -> None:
+        # a reader that has no counters leaves them pending, and the page waits as it does for the bars
+        response = self.get('/counters')
+        self.assertEqual((response.status, response.headers['Retry-After']), (503, '1'))
+        counters = b'CCNT1' + b'counter-values' * 10000
+        self.state._replace(b'CBAR1bars', b'CACT1activity', sources('1'), counters)
+        raw = self.get('/counters')
+        tag = raw.headers['ETag']
+        self.assertEqual((raw.status, raw.read(), raw.headers['Cache-Control']), (200, counters, 'private, no-cache'))
+        self.assertNotIn(tag, (self.get('/bars').headers['ETag'], self.get('/activity').headers['ETag']))
+        self.assertEqual(self.get('/counters', {'If-None-Match': tag}).status, 304)
+        encoded = self.get('/counters', {'Accept-Encoding': 'gzip'})
+        self.assertEqual((encoded.headers['Content-Encoding'], gzip.decompress(encoded.read())), ('gzip', counters))
+        self.assertEqual(self.state.current_counters(), (counters, tag))
+        # the other two payloads are what they were
+        self.assertEqual((self.get('/bars').read(), self.get('/activity').read()), (b'CBAR1bars', b'CACT1activity'))
+
+    def test_a_reader_with_counters_has_them_served_and_kept_in_the_snapshot(self) -> None:
+        def read(found: list[bars.Source]) -> tuple[bytes, bytes, bytes]:
+            self.fake.reads += 1
+            return b'CBAR1x', b'CACT1x', b'CCNT1' + found[0].sha256[:1].encode()
+
+        with tempfile.TemporaryDirectory() as directory:
+            state = server.Bars(self.fake.current, read, Path(directory))
+            self.assertTrue(state.refresh())
+            self.assertEqual(state.current_counters()[0], b'CCNT11')
+            restored = server.Bars(self.fake.current, read, Path(directory))
+            self.assertTrue(restored.restore())
+            self.assertEqual((restored.current(), restored.current_activity(), restored.current_counters()),
+                             (state.current(), state.current_activity(), state.current_counters()))
+            for counters in (False, True):
+                self.assertEqual(restored.representation(True, 'gzip', counters), state.representation(True, 'gzip', counters))
+            # the snapshot is whole: nothing is read again until the files change
+            reads = self.fake.reads
+            self.assertFalse(restored.refresh())
+            self.assertEqual(self.fake.reads, reads)
+            # counters that do not match their checksum make the snapshot invalid
+            path = Path(directory) / 'history.snapshot'
+            data = bytearray(path.read_bytes())
+            data[-1] ^= 1
+            path.write_bytes(data)
+            self.assertFalse(server.Bars(cache_dir=Path(directory)).restore())
+
+    def test_a_snapshot_from_before_the_counters_restores_and_is_read_once_more(self) -> None:
+        def read(found: list[bars.Source]) -> tuple[bytes, bytes, bytes]:
+            self.fake.reads += 1
+            return b'CBAR1new', b'CACT1new', b'CCNT1new'
+
+        payload, activity = b'CBAR1old', b'CACT1old'
+        meta = json.dumps({'sources': [s.__dict__ for s in sources('1')], 'bars_bytes': len(payload),
+                           'bars_sha256': hashlib.sha256(payload).hexdigest(), 'activity_sha256': hashlib.sha256(activity).hexdigest()}).encode()
+        with tempfile.TemporaryDirectory() as directory:
+            (Path(directory) / 'history.snapshot').write_bytes(b'CSNAP1' + struct.pack('<I', len(meta)) + meta + payload + activity)
+            state = server.Bars(self.fake.current, read, Path(directory))
+            self.assertTrue(state.restore())
+            # the bars and the activity are served at once, as they were; the counters are owed
+            self.assertEqual((state.current()[0], state.current_activity()[0], state.current_counters()[0]), (payload, activity, b''))
+            reads = self.fake.reads
+            self.assertTrue(state.refresh())   # the same files, read once more for their counters
+            self.assertEqual((self.fake.reads, state.current_counters()[0]), (reads + 1, b'CCNT1new'))
+            self.assertFalse(state.refresh())
+            self.assertEqual(self.fake.reads, reads + 1)
+            again = server.Bars(self.fake.current, read, Path(directory))
+            self.assertTrue(again.restore())
+            self.assertEqual(again.current_counters()[0], b'CCNT1new')
+            self.assertFalse(again.refresh())
 
     def test_cold_server_answers_the_page_while_data_is_pending(self) -> None:
         self.large_payloads()

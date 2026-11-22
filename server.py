@@ -1,5 +1,8 @@
 """Composer's server: the page, its matcher, the bars it searches and what traded in them, on 127.0.0.1 only.
 
+Three payloads are served beside the page: /bars, /activity and /counters. The page asks for the last only
+when a g1 dimension is switched on, so a bench with every dimension off loads what it always loaded.
+
 The host's Caddy, deployed from Vaquum/Portal, puts composer.vaquum.fi in front of this server
 behind the portal login, so it checks no credentials of its own. It restores a validated local
 snapshot before answering and reads newer Vaquum HuggingFace files in the background every hour. If a
@@ -71,17 +74,23 @@ def log(message: str) -> None:
 
 
 class Bars:
-    """The payloads being served, the bars and their activity, swapped whole when newer files arrive."""
+    """The payloads being served, the bars, their activity and their counters, swapped whole when newer files arrive."""
 
-    def __init__(self, current=bars.current, read=bars.read, cache_dir: Path | None = None) -> None:
+    def __init__(self, current=bars.current, read=bars.read_all, cache_dir: Path | None = None) -> None:
+        # `read` returns the bars and their activity, and the exact counters after them when it has them
         self._current, self._read = current, read
         self._lock = threading.Lock()
         self.payload = b''
         self.etag = ''
         self.activity = b''
         self.activity_etag = ''
+        self.counters = b''
+        self.counters_etag = ''
         self._compressed: tuple[bytes, str] | None = None
         self._activity_compressed: tuple[bytes, str] | None = None
+        self._counters_compressed: tuple[bytes, str] | None = None
+        # a snapshot written before the counters existed restores without them: the files are then read once more
+        self._owes_counters = False
         self.sources: list[bars.Source] = []
         self.failure = ''
         self.cache_dir = cache_dir
@@ -102,15 +111,21 @@ class Bars:
                 raise ValueError('snapshot metadata too large')
             meta = json.loads(data[10:10 + size])
             payload = data[10 + size:10 + size + meta['bars_bytes']]
-            activity = data[10 + size + meta['bars_bytes']:]
+            rest = data[10 + size + meta['bars_bytes']:]
+            # the counters follow the activity in a snapshot that has them; one written before them is all activity
+            counted = 'activity_bytes' in meta
+            activity, counters = (rest[:meta['activity_bytes']], rest[meta['activity_bytes']:]) if counted else (rest, b'')
             if (not payload.startswith(bars.MAGIC) or not activity.startswith(bars.ACTIVITY_MAGIC)
                     or hashlib.sha256(payload).hexdigest() != meta['bars_sha256']
-                    or hashlib.sha256(activity).hexdigest() != meta['activity_sha256']):
+                    or hashlib.sha256(activity).hexdigest() != meta['activity_sha256']
+                    or (counted and hashlib.sha256(counters).hexdigest() != meta['counters_sha256'])
+                    or (counters and not counters.startswith(bars.COUNTERS_MAGIC))):
                 raise ValueError('snapshot checksum mismatch')
             sources = [bars.Source(**source) for source in meta['sources']]
             if [(s.name, s.seconds, s.repo) for s in sources] != list(bars.TIMEFRAMES):
                 raise ValueError('snapshot timeframes differ')
-            self._replace(payload, activity, sources)
+            self._replace(payload, activity, sources, counters)
+            self._owes_counters = not counted
             return True
         except FileNotFoundError:
             return False
@@ -118,7 +133,7 @@ class Bars:
             log(f'ignoring invalid history snapshot: {exc}')
             return False
 
-    def _replace(self, payload: bytes, activity: bytes, sources: list[bars.Source]) -> None:
+    def _replace(self, payload: bytes, activity: bytes, sources: list[bars.Source], counters: bytes = b'') -> None:
         def tag(data: bytes) -> str:
             return '"' + hashlib.sha256(data).hexdigest()[:32] + '"'
 
@@ -130,26 +145,29 @@ class Bars:
 
         # Prepare once per generation, outside the serving lock. Readers retain the
         # previous complete generation while compression or a refresh is in flight.
-        encoded, activity_encoded = compressed(payload), compressed(activity)
-        etag, activity_etag = tag(payload), tag(activity)
+        encoded, activity_encoded, counters_encoded = compressed(payload), compressed(activity), compressed(counters)
+        etag, activity_etag, counters_etag = tag(payload), tag(activity), tag(counters)
         with self._lock:
-            self.payload, self.activity, self.sources, self.failure = payload, activity, sources, ''
-            self.etag, self.activity_etag = etag, activity_etag
-            self._compressed, self._activity_compressed = encoded, activity_encoded
+            self.payload, self.activity, self.counters, self.sources, self.failure = payload, activity, counters, sources, ''
+            self.etag, self.activity_etag, self.counters_etag = etag, activity_etag, counters_etag
+            self._compressed, self._activity_compressed, self._counters_compressed = encoded, activity_encoded, counters_encoded
 
     def save(self) -> None:
         if self.cache_dir is None:
             return
-        payload, activity = self.payload, self.activity
-        meta = json.dumps({'sources': [asdict(s) for s in self.sources], 'bars_bytes': len(payload),
+        with self._lock:
+            payload, activity, counters, sources = self.payload, self.activity, self.counters, self.sources
+        meta = json.dumps({'sources': [asdict(s) for s in sources], 'bars_bytes': len(payload),
                            'bars_sha256': hashlib.sha256(payload).hexdigest(),
-                           'activity_sha256': hashlib.sha256(activity).hexdigest()}).encode()
+                           'activity_sha256': hashlib.sha256(activity).hexdigest(),
+                           'activity_bytes': len(activity),
+                           'counters_sha256': hashlib.sha256(counters).hexdigest()}).encode()
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         path = None
         try:
             with tempfile.NamedTemporaryFile(dir=self.cache_dir, delete=False) as cache:
                 path = Path(cache.name)
-                cache.write(b'CSNAP1' + struct.pack('<I', len(meta)) + meta + payload + activity)
+                cache.write(b'CSNAP1' + struct.pack('<I', len(meta)) + meta + payload + activity + counters)
                 cache.flush()
                 os.fsync(cache.fileno())
             path.replace(self.cache_dir / 'history.snapshot')
@@ -160,12 +178,13 @@ class Bars:
     def refresh(self) -> bool:
         """Read the files again only when latest.json names different ones; True when the bars changed."""
         sources = self._current()
-        if [(s.repo, s.sha256) for s in sources] == [(s.repo, s.sha256) for s in self.sources]:
+        if [(s.repo, s.sha256) for s in sources] == [(s.repo, s.sha256) for s in self.sources] and not self._owes_counters:
             with self._lock:
                 self.failure = ''
             return False
-        payload, activity = self._read(sources)
-        self._replace(payload, activity, sources)
+        payload, activity, *counters = self._read(sources)
+        self._replace(payload, activity, sources, *counters[:1])
+        self._owes_counters = False
         try:
             self.save()
         except OSError as exc:
@@ -180,11 +199,15 @@ class Bars:
         with self._lock:
             return self.activity, self.activity_etag
 
-    def representation(self, activity: bool, accept_encoding: str) -> tuple[bytes, str, str | None]:
+    def current_counters(self) -> tuple[bytes, str]:
+        with self._lock:
+            return self.counters, self.counters_etag
+
+    def representation(self, activity: bool, accept_encoding: str, counters: bool = False) -> tuple[bytes, str, str | None]:
         gzip_weight, identity_weight = encoding_weights(accept_encoding)
         with self._lock:
-            payload, etag = (self.activity, self.activity_etag) if activity else (self.payload, self.etag)
-            encoded = self._activity_compressed if activity else self._compressed
+            payload, etag = (self.counters, self.counters_etag) if counters else (self.activity, self.activity_etag) if activity else (self.payload, self.etag)
+            encoded = self._counters_compressed if counters else self._activity_compressed if activity else self._compressed
             if payload and encoded and gzip_weight > 0 and gzip_weight >= identity_weight:
                 return *encoded, 'gzip'
             return payload, etag, '' if identity_weight > 0 else None
@@ -236,9 +259,9 @@ def handler(state: Bars, pages: dict[str, tuple[bytes, str]]):
                 self._send(200, body, kind)
             elif path in PAGE_ALIASES:
                 self._send(308, b'', 'text/plain; charset=utf-8', {'Location': f'/{separator}{query}'})
-            elif path in ('/bars', '/activity'):
+            elif path in ('/bars', '/activity', '/counters'):
                 accept = ','.join(self.headers.get_all('Accept-Encoding', []))
-                payload, etag, encoding = state.representation(path == '/activity', accept)
+                payload, etag, encoding = state.representation(path == '/activity', accept, path == '/counters')
                 headers = {'Vary': 'Accept-Encoding', 'ETag': etag}
                 if encoding:
                     headers['Content-Encoding'] = encoding

@@ -20,6 +20,12 @@
        comparison it flips. Flips (making or breaking a tie counts half) are still counted and shown: zero
        flips means the exact g1 pattern.
 
+   A drawing may also switch on dimensions beside price: volume, trades, delta, trade size and net taker imbalance.
+   Each has one value per bar, read from the bar's exact counters (USDT traded, taker-buy USDT, trades), and is ranked
+   only against itself; delta and imbalance are ranked against zero as well. A window is a candidate only when the bars
+   the drawing's bars took stand in the drawing's order on every dimension it switches on, ties included. A window
+   with a bar that has no value on one of them is not read at all, as a window across a gap is not.
+
    What came next uses the engine's own definitions. The next bar rose or fell by the sign of
    close[t+1] - close[t] (the direction run's primary target, flat kept apart), and only when bar t+1
    follows bar t with no missing bar between them. ATR is the engine's ATR14: true range
@@ -33,6 +39,8 @@ const WORK_SLICE_MS = 16;
 let BARS = null, latest = 0, pending = null;
 // what Composer reads about each bar beside its shape, once the activity has arrived (per timeframe, aligned with BARS)
 let READ = null, pendingActivity = null, activityVersion = 0;
+// the exact counters of each bar, once a drawing with a dimension on has asked for them (per timeframe, aligned with BARS)
+let COUNT = null, pendingCounters = null;
 
 // Each bar as a later bar of a window: JO is its open at the close of the recorded bar just before it, JH and JL its
 // high and low widened to include that open. After a gap there is no such bar, and no window puts a later bar there:
@@ -111,6 +119,107 @@ function decodeActivity(buffer) {
     out.push({ name, n, vol, quote, trades, maker });
   }
   return out;
+}
+
+// The exact counters of every bar, served beside the activity (bars.py says how they are packed), under the cube's
+// names: `vol` the USDT traded, `tbvol` the taker-buy USDT, `cnt` the trades. They are read as they were written,
+// bit for bit, and counters that are not amounts are refused.
+function decodeCounters(buffer) {
+  const dv = new DataView(buffer), size = buffer.byteLength;
+  if (size < 6 || String.fromCharCode(dv.getUint8(0), dv.getUint8(1), dv.getUint8(2), dv.getUint8(3), dv.getUint8(4)) !== 'CCNT1') throw new Error('This is not Composer counter data.');
+  let p = 5;
+  const out = [], count = dv.getUint8(p++);
+  for (let k = 0; k < count; k++) {
+    let name = '';
+    if (p >= size) throw new Error('The counter data is truncated.');
+    const len = dv.getUint8(p++);
+    if (p + len + 4 > size) throw new Error('The counter data is truncated.');
+    for (let i = 0; i < len; i++) name += String.fromCharCode(dv.getUint8(p++));
+    const n = dv.getUint32(p, true); p += 4;
+    if (p + n * 20 > size) throw new Error('The counter data is truncated.');
+    const vol = new Float64Array(n), tbvol = new Float64Array(n), cnt = new Float64Array(n);
+    for (let i = 0; i < n; i++, p += 8) vol[i] = dv.getFloat64(p, true);
+    for (let i = 0; i < n; i++, p += 8) tbvol[i] = dv.getFloat64(p, true);
+    for (let i = 0; i < n; i++, p += 4) cnt[i] = dv.getUint32(p, true);
+    for (let i = 0; i < n; i++) if (!(vol[i] >= 0 && vol[i] < Infinity && tbvol[i] >= 0 && tbvol[i] <= vol[i])) throw new Error(`The ${name} counters are not amounts: taker buys must lie within what traded.`);
+    out.push({ name, n, vol, tbvol, cnt, values: {}, absent: {} });
+  }
+  return out;
+}
+
+// The dimensions a drawing can switch on beside price, in the order their parts are written in a g1 code, and
+// whether each is also ranked against zero. A bar's value is the float its expression gives, evaluated as written,
+// from the bar's counters; it is NaN where the bar has none: a trade size without trades, an imbalance without volume.
+const DIMENSIONS = ['volume', 'trades', 'delta', 'size', 'imbalance'];
+const AGAINST_ZERO = { delta: true, imbalance: true };
+const DIMENSION_VALUE = {
+  volume: (vol) => vol,
+  trades: (vol, tbvol, cnt) => cnt,
+  delta: (vol, tbvol) => 2 * tbvol - vol,
+  size: (vol, tbvol, cnt) => (cnt > 0 ? vol / cnt : NaN),
+  imbalance: (vol, tbvol) => (vol > 0 ? (2 * tbvol - vol) / vol : NaN),
+};
+/** One timeframe's values on a dimension, one per bar, computed once from its counters. */
+function dimensionValues(C, name) {
+  let a = C.values[name];
+  if (!a) {
+    const f = DIMENSION_VALUE[name]; a = C.values[name] = new Float64Array(C.n);
+    for (let i = 0; i < C.n; i++) a[i] = f(C.vol[i], C.tbvol[i], C.cnt[i]);
+  }
+  return a;
+}
+/** How many of a timeframe's bars before bar i have no value on one of these dimensions, for every i up to n. */
+function absentBefore(C, names) {
+  const key = names.join(' '); let a = C.absent[key];
+  if (!a) {
+    const V = names.map(name => dimensionValues(C, name)); a = C.absent[key] = new Int32Array(C.n + 1);
+    for (let i = 0; i < C.n; i++) { let none = 0; for (const v of V) if (v[i] !== v[i]) none = 1; a[i + 1] = a[i] + none; }
+  }
+  return a;
+}
+/**
+ * The dimension parts of a question, as the g1 text writes them ("volume:0,1", "delta:0,2/1"), read strictly: one
+ * rank for each of the n drawn bars, the rank of zero after a slash exactly when the dimension has one, ranks dense
+ * from zero within the part, and parts in the fixed order, each at most once.
+ */
+function compileDims(parts, n) {
+  const out = []; let last = -1;
+  for (const part of parts || []) {
+    const m = /^([a-z]+):([0-9,]*)(?:\/([0-9]*))?$/.exec(part), at = m ? DIMENSIONS.indexOf(m[1]) : -1;
+    if (at < 0) throw new Error('A dimension part is volume, trades, delta, size or imbalance, a colon and one rank for each bar.');
+    if (at <= last) throw new Error('Dimension parts follow the order volume, trades, delta, size, imbalance, each at most once.');
+    last = at;
+    const zero = !!AGAINST_ZERO[m[1]];
+    if ((m[3] !== undefined) !== zero) throw new Error(zero ? `The ${m[1]} part ends with a slash and the rank of zero.` : `The ${m[1]} part has no zero to rank, so it takes no slash.`);
+    const fields = m[2].split(','), all = zero ? [...fields, m[3]] : fields;
+    if (fields.length !== n) throw new Error(`The ${m[1]} part needs one rank for each bar.`);
+    if (all.some(f => !/^(0|[1-9][0-9]*)$/.test(f))) throw new Error('Dimension ranks are whole numbers written plainly.');
+    const ranks = all.map(Number), used = new Set(ranks);
+    for (let r = 0; r < used.size; r++) if (!used.has(r)) throw new Error(`The ${m[1]} ranks must be dense from zero.`);
+    out.push({ name: m[1], ranks: Int32Array.from(ranks.slice(0, n)), zero: zero ? ranks[n] : -1, at: new Float64Array(used.size) });
+  }
+  return out;
+}
+/**
+ * Whether the bars a drawing's bars took stand in its order on every dimension it switches on: 1 when they do, 0 when
+ * they do not, -1 when one of them has no value there. Drawn bar g took bar s + ps[g], or s + g with nothing skipped.
+ * One value is assigned to each rank: equal within a rank and strictly rising between ranks is the whole order, and
+ * zero sits at the rank the part gives it.
+ */
+function dimsFit(dims, V, s, ps, n) {
+  for (let d = 0; d < dims.length; d++) { const v = V[d]; for (let g = 0; g < n; g++) { const x = v[s + (ps ? ps[g] : g)]; if (x !== x) return -1; } }
+  for (let d = 0; d < dims.length; d++) {
+    const { ranks, zero, at } = dims[d], v = V[d];
+    at.fill(NaN);
+    if (zero >= 0) at[zero] = 0;
+    for (let g = 0; g < n; g++) {
+      const r = ranks[g], x = v[s + (ps ? ps[g] : g)];
+      if (at[r] === at[r] && at[r] !== x) return 0;
+      at[r] = x;
+    }
+    for (let r = 1; r < at.length; r++) if (!(at[r] > at[r - 1])) return 0;
+  }
+  return 1;
 }
 
 // What Composer reads about every bar, the way the cube explorer reads a cell: its volume, trades and trade size (USDT per
@@ -268,7 +377,7 @@ function compile(q) {
     const ix = []; for (let k = 0; k < P; k++) if (B[k] >> 2 === g) ix.push(k);
     return { A: Int16Array.from(ix, k => A[k]), B: Int16Array.from(ix, k => B[k]), R: Int8Array.from(ix, k => R[k]) };
   });
-  return { n, oriented: q.oriented, D, QN, QB, QR, P, A, B, R, byBar, levels, holds: q.holds };
+  return { n, oriented: q.oriented, D, QN, QB, QR, P, A, B, R, byBar, levels, holds: q.holds, dims: compileDims(q.dims, n) };
 }
 
 function holdOk(h, MO, MH, ML, MC) {
@@ -377,9 +486,15 @@ function tick() {
 }
 
 async function search(q, id, report) {
-  const read = READ, tables = BARS;
+  const read = READ, tables = BARS, counters = COUNT;
   for (const T of tables) if (!T.JO) links(T);   // bars handed over without going through decode
   const t0 = Date.now(), cq = compile(q), n = cq.n, held = q.holds.length > 0, stretch = held ? q.stretch : 0;
+  // The dimensions the drawing switches on. DV holds the timeframe's values on each, and `absent` counts its bars
+  // without one; both are null with every dimension off, and the search is then exactly the search on prices.
+  const dimNames = cq.dims.map(d => d.name);
+  if (dimNames.length && !(counters && counters.length === tables.length && counters.every((C, k) => C.n === tables[k].n))) throw new Error('The counters do not cover the bars, so no dimension can be read.');
+  let DV = null, absent = null;
+  const axes = k => { if (dimNames.length) { DV = dimNames.map(name => dimensionValues(counters[k], name)); absent = absentBefore(counters[k], dimNames); } };
   const MO = new Float64Array(n), MH = new Float64Array(n), ML = new Float64Array(n), MC = new Float64Array(n), W = new Float64Array(4 * n);
   const picks = new Int32Array(n), exact = TF_NAMES.map(() => 0), counts = TF_NAMES.map(() => 0);
   const exactF = TF_NAMES.map(() => 0), countsF = TF_NAMES.map(() => 0);
@@ -569,11 +684,12 @@ async function search(q, id, report) {
         const floor = c + FLIP_WEIGHT * d / (2 * cq.P), limit = Math.min(best.bound(), bestHere ? bestHere.d : Infinity);
         if (floor > limit) continue;
         if (g === n - 1) {
+          if (DV && dimsFit(cq.dims, DV, s, picks, n) !== 1) continue;
           const score = floor + lookOf(cq, W);
           if (score < limit) { windowBest.d = score; windowBest.picks.set(picks); windowBest.extra = last - s + 1 - n; windowBest.span = last - s + 1; bestHere = windowBest; }
           continue;
         }
-      } else if (g === n - 1) { any = true; depth = -1; return false; }
+      } else if (g === n - 1) { if (DV && dimsFit(cq.dims, DV, s, picks, n) !== 1) continue; any = true; depth = -1; return false; }
       const child = g + 1, remaining = spare - skip;
       positions[child] = last + 1; spares[child] = remaining;
       skips[child] = child === n - 1 ? remaining : 0;
@@ -584,6 +700,7 @@ async function search(q, id, report) {
 
   for (let k = 0; k < tables.length; k++) {
     T = tables[k]; on = !!q.tfs[k];
+    axes(k);
     colourBounds = null;
     if (on && held && stretch && n > 2) {
       colourBounds = await boundColours(); if (id !== latest) return null;
@@ -596,14 +713,19 @@ async function search(q, id, report) {
       }
       done++;
       if (T.run[s + n - 1] < n) continue;
+      // a bar with no value on a dimension the drawing switches on leaves the window unread, as a gap does: it is
+      // neither a match nor one of the windows a match is counted against
+      if (DV && absent[s + n] !== absent[s]) continue;
+      // a window that does not stand in the drawing's order on those dimensions is read, and is no candidate
+      const fit = !DV || dimsFit(cq.dims, DV, s, null, n) === 1;
       for (let i = 0; i < n; i++) take(T, i, s + i);
       // the whole history's own rate, for comparison: every window of this length on the timeframes shown
       outcomeInto(T, s + n - 1, o0);
       const pass0 = passes(o0, f);
       if (on && !o0.why) { base.n++; if (o0.dir > 0) base.up++; else if (o0.dir < 0) base.down++; else base.flat++; if (f && pass0) base.pass++; }
       // exact twins of the whole pattern are the windows with no flips at all
-      if (flips(cq, MO, MH, ML, MC, W, 0) === 0) { exact[k]++; if (pass0) { exactF[k]++; if (on && !held) addSet(k, T, s, null, s + n - 1, o0); } }
-      if (on) {
+      if (fit && flips(cq, MO, MH, ML, MC, W, 0) === 0) { exact[k]++; if (pass0) { exactF[k]++; if (on && !held) addSet(k, T, s, null, s + n - 1, o0); } }
+      if (on && fit) {
         let same = true;
         if (cq.oriented) for (let g = 0; g < n && same; g++) same = (MC[g] > MO[g] ? 1 : MC[g] < MO[g] ? -1 : 0) === cq.D[g];
         const at = same ? oneAway(cq, W) : -1;
@@ -618,15 +740,18 @@ async function search(q, id, report) {
       }
       if (!held) {
         // nothing held: rank every window that passes the next-bar filter by how close it looks
-        if (on && pass0) { const sc = closeness(cq, MO, MH, ML, MC, W, best.bound()); if (sc >= 0) best.push(sc, { k, s, picks: null, extra: 0, span: n, end: T.ts[s + n - 1] }); }
+        if (on && pass0 && fit) { const sc = closeness(cq, MO, MH, ML, MC, W, best.bound()); if (sc >= 0) best.push(sc, { k, s, picks: null, extra: 0, span: n, end: T.ts[s + n - 1] }); }
         continue;
       }
       // each run from this start to a possible last bar is its own window: it holds when some placement between its
       // ends does, its next bar is the one after that run, and the counts, rates and instance all describe it
-      batchPrefix = firstOnly && on && !!read && stretch > 0; prefixWeight = 0;
+      // with a dimension on, the placement admitted is the first that also stands in its order, which need not be
+      // the unskipped one: the readings are then summed placement by placement
+      batchPrefix = firstOnly && on && !!read && stretch > 0 && !DV; prefixWeight = 0;
       for (let extra = 0; extra <= stretch; extra++) {
         const e = s + n - 1 + extra;
         if (e >= T.n || T.run[e] < e - s + 1) break;
+        if (DV && absent[e + 1] !== absent[s]) break;   // a longer run holds the same bar without a value
         bestHere = null; any = false;
         if(!beginPlacement(extra))continue;
         while (place(false)) { await tick(); if (id !== latest) return null; deadline = performance.now() + WORK_SLICE_MS; report(done / total); }
@@ -666,10 +791,12 @@ async function search(q, id, report) {
     const near = new Best(Math.max(400, q.x * 40));
     for (let k = 0; k < tables.length; k++) {
       if (!q.tfs[k]) continue;
-      T = tables[k];
+      T = tables[k]; axes(k);
       for (s = 0; s + n <= T.n; s++) {
         if ((++sinceTick & 255) === 0 && performance.now() >= deadline) { await tick(); if (id !== latest) return null; deadline = performance.now() + WORK_SLICE_MS; }
         if (T.run[s + n - 1] < n) continue;
+        // the nearest windows are still windows that stand in the drawing's order on its dimensions
+        if (DV && (absent[s + n] !== absent[s] || dimsFit(cq.dims, DV, s, null, n) !== 1)) continue;
         if (f && !passes(outcomeInto(T, s + n - 1, o0), f)) continue;
         for (let i = 0; i < n; i++) take(T, i, s + i);
         const sc = closeness(cq, MO, MH, ML, MC, W, near.bound());
@@ -755,15 +882,29 @@ if (typeof self !== 'undefined' && typeof self.postMessage === 'function' && typ
     const r = await search(m.q, m.id, f => self.postMessage({ type: 'progress', id: m.id, f }));
     if (r) { if (read === READ && tables === BARS) { if(memo.size>=6)memo.delete(memo.keys().next().value);memo.set(key,r); } self.postMessage({ type: 'result', id: m.id, ...r }); }
   };
+  // a question waits for the bars, and one that switches a dimension on waits for the counters too
+  const ask = m => { if (!BARS || (m.q.dims && m.q.dims.length && !COUNT)) pending = m; else run(m); };
   self.onmessage = async e => {
     const m = e.data;
     if (m.type === 'bars') {
       try {
-        BARS = decode(m.buffer); READ = null; activityVersion++; memo.clear();
+        BARS = decode(m.buffer); READ = null; COUNT = null; activityVersion++; memo.clear();
         self.postMessage({ type: 'ready', bars: BARS.reduce((a, T) => a + T.n, 0), from: BARS[0].ts[0], to: BARS[0].ts[BARS[0].n - 1] + BARS[0].sec });
         if (pendingActivity) { const a = pendingActivity; pendingActivity = null; self.onmessage({ data: { type: 'activity', buffer: a } }); }
-        if (pending) { const p = pending; pending = null; run(p); }
+        if (pendingCounters) { const c = pendingCounters; pendingCounters = null; self.onmessage({ data: { type: 'counters', buffer: c } }); }
+        if (pending) { const p = pending; pending = null; ask(p); }
       } catch (err) { self.postMessage({ type: 'error', message: String(err.message || err) }); }
+      return;
+    }
+    if (m.type === 'counters') {
+      if (!BARS) { pendingCounters = m.buffer; return; }
+      try {
+        const C = decodeCounters(m.buffer);
+        if (C.length !== BARS.length || C.some((c, k) => c.n !== BARS[k].n)) throw new Error('The counters do not cover every bar.');
+        COUNT = C; memo.clear();
+        self.postMessage({ type: 'counters' });
+        if (pending) { const p = pending; pending = null; ask(p); }
+      } catch (err) { self.postMessage({ type: 'counters-error', message: String(err.message || err) }); }
       return;
     }
     if (m.type === 'activity') {
@@ -804,10 +945,6 @@ if (typeof self !== 'undefined' && typeof self.postMessage === 'function' && typ
       }
       return;
     }
-    if (m.type === 'query') {
-      latest = m.id;
-      if (!BARS) { pending = m; return; }
-      run(m);
-    }
+    if (m.type === 'query') { latest = m.id; ask(m); }
   };
 }
