@@ -339,6 +339,12 @@ function laneTrack(lane) {
   if (lane.kind === 'offer') return [];
   if (!r) return [h('div', null, h('b', { class: 'thin' }, lane.kind === 'variant' ? int(lane.v.n) : '—'), h('small', null, lane.wait ? 'searching' : 'windows'))];
   const cd = condOf(lane);
+  if (!cd && givenAny() && lane.kind !== 'window') {
+    // picks are set but this cohort has no complete six-bar windows to narrow: nothing is read, and the cohort's own
+    // rates are not shown under columns that now mean something else
+    const none = () => h('div', { title: 'No complete windows here, so nothing can be read under the picks' }, h('b', { class: 'thin' }, '—'), h('small', null, h('span', { class: 'dim' }, 'no complete windows')));
+    return lead2([none(), none(), none(), none()]);
+  }
   if (cd && (cd.picks || state.rows === 'paths')) {
     // the picks narrow this cohort to the windows that closed there: the track reads those windows, not the cohort
     const count = h('div', { title: cd.picks ? `${int(cd.n)} of ${int(cd.base)} complete windows closed where the picks say` : `${int(cd.n)} windows have all six later bars` },
@@ -552,7 +558,8 @@ function renderCanvas() {
   drawAxis($('#axis'), { n: M.bars.length, pick: state.lane === 'draw' ? M.sel : -1 });
   $('#rowlabel').textContent = { timeframes: 'The shape, on each timeframe', variants: 'Shapes one comparison away', windows: '', holds: 'What each hold keeps, in order', paths: paged ? '' : 'The closing paths, most common first' }[state.rows];
   // the track's columns are named for what the rows read: a path's share, the windows the picks leave, or the cohort
-  const narrowed = !!condOf(lanes[0])?.picks;
+  // picks narrow every row that has complete windows, whether or not the drawing itself has any: the names follow the picks
+  const narrowed = givenAny();
   const heads = state.rows === 'paths' ? ['Windows', 'Probability', narrowed ? 'Of all' : '', ''] : state.rows === 'windows' && sel.kind === 'window' ? ['Shape', 'Order', 'Next', 'Next']
     : narrowed ? ['Given', 'Of cohort', `+${AFTER} above`, `+${AFTER} below`] : ['Windows', 'Broke high', 'Broke low', 'Next up'];
   $('#trackhead').classList.toggle('lead2', state.rows === 'paths' || (narrowed && !(state.rows === 'windows' && sel.kind === 'window')));
@@ -976,8 +983,10 @@ document.addEventListener('keydown', (e) => {
     // on a picked later bar: 1 above the high, 2 inside, 3 below the low, 0 frees it
     e.preventDefault(); const j = state.col?.after;
     if (!j) { state.message = 'Pick a later bar first: . moves to +1'; render(); return; }
+    // freeing a pick never needs windows to narrow; setting one does
+    if (e.key === '0') { if (M.given[j - 1] !== '-') give(j, -1); return; }
     if (!condOf(ctx.lanes[0])) { state.message = 'No complete windows to narrow'; render(); return; }
-    if (e.key === '0') { if (M.given[j - 1] !== '-') give(j, -1); } else give(j, +e.key - 1);
+    give(j, +e.key - 1);
     return;
   }
   if (e.key === '+' || e.key === '=') { e.preventDefault(); if (model.add()) ask(); return; }
