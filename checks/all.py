@@ -10,7 +10,7 @@ checks = [
     ['node', 'checks/motion-performance.mjs'],
     [sys.executable, '-m', 'unittest', 'discover', '-s', 'tests', '-v'],
     *[['node', f'checks/{name}.mjs'] for name in
-      ('pane-designs', 'forecast', 'forecast-ux', 'drag', 'chain', 'motion-model', 'motion-browser')],
+      ('pane-designs', 'forecast', 'forecast-ux', 'drag', 'chain', 'chained-vectors', 'motion-model', 'motion-browser')],
     *[[sys.executable, 'checks/with_bars.py', f'checks/{name}.mjs'] for name in
       ('similarity-windows', 'similarity-look', 'similarity-equivalence', 'panes', 'activity-preparation', 'search-performance', 'loading-performance', 'bench')],
     [sys.executable, 'checks/container.py'],

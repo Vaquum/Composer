@@ -24,7 +24,9 @@ function expected(T, q, fallback = false) {
     if (!fallback && Math.sign(T.C[s] - T.O[s]) !== q.holds[0].dir) continue;
     const next = T.C[e + 1] - T.C[e];
     if (q.next && Math.sign(next) !== q.next.dir) continue;
-    const lo = Math.min(T.L[s], T.L[e]), hi = Math.max(T.H[s], T.H[e]);
+    // The window is read as a chain: its later bar opens at the close of the bar just before it, and the shape's
+    // low and high include that open.
+    const open = T.C[e - 1], lo = Math.min(T.L[s], T.L[e], open), hi = Math.max(T.H[s], T.H[e], open);
     if (hi === lo) continue;
     let key = '';
     for (let j = e + 1; j <= e + 6; j++) key += T.C[j] > hi ? 'U' : T.C[j] < lo ? 'D' : 'I';

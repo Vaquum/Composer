@@ -6,7 +6,11 @@ Compose bar patterns in Filang's g1 language and find the closest ones in BTCUSD
 Draw any number of bars, chained as BTCUSDT bars are: the market trades around the clock, so every
 bar after the first opens exactly where the previous one closed. You place each bar's close and
 shadows, and a bar is green when it closes above its open and red when below; each joint is an exact
-tie in the g1 pattern, which matching compares exactly. Hold the relations that must stay true
+tie in the g1 pattern, which matching compares exactly. History is read the same way when it is
+compared with a drawing: a window's first bar is read as recorded, and every later bar opens at the
+close of the recorded bar just before it, with its low and high widened to include that open. A
+recorded open is often a cent away from the previous close, and read as recorded that cent would
+break the joint's tie. The record itself is not changed. Hold the relations that must stay true
 (pins, a skeleton, colours), let the drawn bars skip bars of history (stretch), and filter on what
 the next bar did. Composer
 searches the 15m, 30m, 1h, 2h and 4h BTCUSDT bars in the browser and shows the closest windows,
@@ -139,7 +143,7 @@ as the Market State Cube Explorer does. `DEPLOY_DIR` names the directory on the 
 
 ### Named candle patterns
 
-Open **Named patterns** to browse the English and Japanese names or open a link such as `/?pattern=hammer`. Choose a timeframe to count every complete window satisfying the displayed rule and inspect its most recent closes in UTC. Clicking a name under the drawing opens the same rule. Gaps reset two-bar windows. These counts use observed OHLC prices, independently of the paper's nearest matches, pins, next-bar filters and continuation panes.
+Open **Named patterns** to browse the English and Japanese names or open a link such as `/?pattern=hammer`. Choose a timeframe to count every complete window satisfying the displayed rule and inspect its most recent closes in UTC. Clicking a name under the drawing opens the same rule. Gaps reset two-bar windows. These counts use observed OHLC prices, recorded opens included (the shape matcher reads a window as a chain; named patterns do not), independently of the paper's nearest matches, pins, next-bar filters and continuation panes.
 
 [patterns.js](patterns.js) defines profile v1. Every entry has a stable ID, names, a window length and an executable comparison tree. Operands are integer price levels, body or wick lengths, direction, and positive integral multiples; `prev.` refers to the preceding bar. Relations use exact price ticks, including ties. A changed rule needs a new version. Downstream clients pin and copy this file without rewriting its predicates. A G1 string expresses endpoint order; wick-to-body length ratios require measured OHLC distances.
 
