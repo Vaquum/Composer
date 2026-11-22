@@ -36,7 +36,7 @@ const clock = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-dig
 const when = (t) => `${day.format(new Date(t * 1000))} ${clock.format(new Date(t * 1000))}`;
 const READ = { vol: 'Volume', trades: 'Trades', size: 'Trade size', maker: 'Maker share', range: 'Range', body: 'Body', day: 'Close in prior-day range' };
 const READ_NOTE = { vol: 'against the median of the 11 bars before', trades: 'against the median of the 11 bars before', size: 'USDT per trade, against the 11 bars before',
-  maker: 'share of the bar’s volume recorded as maker', range: 'high to low, in ATR', body: 'open to close, in ATR', day: 'where the last bar closed in the prior UTC day’s range' };
+  maker: 'share of the bar’s volume recorded as maker', range: 'high to low, in ATR', body: 'open to close, in ATR; a later bar opens at the close before it', day: 'where the last bar closed in the prior UTC day’s range' };
 const readText = (w, x) => (w.log ? `${Math.exp(x).toFixed(2)}×` : w.key === 'maker' ? pct(x) : w.key === 'day' ? pct(x, 0) : `${x.toFixed(2)} ATR`);
 
 // ---------------------------------------------------------------- answers
@@ -97,6 +97,8 @@ const sumOn = (a) => a.reduce((x, n, k) => x + (M.tfOn[k] ? n : 0), 0);
  * What an answer counts. With nothing held it is the exact twins of the whole shape. With something held it is the
  * windows that keep every held relation; when none does (or none that does passes the next-bar filter) the matcher
  * falls back to the nearest windows, and those are never counted as holding.
+ * A window is read as the shape is drawn, as a chain: its first bar as recorded, every later bar opening at the
+ * close of the recorded bar just before it, its low and high widened to include that open. The record is unchanged.
  */
 function tally(r, k = -1) {
   if (!r) return { mode: 'none', n: 0, raw: 0 };
@@ -638,7 +640,7 @@ function hover(n, e) {
     const raw = lane.rows[col.bar]; const f = (v) => (lane.kind === 'window' || lane.kind === 'variant' ? v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : pct(v, 0));
     const [a, b, c2, d] = lane.kind === 'window' || lane.kind === 'variant' ? raw : [o, hi, lo, c];
     // only a window and a variant's example are recorded prices; every other row is the drawing, in its own height
-    lines = [`O ${f(a)}  H ${f(b)}`, `L ${f(c2)}  C ${f(d)}`, lane.kind === 'window' ? 'USDT' : lane.kind === 'variant' ? 'USDT, one recorded example' : 'of the shape’s height',
+    lines = [`O ${f(a)}  H ${f(b)}`, `L ${f(c2)}  C ${f(d)}`, lane.kind === 'window' ? 'USDT, read as a chain' : lane.kind === 'variant' ? 'USDT, one example read as a chain' : 'of the shape’s height',
       ...(p?.rows.filter((w) => w.bar === col.bar && ['range', 'vol', 'maker'].includes(w.key)).map((w) => `${READ[w.key].toLowerCase()} ${readText(w, w.set[0])} · all ${readText(w, w.all[0])}`) || [])];
   } else {
     const j = col.after; title = `${lane.title} · +${j}`;
@@ -874,12 +876,12 @@ function renderRight() {
     return h('div', { class: 'block' }, h('div', { class: 'sec' }, label('Held'), note(`${held.length} ${held.length === 1 ? 'relation' : 'relations'}${hero?.stretch ? ` · up to ${hero.stretch} ${hero.stretch === 1 ? 'bar' : 'bars'} skipped` : ''}`)),
       h('div', { class: 'heldlist' }, groups.map((g) => [h('span', { class: 'k' + (sel.kind === 'hold' && sel.gp.id === g.id ? ' on' : '') }, g.text), quiet('Release', () => { if (g.kind === 'skeleton' ? model.setSkel(0) : model.unpin(g.pin)) ask(); }, 'Stop holding this')]))); };
   if (sel.kind === 'offer') {
-    blocks.push(title('Holds', 'Nothing is held', 'With nothing held, every window is ranked by how close it looks and the count is the exact twins of the whole shape. Hold a relation and only windows that keep it count; the rest of the shape is still ranked by closeness.'));
+    blocks.push(title('Holds', 'Nothing is held', 'With nothing held, every window is ranked by how close it looks and the count is the exact twins of the whole shape. A window is read as the shape is drawn: its first bar as recorded, each later bar opening at the close before it. Hold a relation and only windows that keep it count; the rest of the shape is still ranked by closeness.'));
   } else if (sel.kind === 'window') {
     const w = sel.w; const f = (v) => v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); const breaks = brokenOf(w);
     blocks.push(title('Window', `${w.tf} · ${when(w.end)}`, `${pct(w.off, 1)} off the shape · ${w.flips ? `${w.flips} comparisons flipped` : 'every comparison as drawn'}`),
       hero?.mode === 'fallback' ? h('div', { class: 'block' }, h('div', { class: 'sec' }, label('Breaks'), note(breaks.length ? `${breaks.length} of ${hero.holds} held` : 'nothing held')), breaks.length ? h('div', { class: 'heldlist' }, breaks.map((b) => h('span', { class: 'k' }, b))) : h('p', { class: 'note', style: 'margin-top:8px' }, 'Keeps every held relation, but not the next-bar filter’s cohort.')) : null,
-      h('div', { class: 'block' }, h('div', { class: 'sec' }, label('Recorded bars, USDT')),
+      h('div', { class: 'block' }, h('div', { class: 'sec' }, label('Bars as the shape reads them, USDT'), note('later bars open at the close before them; the record is unchanged')),
         h('div', { class: 'rows' }, w.drawn.flatMap((b, i) => [h('span', { class: 'k' }, `Bar ${i + 1}`), h('span', { class: 'v' }, `${f(b[0])} → ${f(b[3])}`), h('span', { class: 'b' }, `${f(b[2])}–${f(b[1])}`)]),
           w.next ? [h('span', { class: 'k' }, 'Next bar'), h('span', { class: 'v' }, `${f(w.next.bar[0])} → ${f(w.next.bar[3])}`), h('span', { class: 'b' }, `${w.next.bps > 0 ? '+' : ''}${w.next.bps.toFixed(1)} bps`)] : [h('span', { class: 'k' }, 'Next bar'), h('span', { class: 'v' }, '—'), h('span', { class: 'b' }, w.nextWhy === 'gap' ? 'gap in the record' : 'end of the record')])));
   } else if (sel.kind === 'path') {

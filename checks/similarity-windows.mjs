@@ -6,6 +6,10 @@
 // For every window on the shown timeframes this check tries every placement, keeps the closest, ranks all windows,
 // takes distinct moments in time, and compares counts, the rise/fall split, the shown windows and their scores,
 // flips, shape and next bar with what the matcher returns.
+//
+// A window is read as a drawing is drawn, as a chain. This check reads it that way from the rule, with its own code:
+// the first bar taken is as recorded; every later bar taken opens at the close of the recorded bar just before it
+// (with stretch, that may be a skipped bar), and its low and high widen to include that open.
 import fs from 'node:fs';
 // Usage: node checks/similarity-windows.mjs MATCHER_JS BARS_FILE (BARS_FILE as bars.py writes it)
 const [matcherFile, barsFile] = process.argv.slice(2);
@@ -52,12 +56,21 @@ function passes(o, f) {
   return o.dir === f.dir;
 }
 const bar = (T, i) => [T.O[i], T.H[i], T.L[i], T.C[i]];
+// the bars a placement takes, read as a chain: [open, high, low, close] for each, from the recorded arrays alone
+function chain(T, taken) {
+  return taken.map((i, g) => {
+    if (g === 0) return bar(T, i);
+    const open = T.C[i - 1];
+    return [open, Math.max(T.H[i], open), Math.min(T.L[i], open), T.C[i]];
+  });
+}
 
-const DOUBLE = [[50, 51, 44, 45], [45.3, 46, 38, 39], [39.2, 40, 33, 34], [34.1, 35, 28, 31], [31.2, 38, 30, 37], [37.1, 42, 36, 41], [41, 41.5, 34, 35], [35.2, 36, 29, 33], [33.1, 40, 32, 39], [39.2, 47, 38, 46]];
+// every drawing here is a chain, as the page draws one: each bar opens at the previous bar's close
+const DOUBLE = [[50, 51, 44, 45], [45, 46, 38, 39], [39, 40, 33, 34], [34, 35, 28, 31], [31, 38, 30, 37], [37, 42, 36, 41], [41, 41.5, 34, 35], [35, 36, 29, 33], [33, 40, 32, 39], [39, 47, 38, 46]];
 const K = { O: 0, H: 1, L: 2, C: 3 };
 const pin = p => { if (p[0] === 'u' || p[0] === 'd') return { color: true, bar: +p.slice(1) - 1, dir: p[0] === 'u' ? 1 : -1 }; const m = p.match(/^([LHOC])(\d+)([<>])([LHOC])(\d+)$/); return { a: [+m[2] - 1, K[m[1]]], b: [+m[5] - 1, K[m[4]]], rel: m[3] === '<' ? -1 : 1 }; };
 const PINS17 = ['u10', 'L4<L1', 'L4<L2', 'L4<L3', 'L4<L5', 'L4<L6', 'L4<L7', 'L4<L8', 'L4<L9', 'L4<L10', 'L8<L7', 'L8<L9', 'H6>H5', 'H6>H7', 'H6>H8', 'H6>H9', 'C10>H6'].map(pin);
-const ENGULF = [[42, 68, 30, 56], [62, 80, 18, 36]], TINY = [[50, 51.2, 49.7, 51], [51, 51.5, 39, 40]];
+const ENGULF = [[42, 68, 30, 56], [56, 80, 18, 36]], TINY = [[50, 51.2, 49.7, 51], [51, 51.5, 39, 40]];
 const ALL = [1, 1, 1, 1, 1];
 const cases = [
   ['green then a larger red, nothing held', { bars: ENGULF, holds: [], stretch: 0, tfs: ALL }],
@@ -81,10 +94,10 @@ for (const [label, c] of cases) {
       const e = s + n - 1 + extra;
       if (e >= T.n || T.run[e] < e - s + 1) break;
       const o = next(T, e);
-      if (!held) { if (q.tfs[k] && passes(o, f)) ranked.push({ k, s, e, extra, ...score(qp, [...Array(n)].map((_, i) => bar(T, s + i)), q.oriented) }); continue; }
+      if (!held) { if (q.tfs[k] && passes(o, f)) ranked.push({ k, s, e, extra, ...score(qp, chain(T, [...Array(n)].map((_, i) => s + i)), q.oriented) }); continue; }
       let best = null;
       for (const pl of placements(s, e, n)) {
-        const w = pl.map(i => bar(T, i));
+        const w = chain(T, pl);
         if (!holdsAll(q.holds, w)) continue;
         const sc = score(qp, w, q.oriented);
         if (!best || sc.score < best.score - TOL) best = { ...sc, pl };
@@ -106,7 +119,7 @@ for (const [label, c] of cases) {
       for (let s = 0; s + n <= T.n; s++) {
         const e = s + n - 1;
         if (T.run[e] < n || !passes(next(T, e), f)) continue;
-        ranked.push({ k, s, e, extra: 0, ...score(qp, [...Array(n)].map((_, i) => bar(T, s + i)), q.oriented) });
+        ranked.push({ k, s, e, extra: 0, ...score(qp, chain(T, [...Array(n)].map((_, i) => s + i)), q.oriented) });
       }
     });
   }
@@ -127,10 +140,14 @@ for (const [label, c] of cases) {
   let shownOk = 0, sameAsBrute = r.results.length === chosen.length;
   r.results.forEach((x, i) => {
     const k = TF.indexOf(x.tf), T = history[k], s = T.ts.indexOf(x.start), e = s + x.raw.length - 1, w = chosen[i];
-    const sc = score(qp, x.picks.map(p => bar(T, s + p)), q.oriented), o = next(T, e);
+    const sc = score(qp, chain(T, x.picks.map(p => s + p)), q.oriented), o = next(T, e);
     const placementBest = !held || fallback || Math.abs(bestOf.get(`${k}:${s}:${e}`).score - sc.score) < TOL;
     const nextOk = o ? !!x.next && x.next.dir === o.dir : !x.next;
-    if (Math.abs(sc.score - x.score) < TOL && sc.flips === x.flips && Math.abs(sc.off - x.off) < TOL && placementBest && nextOk && x.end === T.ts[e] + T.sec) shownOk++;
+    // what is sent to be shown: raw is the record bar for bar, drawn is the taken bars as this check reads them
+    const cents = b => b.map(v => Math.round(v * 100));
+    const rawOk = x.raw.every((b, i) => String(cents(b)) === String(bar(T, s + i)));
+    const drawnOk = String(x.drawn.map(cents)) === String(chain(T, x.picks.map(p => s + p)));
+    if (Math.abs(sc.score - x.score) < TOL && sc.flips === x.flips && Math.abs(sc.off - x.off) < TOL && placementBest && nextOk && rawOk && drawnOk && x.end === T.ts[e] + T.sec) shownOk++;
     if (!w || Math.abs(w.score - x.score) > TOL || ((w.k !== k || w.s !== s || w.e !== e) && !tied(w.score))) sameAsBrute = false;
   });
   const ok = sameMode && sameCounts && sameSplit && shownOk === r.results.length && sameAsBrute;

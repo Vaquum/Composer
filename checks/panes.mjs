@@ -1,6 +1,9 @@
 // The panes, recomputed independently of the matcher's code: every reading, the set of windows that match, what came
 // next, what the next six bars did and the drawings one comparison away, from the decoded bars and activity alone,
 // then compared with what matcher.js returns.
+// A window is read as a chain, from the rule and with this check's own code: its first bar as recorded, every later
+// bar opening at the close of the recorded bar just before it, with its low and high widened to include that open.
+// The body of a later bar is measured from that open; every other reading is of the bar as recorded.
 // Usage: node checks/panes.mjs MATCHER_JS BARS_FILE ACTIVITY_FILE
 import fs from 'node:fs';
 const [matcherFile, barsFile, activityFile] = process.argv.slice(2);
@@ -25,7 +28,7 @@ function readingsOf(T, A) {
   const contiguous = (i, k) => { for (let j = i - k + 1; j <= i; j++) if (j <= 0 || T.ts[j] - T.ts[j - 1] !== T.sec) return false; return true; };
   const day = new Map();
   for (let i = 0; i < n; i++) { const d = Math.floor(T.ts[i] / 86400), v = day.get(d) || [-Infinity, Infinity]; day.set(d, [Math.max(v[0], T.H[i]), Math.min(v[1], T.L[i])]); }
-  const R = { vol: [], trades: [], size: [], maker: [], range: [], body: [], day: [] };
+  const R = { vol: [], trades: [], size: [], maker: [], range: [], body: [], bodyLater: [], day: [] };
   for (let i = 0; i < n; i++) {
     const ok11 = i >= 11 && contiguous(i, 11);
     R.vol.push(ok11 ? A.vol[i] / med(j => A.vol[j], i) : NaN);
@@ -35,6 +38,7 @@ function readingsOf(T, A) {
     const a = i > 0 && contiguous(i, 1) ? atr[i - 1] : NaN;
     R.range.push(a > 0 ? (T.H[i] - T.L[i]) / a : NaN);
     R.body.push(a > 0 ? Math.abs(T.C[i] - T.O[i]) / a : NaN);
+    R.bodyLater.push(a > 0 ? Math.abs(T.C[i] - T.C[i - 1]) / a : NaN);
     const p = day.get(Math.floor(T.ts[i] / 86400) - 1);
     R.day.push(p && p[0] > p[1] ? (T.C[i] - p[1]) / (p[0] - p[1]) : NaN);
   }
@@ -42,6 +46,10 @@ function readingsOf(T, A) {
 }
 const RD = tape.map((T, k) => readingsOf(T, act[k]));
 const KEYS = ['vol', 'trades', 'size', 'maker', 'range', 'body', 'day'], LOG = { vol: 1, trades: 1, size: 1 };
+// where a drawn bar's reading comes from: the body of a later bar is the one read from the chain
+const source = (key, g) => (key === 'body' && g ? 'bodyLater' : key);
+// one taken bar as [open, high, low, close]: recorded when it is the window's first, a chain link otherwise
+const link = (T, j, g) => { if (!g) return [T.O[j], T.H[j], T.L[j], T.C[j]]; const open = T.C[j - 1]; return [open, Math.max(T.H[j], open), Math.min(T.L[j], open), T.C[j]]; };
 const contig = (T, a, b) => { for (let j = a + 1; j <= b; j++) if (T.ts[j] - T.ts[j - 1] !== T.sec) return false; return true; };
 const nextOf = (T, e) => (e + 1 < T.n && contig(T, e, e + 1) ? sgn(T.C[e + 1] - T.C[e]) : null);
 const wilson = (k, m) => { const z = 1.959964, p = k / m, d = 1 + z * z / m, c = (p + z * z / (2 * m)) / d, h = z * Math.sqrt(p * (1 - p) / m + z * z / (4 * m * m)) / d; return [p, c - h, c + h]; };
@@ -50,15 +58,15 @@ const wilson = (k, m) => { const z = 1.959964, p = k / m, d = 1 + z * z / m, c =
 function expected(q) {
   const n = q.bars.length, E = q.bars.flatMap(b => eps(...b)), D = q.bars.map(b => sgn(b[3] - b[0])), held = q.holds.length > 0;
   const pairs = []; for (let a = 0; a < 4 * n; a++) for (let b = a + 1; b < 4 * n; b++) pairs.push([a, b, sgn(E[a] - E[b])]);
-  const set = [], groups = new Map(), all = Object.fromEntries(KEYS.map(k => [k, []]));
+  const set = [], groups = new Map(), all = Object.fromEntries([...KEYS, 'bodyLater'].map(k => [k, []]));
   tape.forEach((T, k) => {
     if (!q.tfs[k]) return;
-    for (const key of KEYS) for (const v of RD[k][key]) if (v === v) all[key].push(LOG[key] ? Math.log(v) : v);
+    for (const key of [...KEYS, 'bodyLater']) for (const v of RD[k][key]) if (v === v) all[key].push(LOG[key] ? Math.log(v) : v);
     for (let s = 0; s + n <= T.n; s++) {
       const e = s + n - 1;
       if (!contig(T, s, e)) continue;
       const W = [], C = [];
-      for (let g = 0; g < n; g++) { W.push(...eps(T.O[s + g], T.H[s + g], T.L[s + g], T.C[s + g])); C.push(sgn(T.C[s + g] - T.O[s + g])); }
+      for (let g = 0; g < n; g++) { const b = link(T, s + g, g); W.push(...eps(...b)); C.push(sgn(b[3] - b[0])); }
       const colours = C.every((c, g) => c === D[g]);
       let diff = 0, at = -1;
       for (let p = 0; p < pairs.length && diff < 2; p++) { const r = sgn(W[pairs[p][0]] - W[pairs[p][1]]); if (r !== pairs[p][2]) { diff++; at = p * 3 + r + 1; } }
@@ -76,8 +84,8 @@ function expected(q) {
   const rows = [];
   for (let g = 0; g < n; g++) for (const key of KEYS) {
     if (key === 'day' && g !== n - 1) continue;
-    const xs = set.map(w => RD[w.k][key][w.s + (w.picks ? w.picks[g] : g)]).filter(v => v === v).map(v => (LOG[key] ? Math.log(v) : v));
-    if (xs.length >= 30) rows.push({ bar: g, key, set: stat(xs), all: stat(all[key]) });
+    const xs = set.map(w => RD[w.k][source(key, g)][w.s + (w.picks ? w.picks[g] : g)]).filter(v => v === v).map(v => (LOG[key] ? Math.log(v) : v));
+    if (xs.length >= 30) rows.push({ bar: g, key, set: stat(xs), all: stat(all[source(key, g)]) });
   }
   const outs = set.filter(w => w.nx !== null);
   // the next six bars, in each window's own scale
@@ -86,7 +94,7 @@ function expected(q) {
     const T = tape[w.k];
     if (w.e + 6 >= T.n || !contig(T, w.e, w.e + 6)) continue;
     let lo = Infinity, hi = -Infinity;
-    for (let g = 0; g < n; g++) { const j = w.s + (w.picks ? w.picks[g] : g); lo = Math.min(lo, T.L[j]); hi = Math.max(hi, T.H[j]); }
+    for (let g = 0; g < n; g++) { const b = link(T, w.s + (w.picks ? w.picks[g] : g), g); lo = Math.min(lo, b[2]); hi = Math.max(hi, b[1]); }
     if (!(hi > lo)) continue;
     const closes = [], his = [], los = [];
     for (let j = 1; j <= 6; j++) { closes.push((T.C[w.e + j] - lo) / (hi - lo)); his.push(T.H[w.e + j]); los.push(T.L[w.e + j]); }
@@ -109,10 +117,10 @@ const rankError = (value, column, p, population) => {
   return Math.max(0,below/population.length-p,p-atMost/population.length);
 };
 const cases = [
-  ['green, then a larger red', [[42, 68, 30, 56], [62, 80, 18, 36]]],
+  ['green, then a larger red', [[42, 68, 30, 56], [56, 80, 18, 36]]],
   ['small green, then a 10x larger red', [[50, 51.2, 49.7, 51], [51, 51.5, 39, 40]]],
   ['red hammer, then a green, 15m and 4h hidden', [[50, 50.3, 44, 49], [49, 53, 48.6, 52.6]], [0, 1, 1, 1, 0]],
-  ['green, then a larger red, first colour held, stretch 2', [[42, 68, 30, 56], [62, 80, 18, 36]], [1, 1, 1, 1, 1], [{ color: true, bar: 0, dir: 1 }], 2],
+  ['green, then a larger red, first colour held, stretch 2', [[42, 68, 30, 56], [56, 80, 18, 36]], [1, 1, 1, 1, 1], [{ color: true, bar: 0, dir: 1 }], 2],
 ];
 let id = 0, bad = 0;
 for (const [label, bars, tfs = [1, 1, 1, 1, 1], holds = [], stretch = 0] of cases) {

@@ -3,6 +3,11 @@
    It reads the BTCUSDT klines, served by Composer's server from the Vaquum HuggingFace files, as exact integer cents and compares prices exactly as the engine's encoder
    does: low <= body bottom <= body top <= high, ties only on exact equality, direction from open and close.
 
+   A drawn shape is a chain: every bar after the first opens where the previous bar closed. So a window of the record
+   is read the same way when it is compared with a drawing. Its first bar is read as recorded. Every later bar opens
+   at the close of the recorded bar just before it, and its low and high widen to include that open; its direction
+   follows from that open. The record itself is never changed, and named patterns still read recorded opens.
+
    One query mixes the three ways of matching however the composer sets them:
      held relations (pins and the skeleton) must hold exactly on a window;
      stretch lets the drawn bars pick themselves out of a longer run of BTCUSDT bars, in order: the first
@@ -28,6 +33,19 @@ const WORK_SLICE_MS = 16;
 let BARS = null, latest = 0, pending = null;
 // what Composer reads about each bar beside its shape, once the activity has arrived (per timeframe, aligned with BARS)
 let READ = null, pendingActivity = null, activityVersion = 0;
+
+// Each bar as a later bar of a window: JO is its open at the close of the recorded bar just before it, JH and JL its
+// high and low widened to include that open. After a gap there is no such bar, and no window puts a later bar there:
+// that bar keeps its own open. The recorded O, H, L and C are left as they are.
+function links(T) {
+  const n = T.n, A = T.O instanceof Int32Array ? Int32Array : Float64Array, JO = new A(n), JH = new A(n), JL = new A(n);
+  for (let i = 0; i < n; i++) {
+    const jo = T.run[i] >= 2 ? T.C[i - 1] : T.O[i];
+    JO[i] = jo; JH[i] = T.H[i] > jo ? T.H[i] : jo; JL[i] = T.L[i] < jo ? T.L[i] : jo;
+  }
+  T.JO = JO; T.JH = JH; T.JL = JL;
+  return T;
+}
 
 function decode(buffer) {
   const buf = new Uint8Array(buffer);
@@ -65,7 +83,7 @@ function decode(buffer) {
       if (count < 14) { seed += tr; count++; if (count === 14) { state = seed / 14; atr[i] = state; } }
       else { state = tr / 14 + (1 - 1 / 14) * state; atr[i] = state; }
     }
-    out.push({ name, sec, n, ts, O, H, L, C, run, atr });
+    out.push(links({ name, sec, n, ts, O, H, L, C, run, atr }));
   }
   return out;
 }
@@ -99,14 +117,17 @@ function decodeActivity(buffer) {
 // trade) against the median of the eleven bars before it, the maker share of its volume, its range and body (open to close,
 // either way: the colour already says which) in the ATR at the bar before it, and where it closed in the prior UTC day's range. The first three compare as ratios,
 // so their means and spreads are taken over logs. Each timeframe also keeps every reading's count, sum and sum of
-// squares over its whole history, for the comparison.
+// squares over its whole history, for the comparison. The body is the one reading that belongs to the shape: for a later
+// bar of a window it is measured from the previous close, as that bar is read, and kept beside the recorded one.
 const READINGS = ['vol', 'trades', 'size', 'maker', 'range', 'body', 'day'];
+const BODY = READINGS.indexOf('body');
 const AS_LOG = [true, true, true, false, false, false, false];
 function* readingsWork(T, A) {
   const n = T.n, R = {};
+  if (!T.JO) links(T);
   if (A.n !== n) throw new Error(`The ${T.name} activity does not cover its bars.`);
   for (const key of READINGS) R[key] = new Float32Array(n).fill(NaN);
-  const size = new Float64Array(n);
+  const size = new Float64Array(n), laterBody = new Float32Array(n).fill(NaN);
   for (let i = 0; i < n; i++) { size[i] = A.quote[i] / A.trades[i]; if ((i & 1023) === 1023) yield; }
   const w = new Float64Array(11);
   const median = (a, i) => { for (let j = 0; j < 11; j++) w[j] = a[i - 11 + j]; w.sort(); return w[5]; };
@@ -114,7 +135,7 @@ function* readingsWork(T, A) {
     R.maker[i] = A.maker[i];
     if (T.run[i] >= 12) { R.vol[i] = A.vol[i] / median(A.vol, i); R.trades[i] = A.trades[i] / median(A.trades, i); R.size[i] = size[i] / median(size, i); }
     const a = i ? T.atr[i - 1] : NaN;
-    if (T.run[i] >= 2 && a > 0) { R.range[i] = (T.H[i] - T.L[i]) / a; R.body[i] = Math.abs(T.C[i] - T.O[i]) / a; }
+    if (T.run[i] >= 2 && a > 0) { R.range[i] = (T.H[i] - T.L[i]) / a; R.body[i] = Math.abs(T.C[i] - T.O[i]) / a; laterBody[i] = Math.abs(T.C[i] - T.JO[i]) / a; }
     if ((i & 1023) === 1023) yield;
   }
   const days = new Map();
@@ -142,6 +163,14 @@ function* readingsWork(T, A) {
       if ((i & 1023) === 1023) yield;
     }
     R.base.push([c, sum, sq]);
+  }
+  {
+    let c = 0, sum = 0, sq = 0;
+    for (let i = 0; i < n; i++) {
+      const x = laterBody[i]; if (x === x) { c++; sum += x; sq += x * x; }
+      if ((i & 1023) === 1023) yield;
+    }
+    R.laterBody = laterBody; R.laterBodyBase = [c, sum, sq];
   }
   return R;
 }
@@ -349,6 +378,7 @@ function tick() {
 
 async function search(q, id, report) {
   const read = READ, tables = BARS;
+  for (const T of tables) if (!T.JO) links(T);   // bars handed over without going through decode
   const t0 = Date.now(), cq = compile(q), n = cq.n, held = q.holds.length > 0, stretch = held ? q.stretch : 0;
   const MO = new Float64Array(n), MH = new Float64Array(n), ML = new Float64Array(n), MC = new Float64Array(n), W = new Float64Array(4 * n);
   const picks = new Int32Array(n), exact = TF_NAMES.map(() => 0), counts = TF_NAMES.map(() => 0);
@@ -357,6 +387,13 @@ async function search(q, id, report) {
   const base = { n: 0, up: 0, down: 0, flat: 0, pass: 0 }, split = { n: 0, up: 0, down: 0, flat: 0, none: 0 };
   const best = new Best(Math.max(400, q.x * 40));
   const total = tables.reduce((a, T) => a + T.n, 0);
+  // Drawn bar g takes bar j of table R, read as the drawing is: the first bar as recorded, every later bar as a link
+  // of the chain, opening at the close of the recorded bar just before it with its low and high widened to include
+  // that open. With stretch that bar may be a skipped one: it is where the market stood when bar j opened.
+  const take = (R, g, j) => {
+    if (g) { MO[g] = R.JO[j]; MH[g] = R.JH[j]; ML[g] = R.JL[j]; } else { MO[0] = R.O[j]; MH[0] = R.H[j]; ML[0] = R.L[j]; }
+    MC[g] = R.C[j];
+  };
   let done = 0, sinceTick = 0, deadline = performance.now() + WORK_SLICE_MS;
 
   // The panes: the set of windows that match (exact twins with nothing held, the windows that hold otherwise, on the
@@ -380,7 +417,7 @@ async function search(q, id, report) {
         for (let r = 0; r < NR; r++) {
           // where a window closed in the prior day's range is read on its last bar only
           if (r === NR - 1 && g !== n - 1) continue;
-          const x = R.features[r][j];
+          const x = g && r === BODY ? R.laterBody[j] : R.features[r][j];
           if (x !== x) continue;
           const a = (g * NR + r) * 3;
           acc[a]++; acc[a + 1] += x; acc[a + 2] += x * x;
@@ -390,7 +427,8 @@ async function search(q, id, report) {
     if (!o.why) { setTf[k][0]++; if (o.dir > 0) setTf[k][1]++; }
     if (e + AFTER >= T.n || T.run[e + AFTER] < AFTER + 1) return;
     let lo = Infinity, hi = -Infinity;
-    for (let g = 0; g < n; g++) { const j = s + (ps ? ps[g] : g); if (T.L[j] < lo) lo = T.L[j]; if (T.H[j] > hi) hi = T.H[j]; }
+    // the shape's low and high, as its bars are read
+    for (let g = 0; g < n; g++) { const j = s + (ps ? ps[g] : g), l = g ? T.JL[j] : T.L[j], h = g ? T.JH[j] : T.H[j]; if (l < lo) lo = l; if (h > hi) hi = h; }
     if (!(hi > lo)) return;
     const m = ++cont[0];
     let up = false, down = false, sequenceCode = 0;
@@ -431,7 +469,7 @@ async function search(q, id, report) {
   const fits = (g, pos, skip) => {
     const last = pos + skip;
     if (last >= T.n || T.run[last] < last - s + 1) return -1;
-    MO[g] = T.O[last]; MH[g] = T.H[last]; ML[g] = T.L[last]; MC[g] = T.C[last]; picks[g] = last - s;
+    take(T, g, last); picks[g] = last - s;
     for (const h of cq.byBar[g]) if (!holdOk(h, MO, MH, ML, MC)) return 0;
     for (const h of endHolds[g]) if (!holdOk(h, MO, MH, ML, MC)) return 0;
     return 1;
@@ -449,15 +487,16 @@ async function search(q, id, report) {
     const columns = Array.from({ length: n }, () => Array(stretch + 1));
     for (let g = n - 1; g >= 0; g--) {
       const local = cq.byBar[g].filter(h => h.color || h.a[0] === h.b[0]);
-      const own = new Uint8Array(T.n);
+      // drawn bar g is the window's first bar only when g is 0: every other position reads the bar as a chain link
+      const own = new Uint8Array(T.n), TO = g ? T.JO : T.O, TH = g ? T.JH : T.H, TL = g ? T.JL : T.L;
       for (let i = 0; i < T.n; i++) {
         if ((i & 1023) === 0 && performance.now() >= deadline) {
           await tick(); if (id !== latest) return null; deadline = performance.now() + WORK_SLICE_MS; report(done / total);
         }
-        const o = T.O[i], c = T.C[i];
+        const o = TO[i], c = T.C[i];
         own[i] = cq.oriented ? Math.abs((c > o ? 1 : c < o ? -1 : 0) - cq.D[g]) : 0;
         if (local.length) {
-          MO[g] = o; MH[g] = T.H[i]; ML[g] = T.L[i]; MC[g] = c;
+          MO[g] = o; MH[g] = TH[i]; ML[g] = TL[i]; MC[g] = c;
           for(const h of local)if(!holdOk(h,MO,MH,ML,MC)){own[i]=255;break;}
         }
       }
@@ -487,13 +526,13 @@ async function search(q, id, report) {
   const colours = new Float64Array(n), differences = new Float64Array(n);
   let depth = 0, nodes = 0;
   function beginPlacement(extra,prepare=true) {
-    const end=s+n-1+extra;MO[n-1]=T.O[end];MH[n-1]=T.H[end];ML[n-1]=T.L[end];MC[n-1]=T.C[end];
+    const end=s+n-1+extra;take(T,n-1,end);
     if(endLimits&&prepare){
       endLimits.fill(extra);
       for(const {g,holds}of endGroups){
         let last=-1;
         for(let skip=0;skip<=(g?extra:0);skip++){
-          const at=s+g+skip;MO[g]=T.O[at];MH[g]=T.H[at];ML[g]=T.L[at];MC[g]=T.C[at];
+          const at=s+g+skip;take(T,g,at);
           let valid=true;for(const h of holds)if(!holdOk(h,MO,MH,ML,MC)){valid=false;break;}
           if(valid)last=skip;
         }
@@ -557,7 +596,7 @@ async function search(q, id, report) {
       }
       done++;
       if (T.run[s + n - 1] < n) continue;
-      for (let i = 0; i < n; i++) { MO[i] = T.O[s + i]; MH[i] = T.H[s + i]; ML[i] = T.L[s + i]; MC[i] = T.C[s + i]; }
+      for (let i = 0; i < n; i++) take(T, i, s + i);
       // the whole history's own rate, for comparison: every window of this length on the timeframes shown
       outcomeInto(T, s + n - 1, o0);
       const pass0 = passes(o0, f);
@@ -610,7 +649,7 @@ async function search(q, id, report) {
       if (batchPrefix && prefixWeight) {
         const R = read[k];
         for (let g = 0; g < n - 1; g++) for (let r = 0; r < NR - 1; r++) {
-          const x = R.features[r][s + g]; if (x !== x) continue;
+          const x = g && r === BODY ? R.laterBody[s + g] : R.features[r][s + g]; if (x !== x) continue;
           const a = (g * NR + r) * 3;
           acc[a] += prefixWeight; acc[a + 1] += x * prefixWeight; acc[a + 2] += x * x * prefixWeight;
         }
@@ -632,7 +671,7 @@ async function search(q, id, report) {
         if ((++sinceTick & 255) === 0 && performance.now() >= deadline) { await tick(); if (id !== latest) return null; deadline = performance.now() + WORK_SLICE_MS; }
         if (T.run[s + n - 1] < n) continue;
         if (f && !passes(outcomeInto(T, s + n - 1, o0), f)) continue;
-        for (let i = 0; i < n; i++) { MO[i] = T.O[s + i]; MH[i] = T.H[s + i]; ML[i] = T.L[s + i]; MC[i] = T.C[s + i]; }
+        for (let i = 0; i < n; i++) take(T, i, s + i);
         const sc = closeness(cq, MO, MH, ML, MC, W, near.bound());
         if (sc >= 0) near.push(sc, { k, s, picks: null, extra: 0, span: n, end: T.ts[s + n - 1] });
       }
@@ -653,7 +692,7 @@ async function search(q, id, report) {
       if (r === NR - 1 && g !== n - 1) continue;
       const a = (g * NR + r) * 3, set = tMean(acc[a], acc[a + 1], acc[a + 2]);
       let c = 0, sum = 0, sq = 0;
-      for (let k = 0; k < BARS.length; k++) if (q.tfs[k]) { const b = read[k].base[r]; c += b[0]; sum += b[1]; sq += b[2]; }
+      for (let k = 0; k < BARS.length; k++) if (q.tfs[k]) { const b = g && r === BODY ? read[k].laterBodyBase : read[k].base[r]; c += b[0]; sum += b[1]; sq += b[2]; }
       const all = tMean(c, sum, sq);
       if (set && all) panes.rows.push({ bar: g, key: READINGS[r], log: AS_LOG[r], set, all, d: all[4] > 0 ? (set[0] - all[0]) / all[4] : 0 });
     }
@@ -679,7 +718,7 @@ async function search(q, id, report) {
   }
   panes.near = [...near].sort((a, b) => b[1].n - a[1].n).slice(0, 6).map(([at, v]) => {
     const p = Math.floor(at / 3), R = tables[v.k], bars = [];
-    for (let g = 0; g < n; g++) { const j = v.s + g; bars.push([R.O[j] / 100, R.H[j] / 100, R.L[j] / 100, R.C[j] / 100]); }
+    for (let g = 0; g < n; g++) { take(R, g, v.s + g); bars.push([MO[g] / 100, MH[g] / 100, ML[g] / 100, MC[g] / 100]); }
     return { a: cq.A[p], b: cq.B[p], was: cq.R[p], rel: at % 3 - 1, n: v.n, up: wilson(v.up, v.out), bars };
   });
 
@@ -694,10 +733,10 @@ async function search(q, id, report) {
   const results = chosen.map(r => {
     const R = tables[r.k], raw = [], drawn = [], ps = r.picks || Array.from({ length: n }, (_, i) => i);
     for (let i = 0; i < r.span; i++) { const j = r.s + i; raw.push([R.O[j] / 100, R.H[j] / 100, R.L[j] / 100, R.C[j] / 100]); }
+    // raw is the record, bar for bar. drawn is the shape: the picked bars as they were compared with the drawing.
     for (let g = 0; g < n; g++) {
-      const j = r.s + ps[g];
-      MO[g] = R.O[j]; MH[g] = R.H[j]; ML[g] = R.L[j]; MC[g] = R.C[j];
-      drawn.push(raw[ps[g]]);
+      take(R, g, r.s + ps[g]);
+      drawn.push([MO[g] / 100, MH[g] / 100, ML[g] / 100, MC[g] / 100]);
     }
     const broken = mode === 'fallback' ? q.holds.map((h, i) => (holdOk(h, MO, MH, ML, MC) ? -1 : i)).filter(i => i >= 0) : [];
     const flipped = flips(cq, MO, MH, ML, MC, W, Infinity) / 2, off = shapeOf(cq, W);
