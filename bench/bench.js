@@ -14,7 +14,8 @@ const saved = (() => { try { return JSON.parse(localStorage.getItem('composer.be
 const ui = { left: saved.left ?? false, right: saved.right ?? window.innerWidth >= 1100, drawer: saved.drawer ?? null };
 const state = { rows: saved.rows ?? 'timeframes', track: saved.track ?? 'range', lane: 'draw', col: null, page: 0,
   sort: { key: 'rank', dir: 1 }, winPage: 0, catalog: '', frame: saved.frame ?? 2, message: '',
-  hold: false, pend: null, hot: null };   // hold mode: picking points on the drawing; the first point picked; the point under the pointer or the keys
+  hold: false, pend: null, hot: null,     // hold mode: picking points on the drawing; the first point picked; the point under the pointer or the keys
+  seek: null };                           // a window picked in the drawer: the canvas turns to the page that holds it
 const persist = () => { try { localStorage.setItem('composer.bench', JSON.stringify({ ...ui, rows: state.rows, track: state.track, frame: state.frame })); } catch { /* storage is optional */ } };
 const model = createModel(); const M = model.state;
 
@@ -38,7 +39,10 @@ const remember = (key, r) => { if (answers.size > 60) answers.delete(answers.key
 const keyOf = (q) => JSON.stringify([engine.state.readings === 'ready', q]);
 let hero = null; let heroKey = ''; let wantKey = ''; let gen = 0; let progress = 0; let pendingRender = 0;
 const fresh = () => !!hero && heroKey === wantKey;
+let wasReady = false;
 const engine = createEngine({ onState: (st) => {
+  // the matcher counts the catalogue: a Patterns panel opened before the history was ready starts counting now
+  if (st.ready && !wasReady) { wasReady = true; if (ui.left) countCatalogue(); }
   // the readings arrive after the bars: every answer so far lacks them, so the drawing is asked again
   if (st.readings === 'ready' && !wantKey.startsWith('[true')) { ask(); return; }
   renderBars(); statusLine();
@@ -146,8 +150,17 @@ function buildLanes() {
 // a ledger line that no window keeps has no cohort: the matcher's nearest windows are not shown as if they held
 const contOf = (lane) => (lane.kind === 'hold' && lane.res?.mode !== 'held' ? null : lane.res?.panes?.cont || null);
 
+// Hold mode's picked point and the point under the pointer live on the drawing. When their bar is removed, or the
+// hold a knot stood for is released, they go too: nothing may be read from a bar that is no longer there.
+function tidyPicks() {
+  const n = M.bars.length; const gone = (q) => !!q && ((q.bar !== undefined && q.bar >= n) || (q.kind === 'knot' && !M.pins[q.pin]));
+  if (gone(state.pend)) state.pend = null;
+  if (gone(state.hot)) state.hot = null;
+}
+
 let ctx = null;
 function render() {
+  tidyPicks();
   document.body.classList.toggle('holding', state.hold);
   $('#left').hidden = !ui.left; $('#right').hidden = !ui.right; $('#drawer').hidden = !ui.drawer;
   const lanes = buildLanes();
@@ -158,29 +171,10 @@ function render() {
 
 // ---------------------------------------------------------------- address
 
-const encode = () => `s=${M.bars.map((b) => [...b.v.map((v) => +v.toFixed(2)), b.d].join(',')).join(';')}&o=${+M.oriented}&tf=${M.tfOn.map(Number).join('')}&x=${M.x}&n=${M.next.dir ? [M.next.dir, M.next.measure, M.next.measure === 'bps' ? M.next.bps : M.next.atr].join(',') : 0}`
-  + (M.pins.length ? `&p=${M.pins.map((q) => (q.color ? 'c' + q.bar : `${q.a.bar}${q.a.part}.${q.b.bar}${q.b.part}`)).join(',')}` : '') + (M.skel ? `&k=${M.skel}` : '') + (M.stretch ? `&st=${M.stretch}` : '');
-function decodeAddress() {
-  try {
-    const p = new URLSearchParams(location.hash.slice(1)); const sh = p.get('s'); if (!sh) return;
-    const bars = sh.split(';').map((t) => { const a = t.split(','); const v = a.slice(0, 4).map(Number); if (v.some((x) => !Number.isFinite(x)) || !['u', 'd'].includes(a[4])) throw new Error('bar'); return { v, d: a[4] }; });
-    if (bars.length < MIN_BARS || bars.length > MAX_BARS) return;
-    model.setBars(bars, false); M.sel = bars.length - 1;
-    if (p.get('o') === '0') M.oriented = false;
-    const tf = p.get('tf'); if (/^[01]{5}$/.test(tf || '') && tf.includes('1')) M.tfOn = [...tf].map((c) => c === '1');
-    if ([12, 24, 48].includes(+p.get('x'))) M.x = +p.get('x');
-    const nx = (p.get('n') || '0').split(',');
-    if (nx.length === 3 && [1, -1].includes(+nx[0]) && ['any', 'bps', 'atr'].includes(nx[1])) { M.next.dir = +nx[0]; M.next.measure = nx[1]; if (nx[1] === 'bps') M.next.bps = +nx[2] || 10; if (nx[1] === 'atr') M.next.atr = +nx[2] || 1; }
-    // what is held: pins as "0L.1T" (two endpoints) or "c1" (a bar's colour), the skeleton level, the stretch
-    const n = M.bars.length; const pins = [];
-    for (const tok of (p.get('p') || '').split(',')) {
-      const c = /^c(\d+)$/.exec(tok); const r = /^(\d+)([LBTH])\.(\d+)([LBTH])$/.exec(tok);
-      if (c && +c[1] < n) pins.push({ bar: +c[1], color: true });
-      else if (r && +r[1] < n && +r[3] < n && !(r[1] === r[3] && r[2] === r[4])) pins.push({ a: { bar: +r[1], part: r[2] }, b: { bar: +r[3], part: r[4] } });
-    }
-    M.pins = pins; M.skel = Math.max(0, Math.min(model.skelTop(), +p.get('k') || 0)); M.stretch = Math.max(0, Math.min(MAX_STRETCH, +p.get('st') || 0));
-  } catch { /* an unreadable address starts from the opening drawing */ }
-}
+// The model writes and reads the address: prices go out at full precision, so a link reopens the same shape.
+const encode = () => model.address();
+/** Leave what was picked or pointed at behind, and show the drawing as it now stands. */
+function showDrawing() { state.lane = 'draw'; state.col = null; state.page = 0; state.seek = null; state.pend = null; state.hot = null; state.message = ''; }
 
 // ---------------------------------------------------------------- bars
 
@@ -438,7 +432,10 @@ function renderCanvas() {
   const tallH = Math.round(Math.max(128, Math.min(232, avail * 0.27)));
   if (state.rows === 'windows' && rest.length) {
     // a page holds what fits when one of its rows is open
-    const per = Math.max(2, 1 + Math.floor((avail - heroFor(true) - tallH) / (MIN + 8))); const pages = Math.max(1, Math.ceil(rest.length / per)); state.page = Math.min(state.page, pages - 1);
+    const per = Math.max(2, 1 + Math.floor((avail - heroFor(true) - tallH) / (MIN + 8))); const pages = Math.max(1, Math.ceil(rest.length / per));
+    // a window picked in the drawer may be on another page of the canvas: the page turns to the one that holds it
+    if (state.seek) { const at = rest.findIndex((l) => l.id === state.seek); if (at >= 0) state.page = Math.floor(at / per); state.seek = null; }
+    state.page = Math.min(state.page, pages - 1);
     const total = rest.length; const from = state.page * per; rest = rest.slice(from, from + per);
     mount($('#pager'), h('span', { class: 'fig' }, `Windows ${from + 1}–${from + rest.length} of ${total}`),
       h('button', { class: 'quiet', type: 'button', title: 'Previous windows', 'aria-label': 'Previous windows', disabled: state.page === 0, onclick: () => { state.page--; render(); } }, '←'),
@@ -499,7 +496,8 @@ function hover(n, e) {
     const [o, hi, lo, c] = scaled(lane.rows)[col.bar]; title = `${lane.title} · bar ${col.bar + 1}`;
     const raw = lane.rows[col.bar]; const f = (v) => (lane.kind === 'window' || lane.kind === 'variant' ? v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : pct(v, 0));
     const [a, b, c2, d] = lane.kind === 'window' || lane.kind === 'variant' ? raw : [o, hi, lo, c];
-    lines = [`O ${f(a)}  H ${f(b)}`, `L ${f(c2)}  C ${f(d)}`, lane.kind === 'draw' || lane.kind === 'tf' ? 'of the shape’s height' : lane.kind === 'variant' ? 'USDT, one recorded example' : 'USDT',
+    // only a window and a variant's example are recorded prices; every other row is the drawing, in its own height
+    lines = [`O ${f(a)}  H ${f(b)}`, `L ${f(c2)}  C ${f(d)}`, lane.kind === 'window' ? 'USDT' : lane.kind === 'variant' ? 'USDT, one recorded example' : 'of the shape’s height',
       ...(p?.rows.filter((w) => w.bar === col.bar && ['range', 'vol', 'maker'].includes(w.key)).map((w) => `${READ[w.key].toLowerCase()} ${readText(w, w.set[0])} · all ${readText(w, w.all[0])}`) || [])];
   } else {
     const j = col.after; title = `${lane.title} · +${j}`;
@@ -760,12 +758,13 @@ function windowsTable(host) {
   const th = (key, text, cls = '') => h('th', { class: cls, 'aria-sort': sort.key === key ? (sort.dir > 0 ? 'ascending' : 'descending') : 'none' },
     h('button', { type: 'button', class: 'sort', title: 'Sort by this column', onclick: () => { state.sort = { key, dir: sort.key === key ? -sort.dir : ['bps', 'atr'].includes(key) ? -1 : 1 }; state.winPage = 0; renderDrawer(); } }, text, h('i', null, sort.key === key ? (sort.dir > 0 ? '▲' : '▼') : '')));
   const mini = (v, s0) => { const d = Math.max(-1, Math.min(1, v / s0)) * 50; return h('span', { class: 'mini' }, h('i', { class: d < 0 ? 'below' : '', style: d >= 0 ? `left:50%;width:${d}%` : `left:${50 + d}%;width:${-d}%` })); };
-  const pick = (x) => { state.rows = 'windows'; state.lane = `win${x.w.tf}.${x.w.start}`; state.col = null; if (!ui.right) ui.right = true; persist(); render(); };
+  // the table is redrawn by the pick, so the row that was focused is gone: focus goes to the row that replaced it
+  const pick = (x) => { state.rows = 'windows'; state.lane = state.seek = `win${x.w.tf}.${x.w.start}`; state.col = null; if (!ui.right) ui.right = true; persist(); render(); $('#drawer tr[aria-selected="true"]')?.focus({ preventScroll: true }); };
   const fell = hero.mode === 'fallback';
   mount(host, h('table', { class: 'ruled' },
     h('thead', null, h('tr', null, th('rank', 'Closest'), th('tf', 'Timeframe'), th('t', 'Close, UTC'), th('off', 'Off the shape', 'num'), th('flips', 'Flips', 'num'), fell ? h('th', null, 'Breaks') : null, th('bps', 'Next bar, bps', 'num'), th('atr', 'Next bar, ATR', 'num'))),
     h('tbody', null, sorted.slice(state.winPage * size, (state.winPage + 1) * size).map((x) => { const nx = x.w.next;
-      return h('tr', { tabindex: '0', 'aria-selected': String(state.lane === `win${x.w.tf}.${x.w.start}`), onclick: () => pick(x), onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(x); } } },
+      return h('tr', { tabindex: '0', 'aria-selected': String(state.lane === `win${x.w.tf}.${x.w.start}`), onclick: () => pick(x), onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); pick(x); } } },
         h('td', { class: 'fig muted' }, String(x.rank + 1)), h('td', { class: 'fig' }, x.w.tf), h('td', { class: 'fig' }, when(x.w.end)), h('td', { class: 'fig num' }, pct(x.w.off, 1)), h('td', { class: 'fig num' }, x.w.flips ? String(x.w.flips) : 'exact'),
         fell ? h('td', { class: 'breaks', title: brokenOf(x.w).join(' · ') }, brokenOf(x.w).join(' · ') || '—') : null,
         nx ? h('td', { class: 'num' }, mini(nx.bps, sb), h('span', { class: 'fig' + (nx.bps < 0 ? ' neg' : '') }, `${nx.bps > 0 ? '+' : nx.bps < 0 ? '−' : ''}${Math.abs(nx.bps).toFixed(1)}`)) : h('td', { class: 'fig num muted' }, x.w.nextWhy || '—'),
@@ -813,13 +812,16 @@ function togglePanel(p, force) {
 }
 for (const b of document.querySelectorAll('.toggles button')) b.addEventListener('click', () => togglePanel(b.dataset.panel));
 document.addEventListener('keydown', (e) => {
-  if (/INPUT|TEXTAREA/.test(document.activeElement.tagName) || !ctx) return;
+  // Where a key was pressed is the event's own target. The focus cannot say: a control that acted on the key may have
+  // been redrawn by now, leaving the focus on the page. And a key a control has already taken is not a shortcut too.
+  const at = e.target instanceof Element ? e.target : document.body;
+  if (e.defaultPrevented || /INPUT|TEXTAREA|SELECT/.test(at.tagName) || !ctx) return;
   const mod = e.metaKey || e.ctrlKey; const k = e.key.toLowerCase();
   if (mod && (k === 'z' || k === 'y')) { e.preventDefault(); if ((k === 'y' || e.shiftKey ? model.redo() : model.undo())) { state.message = ''; ask(); } return; }
   if (mod || e.altKey) return;
   if (e.key === 'Escape') { if (menuOpen()) closeMenu(); else if (state.pend) { state.pend = null; render(); } else if (state.hold) toggleHold(false); else if (state.col) { state.col = null; render(); } return; }
-  if (k === 'h' && !document.activeElement.closest('.pop')) { e.preventDefault(); closeMenu(); toggleHold(); return; }
-  if (state.hold && !document.activeElement.closest('.pop, table, button, a') && holdKey(e)) return;
+  if (k === 'h' && !at.closest('.pop')) { e.preventDefault(); closeMenu(); toggleHold(); return; }
+  if (state.hold && !at.closest('.pop, table, button, a, [role="button"]') && holdKey(e)) return;
   const map = { p: 'left', i: 'right', w: 'windows', g: 'g1', l: 'limen' };
   if (map[k]) { e.preventDefault(); togglePanel(map[k]); return; }
   if (e.key === ',' || e.key === '.' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
@@ -827,9 +829,9 @@ document.addEventListener('keydown', (e) => {
   }
   if (e.key === '+' || e.key === '=') { e.preventDefault(); if (model.add()) ask(); return; }
   if (e.key === '-' || e.key === '_') { e.preventDefault(); if (model.remove()) ask(); return; }
-  if (e.key === ' ' && !document.activeElement.closest('button, a, [role="button"], tr')) { e.preventDefault(); model.flip(); ask(); return; }
+  if (e.key === ' ' && !at.closest('button, a, [role="button"], tr')) { e.preventDefault(); model.flip(); ask(); return; }
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-    if (document.activeElement.closest('.pop, table')) return;
+    if (at.closest('.pop, table')) return;
     e.preventDefault();
     if (e.shiftKey) { const [lo, hi] = extent(ohlc(M.bars)); model.nudge(M.sel, (e.key === 'ArrowUp' ? 1 : -1) * (hi - lo) * 0.03); state.lane = 'draw'; ask(); return; }
     const at = ctx.all.findIndex((l) => l.id === state.lane); const next = ctx.all[at + (e.key === 'ArrowDown' ? 1 : -1)];
@@ -837,8 +839,16 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-decodeAddress();
+model.readAddress(location.hash);   // an unreadable address starts from the opening drawing
 ask();
+// A link opened in a tab that already shows the bench names the drawing to show. The bench writes its own address
+// with replaceState, which raises no hashchange; a fragment that names what is already shown changes nothing.
+window.addEventListener('hashchange', () => {
+  if (location.hash.slice(1) === encode()) return;
+  const was = model.snapshot();
+  if (!model.readAddress(location.hash)) { render(); return; }   // unreadable: the bench stays as it is, and says so in the address
+  model.record(was); closeMenu(); showDrawing(); ask();
+});
 $('#coltrack').addEventListener('mousemove', (e) => { const n = ctx?.read?.node; if (n) hover(n, e); });
 $('#coltrack').addEventListener('mouseleave', unhover);
 let timer; window.addEventListener('resize', () => { clearTimeout(timer); timer = setTimeout(render, 120); });
