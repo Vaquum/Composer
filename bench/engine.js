@@ -21,7 +21,9 @@ export function createEngine({ onState }) {
     worker.postMessage({ type: 'query', id: flight.id, q: flight.q });
   };
   function start() {
-    try { worker = new Worker('/matcher.js'); } catch (err) { state.failed = 'This browser cannot run the matcher in the background.'; tell(); return; }
+    // The bench is still being set up while this runs, and what it does on a change of state reads the engine it
+    // has not been handed yet. So a failure here is told once the caller has it; every other change arrives later.
+    try { worker = new Worker('/matcher.js'); } catch (err) { state.failed = 'This browser cannot run the matcher in the background.'; queueMicrotask(tell); return; }
     worker.onerror = (e) => { state.failed = `The matcher stopped: ${e.message || 'unknown error'}.`; tell(); };
     worker.onmessage = (e) => {
       const m = e.data;

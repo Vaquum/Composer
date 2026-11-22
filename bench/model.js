@@ -149,9 +149,14 @@ export function createModel() {
     skel: 0,      // 0 off, then 1 (the extremes) up to every swing
     stretch: 0,   // recorded bars the drawn bars may skip between the first and the last; counts only while something is held
   };
-  const snap = () => ({ bars: m.bars.map((b) => bar(b.v, b.d)), pins: JSON.parse(JSON.stringify(m.pins)), skel: m.skel, stretch: m.stretch });
+  // What is asked of the drawing besides the drawing itself. Changing a term is not an undo step, so an ordinary
+  // snapshot leaves the terms alone; following a link replaces them, so that snapshot takes them too (`all`).
+  const terms = () => ({ oriented: m.oriented, tfOn: m.tfOn.slice(), x: m.x, next: { ...m.next } });
+  const snap = (all = false) => ({ bars: m.bars.map((b) => bar(b.v, b.d)), pins: JSON.parse(JSON.stringify(m.pins)), skel: m.skel, stretch: m.stretch, ...(all === true ? { terms: terms() } : {}) });
   const push = (was) => { m.past.push(was || snap()); if (m.past.length > 400) m.past.shift(); m.future = []; };
-  const restore = (st) => { m.bars = st.bars.map((b) => bar(b.v, b.d)); m.pins = JSON.parse(JSON.stringify(st.pins)); m.skel = st.skel; m.stretch = st.stretch; m.sel = Math.min(m.sel, m.bars.length - 1); };
+  const restore = (st) => { m.bars = st.bars.map((b) => bar(b.v, b.d)); m.pins = JSON.parse(JSON.stringify(st.pins)); m.skel = st.skel; m.stretch = st.stretch; m.sel = Math.min(m.sel, m.bars.length - 1);
+    if (st.terms) { m.oriented = st.terms.oriented; m.tfOn = st.terms.tfOn.slice(); m.x = st.terms.x; m.next = { ...st.terms.next }; }
+  };
   // a pin lives on its bars: when a bar goes, so do the pins that named it, and the skeleton cannot be finer than the shape has swings
   const tidy = () => {
     const n = m.bars.length; m.pins = m.pins.filter((p) => (p.color ? p.bar < n : p.a.bar < n && p.b.bar < n));
@@ -175,8 +180,9 @@ export function createModel() {
     remove() { if (m.bars.length <= MIN_BARS) return false; push(); m.bars = rechain(m.bars.slice(0, -1)); m.sel = Math.min(m.sel, m.bars.length - 1); tidy(); return true; },
     flip() { push(); m.bars = chainBars(flipParams(chainParams(m.bars))).map((b) => bar(b.v, b.d)); },
     nudge(i, dv) { push(); m.bars = chainBars(moveParams(chainParams(m.bars), i, dv)).map((b) => bar(b.v, b.d)); },
-    undo() { if (!m.past.length) return false; m.future.push(snap()); restore(m.past.pop()); return true; },
-    redo() { if (!m.future.length) return false; m.past.push(snap()); restore(m.future.pop()); return true; },
+    // a step that carries the terms is undone and redone with them, so both directions restore the whole question
+    undo() { if (!m.past.length) return false; const st = m.past.pop(); m.future.push(snap(!!st.terms)); restore(st); return true; },
+    redo() { if (!m.future.length) return false; const st = m.future.pop(); m.past.push(snap(!!st.terms)); restore(st); return true; },
 
     /** Hold the relation between two drawn endpoints, whichever way they lie. False when it is already held. */
     pin(a, b) { if ((a.bar === b.bar && a.part === b.part) || m.pins.some(same(a, b))) return false; push(); m.pins.push({ a: { ...a }, b: { ...b } }); return true; },
@@ -199,6 +205,46 @@ export function createModel() {
       const nx = m.next; const next = nx.dir ? { dir: nx.dir, measure: nx.measure, value: nx.measure === 'bps' ? nx.bps : nx.measure === 'atr' ? nx.atr : 0 } : null;
       const rows = over.rows || ohlc(m.bars);
       return { bars: rows, oriented: m.oriented, holds: over.holds || api.held(rows).map((x) => x.h), stretch: m.stretch, x: m.x, tfs: (over.tfs || m.tfOn).map(Number), next };
+    },
+
+    /**
+     * The drawing and what is asked of it, as an address fragment. A price is written as the shortest text that
+     * reads back as the same number, so a link reopens the same shape: levels that differ stay apart and a tie
+     * stays a tie. Rounding here would change the g1 pattern and the relations held on it.
+     */
+    address() {
+      const num = (v) => String(v).replace('+', '');   // "1e+21" would lose its sign to the address's own decoding
+      const nx = m.next;
+      return `s=${m.bars.map((b) => [...b.v.map(num), b.d].join(',')).join(';')}&o=${+m.oriented}&tf=${m.tfOn.map(Number).join('')}&x=${m.x}&n=${nx.dir ? [nx.dir, nx.measure, nx.measure === 'bps' ? nx.bps : nx.atr].join(',') : 0}`
+        + (m.pins.length ? `&p=${m.pins.map((q) => (q.color ? 'c' + q.bar : `${q.a.bar}${q.a.part}.${q.b.bar}${q.b.part}`)).join(',')}` : '') + (m.skel ? `&k=${m.skel}` : '') + (m.stretch ? `&st=${m.stretch}` : '');
+    },
+    /**
+     * Take the drawing an address names, with everything asked of it; what the address leaves out goes back to how
+     * the bench opens. False, with nothing changed, when it names no readable drawing. History is left alone.
+     */
+    readAddress(text) {
+      let bars; let p;
+      try {
+        p = new URLSearchParams(String(text).replace(/^#/, '')); const sh = p.get('s'); if (!sh) return false;
+        bars = sh.split(';').map((t) => { const a = t.split(','); const v = a.slice(0, 4).map(Number); if (a.length !== 5 || v.some((x) => !Number.isFinite(x)) || !['u', 'd'].includes(a[4])) throw new Error('bar'); return bar(v, a[4]); });
+      } catch { return false; }
+      if (bars.length < MIN_BARS || bars.length > MAX_BARS) return false;
+      m.bars = rechain(bars); m.sel = m.bars.length - 1;
+      m.oriented = p.get('o') !== '0';
+      const tf = p.get('tf') || ''; m.tfOn = /^[01]{5}$/.test(tf) && tf.includes('1') ? [...tf].map((c) => c === '1') : [true, true, true, true, true];
+      m.x = [12, 24, 48].includes(+p.get('x')) ? +p.get('x') : 12;
+      m.next = { dir: 0, measure: 'any', bps: 10, atr: 1 };
+      const nx = (p.get('n') || '0').split(',');
+      if (nx.length === 3 && [1, -1].includes(+nx[0]) && ['any', 'bps', 'atr'].includes(nx[1])) { m.next.dir = +nx[0]; m.next.measure = nx[1]; if (nx[1] === 'bps') m.next.bps = +nx[2] || 10; if (nx[1] === 'atr') m.next.atr = +nx[2] || 1; }
+      // what is held: pins as "0L.1T" (two endpoints) or "c1" (a bar's colour), the skeleton level, the stretch
+      const n = m.bars.length; const pins = [];
+      for (const tok of (p.get('p') || '').split(',')) {
+        const c = /^c(\d+)$/.exec(tok); const r = /^(\d+)([LBTH])\.(\d+)([LBTH])$/.exec(tok);
+        if (c && +c[1] < n) pins.push({ bar: +c[1], color: true });
+        else if (r && +r[1] < n && +r[3] < n && !(r[1] === r[3] && r[2] === r[4])) pins.push({ a: { bar: +r[1], part: r[2] }, b: { bar: +r[3], part: r[4] } });
+      }
+      m.pins = pins; m.skel = Math.max(0, Math.min(skelLevels(ohlc(m.bars)).length, Math.trunc(+p.get('k')) || 0)); m.stretch = Math.max(0, Math.min(MAX_STRETCH, Math.trunc(+p.get('st')) || 0));
+      return true;
     },
   };
   return api;
