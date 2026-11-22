@@ -1,7 +1,5 @@
-// The bench on the real bars, in a real browser, beside the page it stands next to.
-// It must ask the matcher exactly what the page asks and show what the matcher answers; every key must do its job and
-// throw nothing; every rows mode must draw its rows; picks must narrow as an independent count of the closing paths
-// says; an address must reopen the same question; and the defects found in review must stay fixed.
+// The bench at the root URL, in a real browser on the real bars.
+// It must ask the matcher the expected questions, show its answers, and restore shared drawings.
 import assert from 'node:assert/strict';
 import {isDeepStrictEqual} from 'node:util';
 import {spawn} from 'node:child_process';
@@ -11,7 +9,7 @@ import {chromium} from 'playwright';
 const [,barsFile,activityFile,python]=process.argv.slice(2);
 assert.ok(python,'run through checks/with_bars.py to use its Python runtime');
 const began=Date.now();
-const origin=spawn(python,['checks/bench_origin.py',barsFile,activityFile],{stdio:['ignore','pipe','pipe']});
+const origin=spawn(python,['checks/loading_origin.py',barsFile,activityFile],{stdio:['ignore','pipe','pipe']});
 let stderr='',startupTimer,browser;
 origin.stderr.on('data',bytes=>{stderr+=bytes;});
 const exited=new Promise(resolve=>{origin.once('exit',resolve);origin.once('error',resolve);});
@@ -84,11 +82,10 @@ const answerTo=async(page,q)=>{
   const ids=posted.filter(p=>isDeepStrictEqual(JSON.parse(p.q),q)).map(p=>p.id);
   return page.evaluate(ids=>{
     const r=ids.map(id=>window.__seen.results.find(r=>r.id===id)).filter(Boolean).pop();
-    return r?{mode:r.mode,exact:r.exact,exactF:r.exactF,counts:r.counts,countsF:r.countsF,holds:r.holds,kind:r.panes.kind,n:r.panes.n,tfN:r.panes.tfN,
+    return r?{mode:r.mode,exactF:r.exactF,countsF:r.countsF,
       contN:r.panes.cont?r.panes.cont.n:null,sequences:r.panes.cont?r.panes.cont.sequences:null,near:r.panes.near.map(v=>v.bars.length),windows:r.results.length}:null;
   },ids);
 };
-const figures=a=>({mode:a.mode,exact:a.exact,exactF:a.exactF,counts:a.counts,countsF:a.countsF,holds:a.holds,kind:a.kind,n:a.n,tfN:a.tfN,contN:a.contN});
 // The Inspect block of a later bar: the three shares it shows, as text.
 const barBlock=(page,j)=>page.evaluate(j=>{
   const block=[...document.querySelectorAll('#right .block')].find(b=>b.querySelector('.sec .label')?.textContent===`Bar +${j}`);
@@ -104,56 +101,45 @@ try{
   const port=await ready,base=`http://127.0.0.1:${port}`;
   browser=await chromium.launch({headless:true});
 
-  // ---- the page, asked the four questions the bench will be asked
-  const paper=await open();
-  await paper.page.goto(`${base}/`,{waitUntil:'domcontentloaded'});
-  const pin={a:{bar:0,part:'L'},b:{bar:1,part:'L'}};
-  const cases=[
-    {name:'the opening drawing',pins:[],skel:0,stretch:0,hash:''},
-    {name:'one pin',pins:[pin],skel:0,stretch:0,hash:'&p=0L.1L'},
-    {name:'a pin and a colour',pins:[pin,{bar:0,color:true}],skel:0,stretch:0,hash:'&p=0L.1L,c0'},
-    {name:'skeleton 1 with stretch 1',pins:[],skel:1,stretch:1,hash:'&k=1&st=1'},
+  // ---- 1. the bench sends the terms of each drawing and displays the result
+  const openingQuery={bars:[[42,68,30,56],[56,80,18,36]],oriented:true,holds:[],stretch:0,x:12,tfs:[1,1,1,1,1],next:null};
+  const lowPin={a:[0,2],b:[1,2],rel:1};
+  const skeleton=[
+    {a:[0,0],b:[1,1],rel:-1}, {a:[0,0],b:[1,2],rel:1}, {a:[0,0],b:[1,3],rel:1},
+    {a:[1,1],b:[1,2],rel:1}, {a:[1,1],b:[1,3],rel:1}, {a:[1,2],b:[1,3],rel:-1},
+    {a:[1,1],b:[0,1],rel:1}, {a:[1,2],b:[0,2],rel:-1},
   ];
-  for(const c of cases){
-    await paper.page.waitForFunction(()=>!!window.__page);
-    await paper.page.evaluate(c=>{const {S,refresh}=window.__page;S.pins=c.pins;S.skel=c.skel;S.stretch=c.stretch;refresh();},c);
-    await paper.page.waitForFunction(()=>{const {Match,Panes}=window.__page;return Match.fresh()&&Match.result.id===Match.id&&Panes.readings==='ready'&&!!Match.result.panes.readings;},null,{timeout:90000});
-    c.page=await paper.page.evaluate(()=>{const r=window.__page.Match.result;return {q:window.__page.Match.query().q,mode:r.mode,exact:r.exact,exactF:r.exactF,counts:r.counts,countsF:r.countsF,holds:r.holds,kind:r.panes.kind,n:r.panes.n,tfN:r.panes.tfN,contN:r.panes.cont?r.panes.cont.n:null};});
-  }
-  assert.equal(cases[0].page.mode,'nearest');assert.ok(cases.slice(1).every(c=>c.page.mode==='held'),'each held case must be answered as held by the page');
-  assert.match(await paper.page.evaluate(()=>document.querySelector('#to-bench').href),/\/bench\/$/,'the page must link to the bench');
-  calm(paper.faults,'the page');
-  await paper.context.close();
-
-  // ---- 1. parity: the same question, the same answer, and the answer on screen
+  const cases=[
+    {name:'one pin',holds:[lowPin],stretch:0,hash:'&p=0L.1L'},
+    {name:'a pin and a colour',holds:[lowPin,{color:true,bar:0,dir:1}],stretch:0,hash:'&p=0L.1L,c0'},
+    {name:'skeleton 1 with stretch 1',holds:skeleton,stretch:1,hash:'&k=1&st=1'},
+  ];
   const {page,faults}=await open();
   const press=key=>page.keyboard.press(key);
   // to later bar +j, by the keys, from wherever the column is: back to the first bar, then on
   const column=async j=>{for(let i=0;i<9;i++)await press(',');const n=(await see(page)).bars;for(let i=0;i<n-1+j;i++)await press('.');assert.equal((await see(page)).col,`+${j}`,`the keys must reach +${j}`);};
-  await page.goto(`${base}/bench/`,{waitUntil:'domcontentloaded'});await settled(page);
+  const response=await page.goto(`${base}/`,{waitUntil:'domcontentloaded'});await settled(page);
+  assert.equal(response.url(),`${base}/`,'the bench must be served directly at the root');
   let v=await see(page);
-  assert.equal(v.hash,START,'the bench must open on the page\'s opening drawing');
-  assert.equal(await page.evaluate(()=>document.querySelector('#to-page').href),`${base}/`,'the bench must link back to the page');
-  const opening=await answerTo(page,cases[0].page.q);
-  assert.ok(opening,'the bench must ask the matcher exactly what the page asks for the opening drawing');
-  assert.deepEqual(figures(opening),figures(cases[0].page),'the opening drawing: the bench and the page must be given the same answer');
+  assert.equal(v.hash,START,'the bench must open on the default drawing');
+  const opening=await answerTo(page,openingQuery);
+  assert.equal(opening?.mode,'nearest','the default drawing must ask for nearest matches');
   assert.equal(int(v.count),sum(opening.exactF),'the readout must show the exact twins the matcher counted');
   assert.deepEqual(v.lanes,['draw','tf0','tf1','tf2','tf3','tf4'],'timeframes: one row per timeframe under the drawing');
   for(let k=0;k<5;k++)assert.equal(int(v.receipts['tf'+k].split(' of ')[0]),opening.exactF[k],`timeframe ${k}: the row must show the matcher's own count for it`);
   await rows(page,'Closing paths');   // no row asks the matcher here, so each held case costs one question
-  for(const c of cases.slice(1)){
-    await go(page,START+c.hash);await settled(page);v=await see(page);
-    const held=await answerTo(page,c.page.q);
-    assert.ok(held,`${c.name}: the bench must ask the matcher exactly what the page asks`);
-    assert.deepEqual(figures(held),figures(c.page),`${c.name}: the bench and the page must be given the same answer`);
-    assert.equal(int(v.count),sum(held.countsF),`${c.name}: the readout must show the windows that keep what is held`);
-    assert.match(v.readout,/keeps? /,`${c.name}: the readout must say the count is windows that keep the holds, not twins`);
+  for(const {name,holds,stretch,hash} of cases){
+    await go(page,START+hash);await settled(page);v=await see(page);
+    const held=await answerTo(page,{...openingQuery,holds,stretch});
+    assert.equal(held?.mode,'held',`${name}: the bench must ask the matcher to keep the holds`);
+    assert.equal(int(v.count),sum(held.countsF),`${name}: the readout must show the windows that keep what is held`);
+    assert.match(v.readout,/keeps? /,`${name}: the readout must say the count is windows that keep the holds`);
     await page.click('[data-enc="Timeframes"]');
-    assert.deepEqual((await page.locator('.pop li .fig').allTextContents()).map(int),held.countsF,`${c.name}: the timeframes must show the matcher's split`);
+    assert.deepEqual((await page.locator('.pop li .fig').allTextContents()).map(int),held.countsF,`${name}: the timeframes must show the matcher's split`);
     await press('Escape');
   }
   await go(page,START);await rows(page,'Timeframes');await settled(page);
-  calm(faults,'parity');
+  calm(faults,'matching');
 
   // ---- 2. every key does its job
   const after=async(key,what,test)=>{await press(key);const now=await see(page);assert.ok(test(now),`${key}: ${what} (${JSON.stringify({lane:now.lane,bar:now.bar,col:now.col,p:now.p,gv:now.gv,bars:now.bars,holding:now.holding,status:now.status,left:now.left,right:now.right,drawer:now.drawer})})`);return now;};
@@ -337,28 +323,30 @@ try{
 
   // Patterns open when the page loads: the catalogue is counted once the history is in
   {const {page:p,faults:f,context}=await open({storage:{left:true,right:true,drawer:null,rows:'paths',track:'range',frame:2}});
-    await p.goto(`${base}/bench/`,{waitUntil:'domcontentloaded'});
+    await p.goto(`${base}/`,{waitUntil:'domcontentloaded'});
     await p.waitForFunction(()=>{const figs=[...document.querySelectorAll('#left .pat .n b')];return figs.length>=20&&figs.every(b=>b.textContent!=='');},null,{timeout:90000});
     assert.ok((await p.locator('#left .pat .n b').allTextContents()).some(t=>int(t)>0),'the catalogue must be counted on the real bars');
     calm(f,'patterns open at load');await context.close();}
   // a matcher that cannot be started says so, and the page still stands
   {const {page:p,faults:f,context}=await open({worker:blocked});
-    await p.goto(`${base}/bench/`,{waitUntil:'domcontentloaded'});
+    await p.goto(`${base}/`,{waitUntil:'domcontentloaded'});
     await p.waitForFunction(()=>document.querySelector('#status').classList.contains('err'));
     assert.match(await p.locator('#status').textContent(),/cannot run the matcher/);assert.match(await p.locator('#readout').textContent(),/cannot run the matcher/);
     calm(f,'a matcher that cannot start');await context.close();}
   // a link that names a catalogue pattern opens on it; an unknown name changes nothing
   for(const [id,said] of [['bearish-engulfing',/^Bearish engulfing: drawn from 1h/],['hammer',/^Hammer: bar 2 drawn from 1h/]]){
     const {page:p,faults:f,context}=await open({storage:{left:false,right:true,drawer:null,rows:'paths',track:'range',frame:2}});
-    await p.goto(`${base}/bench/?pattern=${id}`,{waitUntil:'domcontentloaded'});
+    const entry=id==='hammer'?'/bench/':'/';
+    await p.goto(`${base}${entry}?pattern=${id}`,{waitUntil:'domcontentloaded'});
     await p.waitForFunction(()=>location.search==='',null,{timeout:90000});await settled(p);const n=await see(p);
+    assert.equal(new URL(p.url()).pathname,'/','pattern links must open at the canonical URL');
     assert.ok(n.left,`?pattern=${id}: the Patterns panel must open`);assert.match(n.status,said,`?pattern=${id}: the pattern must be put on the canvas`);
     assert.notEqual(n.hash,START,`?pattern=${id}: the drawing must change`);
     assert.ok(await p.locator(`#left [data-pattern="${id}"]`).count(),`?pattern=${id}: the panel must list it`);
     calm(f,`?pattern=${id}`);await context.close();
   }
   {const {page:p,faults:f,context}=await open({storage:{left:false,right:true,drawer:null,rows:'paths',track:'range',frame:2}});
-    await p.goto(`${base}/bench/?pattern=no-such-candle`,{waitUntil:'domcontentloaded'});await settled(p);const n=await see(p);
+    await p.goto(`${base}/?pattern=no-such-candle`,{waitUntil:'domcontentloaded'});await settled(p);const n=await see(p);
     assert.ok(!n.left&&n.hash===START&&await p.evaluate(()=>location.search)==='?pattern=no-such-candle','an unknown pattern name must change nothing');
     calm(f,'an unknown pattern');await context.close();}
 
@@ -369,6 +357,7 @@ try{
     const link=(page,sel='#to-query')=>page.evaluate(sel=>{const a=document.querySelector(sel);if(!a)return null;const u=new URL(a.href);return {to:u.origin+u.pathname,drawing:u.searchParams.get('drawing'),g1:u.searchParams.get('g1'),held:u.searchParams.get('pin-relations'),title:a.title};},sel);
     {const {page:p,faults:f,context}=await open();
       await p.goto(`${base}/bench/#${DRAWN}`,{waitUntil:'domcontentloaded'});await settled(p);
+      assert.equal(p.url(),`${base}/#${DRAWN}`,'a shared bench address must keep its drawing when redirected');
       let l=await link(p);
       assert.equal(l.drawing,PACKET,'to the query bench: the packet, to the letter');
       assert.equal(l.g1,'g1:o:0,1,3,4,u;2,3,5,6,u','to the query bench: the g1 the packet must agree with');
@@ -386,14 +375,14 @@ try{
       calm(f,'the link to the query bench');await context.close();}
     // a drawing carried in is taken whole, says where it came from, and leaves the query string
     {const {page:p,faults:f,context}=await open();
-      await p.goto(`${base}/bench/?drawing=${encodeURIComponent(PACKET)}`,{waitUntil:'domcontentloaded'});
+      await p.goto(`${base}/?drawing=${encodeURIComponent(PACKET)}`,{waitUntil:'domcontentloaded'});
       await p.waitForFunction(()=>location.search==='',null,{timeout:90000});await settled(p);const n=await see(p);
       assert.equal(n.hash,DRAWN,'?drawing=: the bars and the pins it carries');
       assert.match(n.status,/^Drawn from Query · 2 bars · 2 pins · counted on this history$/,'?drawing=: it says where the shape came from');
       assert.equal((await link(p)).drawing,PACKET,'?drawing=: sent back, it is the same packet');
       // carried terms: skeleton, stretch, the next-bar term and the number of closest windows come with it
       const terms=JSON.stringify({...JSON.parse(PACKET),pins:[],skeleton:1,stretch:1,next:{dir:1,measure:'bps',bps:25,atr:1},limit:24});
-      await p.goto(`${base}/bench/?drawing=${encodeURIComponent(terms)}`,{waitUntil:'domcontentloaded'});
+      await p.goto(`${base}/?drawing=${encodeURIComponent(terms)}`,{waitUntil:'domcontentloaded'});
       await p.waitForFunction(()=>location.search==='',null,{timeout:90000});await settled(p);const m=await see(p);
       assert.deepEqual([m.s,m.x,m.n,m.k,m.st,m.p],['15,20,40,50,u;30,40,60,85,u','24','1,bps,25','1','1',''],'?drawing=: the terms a packet carries');
       calm(f,'a drawing carried in');await context.close();}
@@ -407,7 +396,7 @@ try{
     };
     for(const [what,text] of Object.entries(broken)){
       const {page:p,faults:f,context}=await open();
-      await p.goto(`${base}/bench/?drawing=${encodeURIComponent(text)}`,{waitUntil:'domcontentloaded'});
+      await p.goto(`${base}/?drawing=${encodeURIComponent(text)}`,{waitUntil:'domcontentloaded'});
       await p.waitForFunction(()=>location.search==='',null,{timeout:90000});await settled(p);const n=await see(p);
       assert.equal(n.hash,START,`?drawing= with ${what}: the drawing must not change`);
       assert.match(n.status,/^The drawing in the link could not be read: /,`?drawing= with ${what}: it must say so`);
@@ -433,7 +422,7 @@ try{
   }
 
   for(const f of allFaults)calm(f,'at the end');
-  console.log(`Bench: the page's answers, every key, five rows modes, picks, addresses, review's findings and the hand-off with Query passed in ${((Date.now()-began)/1000).toFixed(1)} s.`);
+  console.log(`Composer passed matching, keyboard controls, rows, picks, shared addresses and the Query handoff in ${((Date.now()-began)/1000).toFixed(1)} s.`);
 }finally{
   clearTimeout(startupTimer);
   try{await browser?.close();}

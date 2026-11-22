@@ -38,7 +38,7 @@ try{
   });
   for(const kind of ['cold','warm']){
     await page.goto(`http://127.0.0.1:${port}`,{waitUntil:'domcontentloaded'});
-    await page.waitForFunction(()=>window.__loading&&__loading.Match.fresh()&&__loading.Match.result?.panes.readings&&__loading.Panes.readings==='ready'&&!__loading.App.running&&!__loading.Flow.active(),{},{timeout:20000});
+    await page.waitForSelector('#canvas[data-readings="ready"][data-answer="current"][data-waiting="0"]',{timeout:20000});
     const result=await page.evaluate(()=>({first:__loadEvents[0]?.at,complete:__loadEvents.find(e=>e.readings)?.at,cls:__loadShifts.reduce((a,b)=>a+b.value,0),shifts:__loadShifts,resources:performance.getEntriesByType('resource').filter(e=>/\/(bars|activity)$/.test(e.name)).map(e=>({path:e.name.split('/').at(-1),start:e.startTime,end:e.responseEnd,bytes:e.transferSize,encoded:e.encodedBodySize,decoded:e.decodedBodySize}))}));
     console.log(JSON.stringify({kind,...result,responses:requests.slice(-2)}));
     if(kind==='cold'){
@@ -55,6 +55,7 @@ try{
     assert.ok(activity.start>=bars.end,'activity must not compete with the first matching payload');
   }
   assert.deepEqual(requests.slice(-2).map(r=>r.status),[304,304],'warm reload must revalidate both large payloads without downloading them');
+  const matchCount=await page.locator('#readout > b').textContent();
   const cancelled=await page.evaluate(async()=>{
     let c=42;const bars=Array.from({length:20},(_,i)=>{const o=c;c+=i%3===1?-18:14;return[o,Math.max(o,c)+12,Math.min(o,c)-12,c];});
     __loadWorker.postMessage({type:'query',id:999,q:{bars,holds:[{color:true,bar:0,dir:1}],stretch:4,tfs:[1,1,1,1,1],oriented:true,x:48}});
@@ -68,9 +69,9 @@ try{
   assert.ok(!replacement.obsolete&&replacement.ms<250,'a real worker must replace an expensive query promptly');
   await cdp.send('Network.setBlockedURLs',{urls:['*fonts.googleapis.com*','*fonts.gstatic.com*','*/activity']});
   await page.reload({waitUntil:'domcontentloaded'});
-  await page.waitForFunction(()=>window.__loading&&__loading.Match.fresh()&&__loading.Panes.readings==='failed'&&!__loading.Match.presentation&&!__loading.App.running&&!__loading.Flow.active());
-  assert.equal(await page.locator('.lpane').getAttribute('data-loading'),'false','failed activity must release the loading presentation');
-  assert.ok(await page.locator('.lpane [data-detail="left-method"]').isVisible(),'activity failure must retain the available statistics and method');
+  await page.waitForSelector('#canvas[data-readings="failed"][data-answer="current"][data-waiting="0"]');
+  assert.match(await page.locator('#status').textContent(),/readings unavailable/,'the status must report failed activity');
+  assert.equal(await page.locator('#readout > b').textContent(),matchCount,'activity failure must retain the match count');
   console.log('Real loading: prioritized first matches, cached reload, complete readings and stable controls passed.');
 }finally{
   clearTimeout(startupTimer);

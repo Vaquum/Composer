@@ -1,4 +1,4 @@
-"""Expose the production HTTP handler with real cached payloads to the loading check."""
+"""Expose the production HTTP handler with real cached payloads to the browser checks."""
 
 from __future__ import annotations
 
@@ -17,8 +17,6 @@ def main() -> None:
     state = server.Bars()
     state._replace(Path(sys.argv[1]).read_bytes(), Path(sys.argv[2]).read_bytes(), [])
     pages = {path: ((ROOT / name).read_bytes(), kind) for path, (name, kind) in server.PAGES.items()}
-    html, kind = pages['/']
-    pages['/'] = (html.replace(b'Panes.init();', b'window.__loading={Match,Panes,App,Flow};Panes.init();'), kind)
     output_lock = threading.Lock()
 
     def emit(value: dict) -> None:

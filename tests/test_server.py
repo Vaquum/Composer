@@ -62,14 +62,12 @@ class Server(unittest.TestCase):
     def test_page_matcher_and_bars(self) -> None:
         page = self.get('/')
         self.assertEqual((page.status, page.headers['Content-Type']), (200, 'text/html; charset=utf-8'))
-        self.assertIn(b'<title>', page.read())
+        self.assertIn(b'<script type="module" src="/bench/bench.js">', page.read())
         self.assertEqual(self.get('/matcher.js').headers['Content-Type'], 'text/javascript; charset=utf-8')
-        self.assertEqual(self.get('/pane-designs.js').headers['Content-Type'], 'text/javascript; charset=utf-8')
-        self.assertEqual(self.get('/panes.css').headers['Content-Type'], 'text/css; charset=utf-8')
-        self.assertEqual(self.get('/forecast.js').headers['Content-Type'], 'text/javascript; charset=utf-8')
-        self.assertEqual(self.get('/motion.js').headers['Content-Type'], 'text/javascript; charset=utf-8')
-        self.assertIn(b'TactileFlow', self.get('/motion.js').read())
-        self.assertEqual(self.get('/motion.css').headers['Content-Type'], 'text/css; charset=utf-8')
+        self.assertEqual(self.get('/bench/bench.js').headers['Content-Type'], 'text/javascript; charset=utf-8')
+        self.assertEqual(self.get('/bench/composer.css').headers['Content-Type'], 'text/css; charset=utf-8')
+        self.assertEqual(self.get('/motion.js').status, 404)
+        self.assertEqual(self.get('/panes.css').status, 404)
         got = self.get('/bars')
         self.assertEqual(got.version, 11)
         etag = got.headers['ETag']
@@ -80,6 +78,12 @@ class Server(unittest.TestCase):
         self.assertNotEqual(traded.headers['ETag'], etag)
         self.assertEqual(self.get('/activity', {'If-None-Match': traded.headers['ETag']}).status, 304)
         self.assertEqual(self.get('/nothing').status, 404)
+
+    def test_page_aliases_keep_the_query(self) -> None:
+        query = '?drawing=%7B%22bars%22%3A%5B%5D%7D&pattern=hammer'
+        for path in ('/bench', '/bench/', '/bench/index.html', '/index.html'):
+            with self.subTest(path=path), self.get(path + query) as page:
+                self.assertEqual((page.status, page.url), (200, self.base + '/' + query))
 
     def test_health_names_the_files_served(self) -> None:
         health = json.loads(self.get('/healthz').read())

@@ -1,7 +1,6 @@
 {
-  "name": "composer-motion-checks",
+  "name": "composer-checks",
   "private": true,
   "type": "module",
-  "scripts": { "test:motion": "node checks/motion-model.mjs && node checks/motion-browser.mjs", "test:performance": "node checks/motion-performance.mjs" },
   "devDependencies": { "playwright": "1.63.0" }
 }

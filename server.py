@@ -27,24 +27,15 @@ import bars
 
 ROOT = Path(__file__).resolve().parent
 PAGES = {
-    '/': ('index.html', 'text/html; charset=utf-8'),
-    '/index.html': ('index.html', 'text/html; charset=utf-8'),
+    '/': ('bench/index.html', 'text/html; charset=utf-8'),
     '/patterns.js': ('patterns.js', 'text/javascript; charset=utf-8'),
-    '/pattern-browser.js': ('pattern-browser.js', 'text/javascript; charset=utf-8'),
     '/matcher.js': ('matcher.js', 'text/javascript; charset=utf-8'),
-    '/pane-designs.js': ('pane-designs.js', 'text/javascript; charset=utf-8'),
-    '/panes.css': ('panes.css', 'text/css; charset=utf-8'),
-    '/motion.js': ('motion.js', 'text/javascript; charset=utf-8'),
-    '/motion.css': ('motion.css', 'text/css; charset=utf-8'),
-    '/forecast.js': ('forecast.js', 'text/javascript; charset=utf-8'),
-    '/context.js': ('context.js', 'text/javascript; charset=utf-8'),
 }
-# The bench: the same matcher and bars behind a full-screen console, beside the page above.
-BENCH = {'index.html': 'text/html', 'base.css': 'text/css', 'bench.css': 'text/css', 'composer.css': 'text/css',
-         'bench.js': 'text/javascript', 'lanes.js': 'text/javascript', 'engine.js': 'text/javascript',
-         'model.js': 'text/javascript', 'motion.js': 'text/javascript', 'dom.js': 'text/javascript'}
-PAGES.update({f'/bench/{name}': (f'bench/{name}', f'{kind}; charset=utf-8') for name, kind in BENCH.items()})
-PAGES['/bench'] = PAGES['/bench/'] = PAGES['/bench/index.html']
+BENCH_ASSETS = {'base.css': 'text/css', 'bench.css': 'text/css', 'composer.css': 'text/css',
+                'bench.js': 'text/javascript', 'lanes.js': 'text/javascript', 'engine.js': 'text/javascript',
+                'model.js': 'text/javascript', 'motion.js': 'text/javascript', 'dom.js': 'text/javascript'}
+PAGES.update({f'/bench/{name}': (f'bench/{name}', f'{kind}; charset=utf-8') for name, kind in BENCH_ASSETS.items()})
+PAGE_ALIASES = {'/index.html', '/bench', '/bench/', '/bench/index.html'}
 REFRESH_SECONDS = 3600
 
 
@@ -239,10 +230,12 @@ def handler(state: Bars, pages: dict[str, tuple[bytes, str]]):
                 self.wfile.write(body)
 
         def do_GET(self) -> None:  # noqa: N802 - http.server's naming
-            path = self.path.split('?', 1)[0]
+            path, separator, query = self.path.partition('?')
             if path in pages:
                 body, kind = pages[path]
                 self._send(200, body, kind)
+            elif path in PAGE_ALIASES:
+                self._send(308, b'', 'text/plain; charset=utf-8', {'Location': f'/{separator}{query}'})
             elif path in ('/bars', '/activity'):
                 accept = ','.join(self.headers.get_all('Accept-Encoding', []))
                 payload, etag, encoding = state.representation(path == '/activity', accept)

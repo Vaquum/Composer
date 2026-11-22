@@ -34,25 +34,9 @@ jobs:
           node-version: '22'
       - run: pip install -r requirements.txt
       - run: npm ci
-      - run: npx playwright install --with-deps chromium webkit
-      - name: Tactile motion model and browser continuity
-        run: npm run test:motion
-      - name: Motion input and rendering performance
-        run: npm run test:performance
-      - name: Native paper pixels across palettes, scrolling and screen densities
-        run: node checks/paper-cache.mjs
+      - run: npx playwright install --with-deps chromium
       - name: Unit tests
         run: python -m unittest discover -s tests -v
-      - name: The page and its reference
-        run: node checks/page.mjs
-      - name: Independent pane designs and statistical presentation
-        run: node checks/pane-designs.mjs
-      - name: Canvas sequence probabilities and conditional presentation
-        run: node checks/forecast.mjs
-      - name: Seamless forecast state and layout transitions
-        run: node checks/forecast-ux.mjs
-      - name: The feel of a drag, continuous with no jump
-        run: node checks/drag.mjs
       - name: The chain, each bar opening at the previous close
         run: node checks/chain.mjs
       - name: A recorded window read as a chain, on the vectors shared with Filang
@@ -71,7 +55,7 @@ jobs:
         run: python checks/with_bars.py checks/activity-preparation.mjs
       - name: Real cold and warm loading stability
         run: python checks/with_bars.py checks/loading-performance.mjs
-      - name: The bench beside the page, key by key, on the current bars
+      - name: Composer at the root URL, key by key, on the current bars
         run: python checks/with_bars.py checks/bench.mjs
       - name: The container builds
         run: python checks/container.py

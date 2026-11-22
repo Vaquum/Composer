@@ -1,15 +1,9 @@
 // The chain: every bar after the first opens exactly at the previous bar's close, and every colour is which way its bar
-// went. Reads the page's own functions (between "the chain" markers) and checks, on random drawings, that chaining keeps
+// went. Uses the bench model to check, on random drawings, that chaining keeps
 // every close, puts every later open exactly on the previous close, colours each bar by its close against its open,
 // keeps the shadows around the bodies and changes nothing a second time; that moving a later bar swings it from its
 // open; and that choosing the first bar's colour keeps its body and moves the next bar's open to its other end.
-// Usage: node checks/chain.mjs [INDEX_HTML]
-import fs from 'node:fs';
-const file = process.argv[2] && process.argv[2].endsWith('.html') ? process.argv[2] : 'index.html';
-const html = fs.readFileSync(file, 'utf8');
-const from = html.indexOf('/* ---- the chain'), to = html.indexOf('/* ---- end of the chain ---- */');
-if (from < 0 || to < from) { console.log('the chain is not marked in the page'); process.exit(1); }
-const { closeOf, openOf, chainParams, chainBars, moveParams, flipParams } = new Function(`${html.slice(from, to)}; return { closeOf, openOf, chainParams, chainBars, moveParams, flipParams };`)();
+import { closeOf, openOf, chainParams, chainBars, moveParams, flipParams } from '../bench/model.js';
 
 const fails = [];
 const fail = (what, ...why) => { if (fails.length < 30) fails.push(`${what}: ${why.join(' ')}`); };

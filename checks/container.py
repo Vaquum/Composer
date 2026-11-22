@@ -24,6 +24,7 @@ assert (Path(os.environ['COMPOSER_CACHE_DIR'])/'history.snapshot').exists()
 '''
 probe = '''
 import json, urllib.request
+assert b'<script type="module" src="/bench/bench.js">' in urllib.request.urlopen('http://127.0.0.1:8488/',timeout=2).read()
 health=json.load(urllib.request.urlopen('http://127.0.0.1:8488/healthz',timeout=2))
 assert health['ready'] and len(health['files'])==5
 for path,magic in [('bars',b'CBAR1'),('activity',b'CACT1')]:
