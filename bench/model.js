@@ -141,6 +141,9 @@ export function fromRows(rows, lo = 18, hi = 80) {
 }
 
 export const MAX_STRETCH = 4;
+/** Later bars a closing state can be picked for, and the pick string with none: one character per later bar. */
+export const AFTER = 6;
+export const NO_GIVEN = '-'.repeat(AFTER);
 export function createModel() {
   const m = {
     bars: rechain(START()), sel: 1, oriented: true, tfOn: [true, true, true, true, true], x: 12,
@@ -148,13 +151,14 @@ export function createModel() {
     pins: [],     // relations held: { a: { bar, part }, b: { bar, part } }, or { bar, color: true }
     skel: 0,      // 0 off, then 1 (the extremes) up to every swing
     stretch: 0,   // recorded bars the drawn bars may skip between the first and the last; counts only while something is held
+    given: NO_GIVEN,   // closing states picked for the later bars: U above the shape's high, I inside, D below its low, - free
   };
   // What is asked of the drawing besides the drawing itself. Changing a term is not an undo step, so an ordinary
   // snapshot leaves the terms alone; following a link replaces them, so that snapshot takes them too (`all`).
   const terms = () => ({ oriented: m.oriented, tfOn: m.tfOn.slice(), x: m.x, next: { ...m.next } });
-  const snap = (all = false) => ({ bars: m.bars.map((b) => bar(b.v, b.d)), pins: JSON.parse(JSON.stringify(m.pins)), skel: m.skel, stretch: m.stretch, ...(all === true ? { terms: terms() } : {}) });
+  const snap = (all = false) => ({ bars: m.bars.map((b) => bar(b.v, b.d)), pins: JSON.parse(JSON.stringify(m.pins)), skel: m.skel, stretch: m.stretch, given: m.given, ...(all === true ? { terms: terms() } : {}) });
   const push = (was) => { m.past.push(was || snap()); if (m.past.length > 400) m.past.shift(); m.future = []; };
-  const restore = (st) => { m.bars = st.bars.map((b) => bar(b.v, b.d)); m.pins = JSON.parse(JSON.stringify(st.pins)); m.skel = st.skel; m.stretch = st.stretch; m.sel = Math.min(m.sel, m.bars.length - 1);
+  const restore = (st) => { m.bars = st.bars.map((b) => bar(b.v, b.d)); m.pins = JSON.parse(JSON.stringify(st.pins)); m.skel = st.skel; m.stretch = st.stretch; m.given = st.given || NO_GIVEN; m.sel = Math.min(m.sel, m.bars.length - 1);
     if (st.terms) { m.oriented = st.terms.oriented; m.tfOn = st.terms.tfOn.slice(); m.x = st.terms.x; m.next = { ...st.terms.next }; }
   };
   // a pin lives on its bars: when a bar goes, so do the pins that named it, and the skeleton cannot be finer than the shape has swings
@@ -192,6 +196,17 @@ export function createModel() {
     clearHolds() { if (!m.pins.length && !m.skel) return false; push(); m.pins = []; m.skel = 0; return true; },
     setSkel(k) { const top = skelLevels(ohlc(m.bars)).length; k = Math.max(0, Math.min(top, k)); if (k === m.skel) return false; push(); m.skel = k; return true; },
     setStretch(k) { k = Math.max(0, Math.min(MAX_STRETCH, k)); if (k === m.stretch) return false; push(); m.stretch = k; return true; },
+    /**
+     * Pick the closing state of later bar +j (1 to 6): 'U', 'I' or 'D'. The same pick again, or '-', frees the bar;
+     * another state replaces the one it had. False when nothing changes.
+     */
+    give(j, s) {
+      if (!(j >= 1 && j <= AFTER) || !'UID-'.includes(s) || s.length !== 1) return false;
+      const to = m.given[j - 1] === s ? '-' : s; if (to === m.given[j - 1]) return false;
+      push(); m.given = m.given.slice(0, j - 1) + to + m.given.slice(j); return true;
+    },
+    /** Replace every pick at once: a whole closing path, or NO_GIVEN to free every bar. */
+    giveAll(text) { if (!/^[UID-]{6}$/.test(text) || text === m.given) return false; push(); m.given = text; return true; },
     skelTop: () => skelLevels(ohlc(m.bars)).length,
     /** The swings the skeleton keeps, at its level or at another one. */
     skelMarks: (level = m.skel) => skelMarks(ohlc(m.bars), level),
@@ -216,7 +231,7 @@ export function createModel() {
       const num = (v) => String(v).replace('+', '');   // "1e+21" would lose its sign to the address's own decoding
       const nx = m.next;
       return `s=${m.bars.map((b) => [...b.v.map(num), b.d].join(',')).join(';')}&o=${+m.oriented}&tf=${m.tfOn.map(Number).join('')}&x=${m.x}&n=${nx.dir ? [nx.dir, nx.measure, nx.measure === 'bps' ? nx.bps : nx.atr].join(',') : 0}`
-        + (m.pins.length ? `&p=${m.pins.map((q) => (q.color ? 'c' + q.bar : `${q.a.bar}${q.a.part}.${q.b.bar}${q.b.part}`)).join(',')}` : '') + (m.skel ? `&k=${m.skel}` : '') + (m.stretch ? `&st=${m.stretch}` : '');
+        + (m.pins.length ? `&p=${m.pins.map((q) => (q.color ? 'c' + q.bar : `${q.a.bar}${q.a.part}.${q.b.bar}${q.b.part}`)).join(',')}` : '') + (m.skel ? `&k=${m.skel}` : '') + (m.stretch ? `&st=${m.stretch}` : '') + (m.given !== NO_GIVEN ? `&gv=${m.given}` : '');
     },
     /**
      * Take the drawing an address names, with everything asked of it; what the address leaves out goes back to how
@@ -244,6 +259,8 @@ export function createModel() {
         else if (r && +r[1] < n && +r[3] < n && !(r[1] === r[3] && r[2] === r[4])) pins.push({ a: { bar: +r[1], part: r[2] }, b: { bar: +r[3], part: r[4] } });
       }
       m.pins = pins; m.skel = Math.max(0, Math.min(skelLevels(ohlc(m.bars)).length, Math.trunc(+p.get('k')) || 0)); m.stretch = Math.max(0, Math.min(MAX_STRETCH, Math.trunc(+p.get('st')) || 0));
+      // the closing states picked for the later bars, one character per bar
+      m.given = /^[UID-]{6}$/.test(p.get('gv') || '') ? p.get('gv') : NO_GIVEN;
       return true;
     },
   };

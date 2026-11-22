@@ -36,13 +36,23 @@ const setCandle = (el, v) => {
   body.setAttribute('x', f1(v[0] - v[5] / 2)); body.setAttribute('y', f1(v[3])); body.setAttribute('width', f1(Math.max(1, v[5]))); body.setAttribute('height', f1(Math.max(1, v[4] - v[3])));
 };
 
-/** Share of complete windows whose close at each later bar was above the shape's high, inside it, or below its low. */
-export function statesOf(cont) {
+/** No later bar picked. A pick is one letter per later bar: U above the shape's high, I inside, D below its low. */
+export const NONE = '-'.repeat(AFTER);
+/**
+ * The complete windows of a continuation that closed where the picks say. `given` has one character per later bar:
+ * a closing state, or `-` for a bar that is left free. Returns their sequences, their count `n`, the count of the
+ * whole cohort `base`, and `grid[j][z]`: how many of them closed in state z at bar +j+1. Null without a continuation.
+ */
+export function conditioned(cont, given = NONE) {
   if (!cont) return null;
-  const out = Array.from({ length: AFTER }, () => [0, 0, 0]);
-  for (const [key, n] of cont.sequences) for (let j = 0; j < AFTER; j++) out[j]['UID'.indexOf(key[j])] += n;
-  return out.map((x) => x.map((v) => v / cont.n));
+  const picks = []; for (let j = 0; j < AFTER; j++) if ('UID'.includes(given[j])) picks.push(j);
+  const sequences = picks.length ? cont.sequences.filter(([key]) => picks.every((j) => key[j] === given[j])) : cont.sequences;
+  const grid = Array.from({ length: AFTER }, () => [0, 0, 0]); let n = 0;
+  for (const [key, k] of sequences) { n += k; for (let j = 0; j < AFTER; j++) grid[j]['UID'.indexOf(key[j])] += k; }
+  return { sequences, n, base: cont.n, grid, picks: picks.length };
 }
+/** Shares of those windows by closing state at each later bar. Null under 30 windows: nothing is estimated. */
+export const sharesOf = (cd) => (cd && cd.n >= 30 ? cd.grid.map((row) => row.map((k) => k / cd.n)) : null);
 // Wilson 95% interval for a share of n windows.
 const wilson = (p, n) => { const z = 1.96; const d = 1 + (z * z) / n; const c = p + (z * z) / (2 * n); const m = z * Math.sqrt((p * (1 - p)) / n + (z * z) / (4 * n * n)); return [(c - m) / d, (c + m) / d]; };
 /** For each later bar and state: whether the pooled share lies outside this cohort's 95% interval. Null under 30 windows. */
@@ -68,7 +78,8 @@ export function domainOf(conts) {
  * filled from the left by the share of windows that closed there. So a share reads by length, down any column.
  */
 export function drawLane(host, { bars, cont, states, next = null, domain, height, hero = false, pick = -1, direct = false, wait = false, why = '', numbers = false, mark = null, pooled = null, diff = null,
-  holds = null, tints = null, frame = -1, bones = null, bonesOn = false, targets = false, pend = null, hot = null }) {
+  holds = null, tints = null, frame = -1, bones = null, bonesOn = false, targets = false, pend = null, hot = null,
+  given = NONE, path = null, overlay = null, col = 0, loose = false }) {
   const W = Math.max(160, Math.floor(host.clientWidth)); const n = bars.length;
   const sc = sceneFor(host, ['back', 'zones', 'fan', 'rails', 'candles', 'marks', 'knobs', 'text']); sc.size(W, height);
   const g = geom(W, n); const small = height < 112;
@@ -167,30 +178,44 @@ export function drawLane(host, { bars, cont, states, next = null, domain, height
       sc.put('making', 'marks', () => s('line', { class: 'b-hold on' }), [g.xb(pend.bar), yb(lvl(pend.bar, pend.part)), g.xb(hot.bar), yb(lvl(hot.bar, hot.part))], setLine);
     }
   }
-  if (cont && states) {
-    // Three slim tracks per later bar, held to the rails: above the shape's high, between the rails, below its low.
-    // Each fills from the left by the share of windows that closed there, so shares compare by length down a column.
+  // Three slim tracks per later bar, held to the rails: above the shape's high, between the rails, below its low.
+  // Each fills from the left by the share of windows that closed there, so shares compare by length down a column.
+  // A picked cell is a condition: it carries the selection, and the other two cells of its bar are ruled out.
+  let tracks = null;
+  if (cont || path) {
     const top = ya(domain[1]); const yh = ya(1); const yl = ya(0); const bot = ya(domain[0]);
     const T = small ? 7 : numbers ? 17 : 11; const fit = (room) => Math.max(1, Math.min(T, room));
-    const tracks = [[yh - 1 - fit(yh - top - 2), fit(yh - top - 2)], [(yh + yl) / 2 - fit(yl - yh - 4) / 2, fit(yl - yh - 4)], [yl + 1, fit(bot - yl - 2)]];
+    tracks = [[yh - 1 - fit(yh - top - 2), fit(yh - top - 2)], [(yh + yl) / 2 - fit(yl - yh - 4) / 2, fit(yl - yh - 4)], [yl + 1, fit(bot - yl - 2)]];
+    const mid = (z) => tracks[z][0] + tracks[z][1] / 2;
     for (let j = 1; j <= AFTER; j++) {
-      const [x0, w] = g.cell(j);
-      sc.put('col' + j, 'back', () => s('rect', { class: 'b-col' }), [x0, top, w, bot - top], setRect);
+      const [x0, w] = g.cell(j); const pz = 'UID'.indexOf(given[j - 1]); const on = path ? 'UID'.indexOf(path[j - 1]) : -1;
+      sc.put('col' + j, 'back', () => s('rect'), [x0, top, w, bot - top], setRect, j === col ? 'b-col on' : 'b-col');
       for (let z = 0; z < 3; z++) {
-        const [y0, hh] = tracks[z]; const share = states[j - 1][z]; const off = !!diff && diff[j - 1][z];
-        sc.put(`w${z}.${j}`, 'zones', () => s('rect', { class: 'b-wash' }), [x0, y0, w, hh], setRect);
-        sc.put(`s${z}.${j}`, 'zones', () => s('rect'), [x0, y0, w * share, hh], setRect, off ? 'b-sharebar off' : 'b-sharebar');
+        const [y0, hh] = tracks[z]; const share = path ? +(on === z) : states ? states[j - 1][z] : 0; const off = !path && !!states && !!diff && diff[j - 1][z];
+        sc.put(`w${z}.${j}`, 'zones', () => s('rect'), [x0, y0, w, hh], setRect, pz >= 0 && pz !== z ? 'b-wash out' : 'b-wash');
+        if (path || states) sc.put(`s${z}.${j}`, 'zones', () => s('rect'), [x0, y0, w * share, hh], setRect, path ? 'b-sharebar step' : off ? 'b-sharebar off' : 'b-sharebar');
         // the drawing's pooled share lies outside this cohort's 95% interval: the fill is stronger, and a tick says where the drawing has it
         if (off) sc.put(`p${z}.${j}`, 'zones', () => s('rect', { class: 'b-pool' }), [x0 + w * pooled[j - 1][z] - 0.5, y0 - 1, 1, hh + 2], setRect);
-        if (numbers && w > 34 && hh >= 13) text.push(s('text', { class: 'b-share', x: x0 + w - 5, y: y0 + hh / 2 + 4, 'text-anchor': 'end' }, pc(share)));
+        if (numbers && states && !path && pz < 0 && w > 34 && hh >= 13) text.push(s('text', { class: 'b-share', x: x0 + w - 5, y: y0 + hh / 2 + 4, 'text-anchor': 'end' }, pc(share)));
+      }
+      if (pz >= 0) {
+        const [y0, hh] = tracks[pz];
+        sc.put('gv' + j, 'marks', () => s('rect', { class: 'b-given' }), [x0 + 0.5, y0 - 1.5, Math.max(1, w - 1), hh + 3], setRect);
+        if (numbers && w > 34 && hh >= 13) text.push(s('text', { class: 'b-share given', x: x0 + w - 5, y: y0 + hh / 2 + 4, 'text-anchor': 'end' }, 'GIVEN'));
       }
     }
     const xs = [g.ax0, ...Array.from({ length: AFTER }, (_, k) => g.xa(k + 1))];
-    const q = (k) => [ya(clampA(lastClose)), ...cont.fan.map((r) => ya(clampA(r[k])))];
-    const ring = (a, b) => [...xs.flatMap((x, k) => [x, a[k]]), ...xs.map((x, k) => [x, b[k]]).reverse().flat()];
-    if (!small) sc.put('fanO', 'fan', () => s('polygon'), ring(q(4), q(0)), setPoints, 'b-fan outer');
-    sc.put('fanI', 'fan', () => s('polygon'), ring(q(3), q(1)), setPoints, 'b-fan');
-    sc.put('fanM', 'fan', () => s('polyline'), xs.flatMap((x, k) => [x, q(2)[k]]), setPoints, small ? 'b-mid sm' : 'b-mid');
+    if (cont && !path) {
+      // the fan is the whole cohort's: the matcher keeps quantiles, not closes, so a pick cannot narrow it
+      const q = (k) => [ya(clampA(lastClose)), ...cont.fan.map((r) => ya(clampA(r[k])))];
+      const ring = (a, b) => [...xs.flatMap((x, k) => [x, a[k]]), ...xs.map((x, k) => [x, b[k]]).reverse().flat()];
+      if (!small) sc.put('fanO', 'fan', () => s('polygon'), ring(q(4), q(0)), setPoints, loose ? 'b-fan outer loose' : 'b-fan outer');
+      sc.put('fanI', 'fan', () => s('polygon'), ring(q(3), q(1)), setPoints, loose ? 'b-fan loose' : 'b-fan');
+      sc.put('fanM', 'fan', () => s('polyline'), xs.flatMap((x, k) => [x, q(2)[k]]), setPoints, (small ? 'b-mid sm' : 'b-mid') + (loose ? ' loose' : ''));
+    }
+    // a closing path: one state per later bar, joined from the last close through the cells it passes
+    const line = path || overlay;
+    if (line) sc.put('path', 'marks', () => s('polyline'), [g.ax0, ya(clampA(lastClose)), ...[...line].flatMap((ch, k) => [xs[k + 1], mid('UID'.indexOf(ch))])], setPoints, path ? 'b-path' : 'b-path over');
   }
   // the last close, carried from the lens to where the continuation starts
   sc.put('link', 'rails', () => s('line', { class: 'b-link' }), [g.xb(n - 1) + cw / 2 + (hero ? 10 : 1), yb(lastClose), g.ax0, ya(clampA(lastClose))], setLine);
@@ -202,10 +227,19 @@ export function drawLane(host, { bars, cont, states, next = null, domain, height
   if (direct) sc.settle();
   // the rails are named in the gap between the lens and the aftermath, clear of the share tracks
   if (hero) text.push(s('text', { class: 'b-scale', x: W - 5, y: ya(1) - 26, 'text-anchor': 'end' }, 'SHAPE HIGH'), s('text', { class: 'b-scale', x: W - 5, y: ya(0) + 33, 'text-anchor': 'end' }, 'SHAPE LOW'));
-  const say = !cont && !next ? (wait ? 'SEARCHING' : why) : '';
+  const say = !cont && !next && !path ? (wait ? 'SEARCHING' : why) : '';
   if (say) text.push(s('text', { class: 'b-scale', x: g.ax0 + (W - g.ax0) / 2, y: (ya(1) + ya(0)) / 2 + 4, 'text-anchor': 'middle' }, say));
+  // a cohort the picks leave too few windows of: its cells stay, empty, and the reason is said under them
+  if (cont && !states && !path && why && tracks && !small) text.push(s('text', { class: 'b-scale', x: g.ax0 + 2, y: Math.min(height - 5, tracks[2][0] + tracks[2][1] + 15) }, why));
   sc.layers.text.replaceChildren(...text);
-  return { g, yb, ya, cw, padT, inner, height, n, knots, price: (y) => BAND[0] + (1 - (y - padT) / inner) * (BAND[1] - BAND[0]) };
+  /** The state cell under a point, if it is on one: { after, z } with z 0 above, 1 inside, 2 below. */
+  const cellAt = (px, py) => {
+    if (!tracks || px < g.ax0) return null;
+    const j = Math.floor((px - g.ax0) / g.unit) + 1; if (j < 1 || j > AFTER) return null;
+    const z = tracks.findIndex(([y0, hh]) => py >= y0 - 3 && py <= y0 + hh + 3);
+    return z < 0 ? null : { after: j, z };
+  };
+  return { g, yb, ya, cw, padT, inner, height, n, knots, cellAt, price: (y) => BAND[0] + (1 - (y - padT) / inner) * (BAND[1] - BAND[0]) };
 }
 
 /** Column labels: the drawn bars by number, then the bars after them. */
@@ -223,7 +257,7 @@ export function drawAxis(host, { n, pick }) {
  * cohort's value, every window's, and a meter of the standardized difference from the tick that stands for all
  * windows. Under each later bar, the three closing states as the lanes draw them, with their shares.
  */
-export function drawColumnTrack(host, { n, readings, states, height = 61 }) {
+export function drawColumnTrack(host, { n, readings, states, given = NONE, cells = false, col = 0, height = 61 }) {
   const W = Math.max(160, Math.floor(host.clientWidth)); const sc = sceneFor(host, ['back', 'bars', 'text']); sc.size(W, height);
   const g = geom(W, n); const text = []; const my = height - 13;
   sc.begin();
@@ -237,20 +271,24 @@ export function drawColumnTrack(host, { n, readings, states, height = 61 }) {
     if (g.bw >= 40) text.push(s('text', { class: 'b-num', x: cx, y: 16, 'text-anchor': 'middle' }, r.text));
     if (g.bw >= 76) text.push(s('text', { class: 'b-num dim', x: cx, y: 30, 'text-anchor': 'middle' }, `all ${r.all}`));
   });
-  if (states) {
-    const rowH = (height - 9) / 3;
+  const rowH = (height - 9) / 3;
+  if (states || cells) {
     for (let j = 1; j <= AFTER; j++) {
-      const [x0, w] = g.cell(j);
+      const [x0, w] = g.cell(j); const pz = 'UID'.indexOf(given[j - 1]);
+      if (j === col) sc.put('col', 'back', () => s('rect', { class: 'b-col on' }), [x0, 2, w, height - 4], setRect);
       for (let z = 0; z < 3; z++) {
-        const y0 = 5 + z * rowH; const share = states[j - 1][z];
-        sc.put(`w${z}.${j}`, 'back', () => s('rect', { class: 'b-wash' }), [x0, y0, w, rowH - 1], setRect);
-        sc.put(`s${z}.${j}`, 'bars', () => s('rect', { class: 'b-sharebar' }), [x0, y0, w * share, rowH - 1], setRect);
-        if (w >= 34) text.push(s('text', { class: 'b-num', x: x0 + w - 4, y: y0 + rowH / 2 + 3, 'text-anchor': 'end' }, pc(share)));
+        const y0 = 5 + z * rowH; const share = states ? states[j - 1][z] : 0;
+        sc.put(`w${z}.${j}`, 'back', () => s('rect'), [x0, y0, w, rowH - 1], setRect, pz >= 0 && pz !== z ? 'b-wash out' : 'b-wash');
+        if (states) sc.put(`s${z}.${j}`, 'bars', () => s('rect', { class: 'b-sharebar' }), [x0, y0, w * share, rowH - 1], setRect);
+        if (pz === z) sc.put('gv' + j, 'bars', () => s('rect', { class: 'b-given' }), [x0 + 0.5, y0 - 0.5, Math.max(1, w - 1), rowH], setRect);
+        if (w >= 34 && (states || pz === z)) text.push(s('text', { class: 'b-num' + (pz === z ? ' given' : ''), x: x0 + w - 4, y: y0 + rowH / 2 + 3, 'text-anchor': 'end' }, pz === z ? 'GIVEN' : pc(share)));
       }
     }
   }
   sc.end();
   sc.layers.text.replaceChildren(...text);
+  /** The state cell of a later bar under a point of the track: { after, z }. */
+  g.cellAt = (px, py) => { if (px < g.ax0) return null; const j = Math.floor((px - g.ax0) / g.unit) + 1; const z = Math.floor((py - 5) / rowH); return j >= 1 && j <= AFTER && z >= 0 && z <= 2 ? { after: j, z } : null; };
   return g;
 }
 
@@ -263,5 +301,23 @@ export function drawGlyph(host, rows, w = 34, height = 26) {
   rows.forEach(([o, h, l, c], k) => {
     const cx = step * (k + 1); const top = y(Math.max(o, c)); const bot = y(Math.min(o, c));
     svg.append(s('g', { class: (c >= o ? 'b-up' : 'b-down') + ' b-in' }, s('line', { x1: cx, x2: cx, y1: y(h), y2: y(l) }), s('rect', { x: cx - bw / 2, y: top, width: bw, height: Math.max(1, bot - top) })));
+  });
+}
+
+/**
+ * One recorded window that took a closing path: its six later bars in the shape's own scale, between the rails
+ * that stand for the shape's high and low. `example` is { bars: open-high-low-close rows, start: the last close }.
+ */
+export function drawExample(host, example, w = 252, height = 92) {
+  const svg = s('svg', { class: 'example', viewBox: `0 0 ${w} ${height}`, width: w, height, role: 'img' }); host.replaceChildren(svg);
+  if (!example?.bars?.length) return;
+  let lo = Math.min(-0.15, example.start); let hi = Math.max(1.15, example.start);
+  for (const [, h, l] of example.bars) { if (l < lo) lo = l; if (h > hi) hi = h; }
+  const y = (v) => 5 + (1 - (v - lo) / (hi - lo || 1)) * (height - 10); const step = (w - 26) / AFTER; const bw = Math.min(13, step * 0.46);
+  for (const v of [1, 0]) svg.append(s('line', { class: 'b-rail', x1: 0, x2: w, y1: f1(y(v)), y2: f1(y(v)) }));
+  svg.append(s('line', { class: 'b-link', x1: 0, x2: 26, y1: f1(y(example.start)), y2: f1(y(example.start)) }));
+  example.bars.forEach(([o, h, l, c], k) => {
+    const cx = 26 + step * (k + 0.5); const top = y(Math.max(o, c)); const bot = y(Math.min(o, c));
+    svg.append(s('g', { class: (c >= o ? 'b-up' : 'b-down') + ' b-in b-sm' }, s('line', { x1: f1(cx), x2: f1(cx), y1: f1(y(h)), y2: f1(y(l)) }), s('rect', { x: f1(cx - bw / 2), y: f1(top), width: f1(bw), height: f1(Math.max(1, bot - top)) })));
   });
 }
