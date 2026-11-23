@@ -59,7 +59,12 @@ export function createEngine({ onState }) {
       if (m.type === 'error') { state.failed = `The BTCUSDT klines could not be read: ${m.message}`; tell(); return; }
       if (m.type === 'readings') { state.readings = 'ready'; tell(); return; }
       if (m.type === 'readings-error') { state.readings = 'failed'; state.note = m.message; tell(); return; }
-      if (m.type === 'counters') { state.counters = 'ready'; tell(); pump(); return; }
+      if (m.type === 'counters') {
+        state.counters = 'ready';
+        // Loading counters replaces engine frames. Retry a plain query that was still running if the switch was turned off meanwhile.
+        if (flight) { waiting.unshift(flight); flight = null; }
+        tell(); pump(); return;
+      }
       if (m.type === 'counters-error') { state.counters = 'failed'; state.counted = m.message; tell(); pump(); return; }
       if (m.type === 'named-pattern') { const w = named.get(m.id); if (w) { named.delete(m.id); w(m); } return; }
       if (m.type === 'progress') { if (flight && m.id === flight.id && flight.onProgress) flight.onProgress(m.f); return; }

@@ -565,6 +565,20 @@ try{
     assert.ok(n.page<=n.width&&n.body<=n.width&&n.lanes<=0,`a phone must not scroll sideways: ${JSON.stringify(n)}`);
     assert.equal(n.marks,10,'every mark of five tracks is on a phone\'s screen');assert.deepEqual(n.heads,['Volume','Trades','Delta','Trade size','Net taker imbalance']);
     calm(f,'a phone');await context.close();}
+  // Turning a dimension off while its counters are downloading must still answer the changed plain drawing.
+  {const {page:p,faults:f,context}=await open();
+    let release,requested;const gate=new Promise(r=>{release=r;}),request=new Promise(r=>{requested=r;});
+    await context.route('**/counters',async route=>{const response=await route.fetch();requested();await gate;await route.fulfill({response});});
+    await p.goto(`${base}/`,{waitUntil:'domcontentloaded'});await settled(p);
+    await p.keyboard.press('d');await p.keyboard.press('Enter');await request;await p.keyboard.press('Escape');
+    for(let i=0;i<18;i++)await p.keyboard.press('Equal');
+    await p.keyboard.press('d');await p.keyboard.press('Enter');release();await p.keyboard.press('Escape');
+    await settled(p);const before=await see(p);assert.equal(await term(p,'Dimensions'),'None');
+    assert.equal(before.bars,20);assert.doesNotMatch(before.status,/could not|stopped/);
+    await p.reload({waitUntil:'domcontentloaded'});await settled(p);
+    assert.equal((await see(p)).count,before.count,'the plain answer survives counters arriving after its switch was turned off');
+    calm(f,'counters arriving after their dimension was switched off');await context.close();}
+
   // counters that cannot be loaded: it says so, nothing is counted as if a dimension were read, and switching it off recovers
   {const {page:p,context}=await open();allFaults.pop();
     await context.route('**/counters',route=>route.fulfill({status:500,body:'no'}));
