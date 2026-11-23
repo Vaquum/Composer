@@ -2,7 +2,8 @@
 // checks/chained-vectors.json lists small windows of recorded bars, each with the g1 code it has when read as a chain.
 // For each one this check puts the bars through the matcher's own decoder as a one-timeframe history, draws the shape
 // the expected code describes, and requires that the matcher finds the window as its one exact twin, shows it as that
-// chain, and leaves the record as it was. Where the code as recorded differs, the shape of that code must find nothing.
+// chain, and leaves the record as it was. Where the code as recorded differs, its shape is not a chain, and the engine
+// must refuse it as a drawing.
 // Usage: node checks/chained-vectors.mjs   (from the repository root)
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
@@ -20,7 +21,7 @@ function payload(bars) {
   const zigzag = v => varint(v < 0 ? -2 * v - 1 : 2 * v);
   for (const ch of 'CBAR1') out.push(ch.charCodeAt(0));
   out.push(1, 3, ...[...'15m'].map(ch => ch.charCodeAt(0)));
-  u32(900); u32(bars.length); u32(1700000100); u32(0);   // the first bar opens on the 15m grid, as recorded bars do
+  u32(900); u32(bars.length); u32(1700000100); u32(0);   // a first bar on the 15m grid, as the engine requires
   let previous = 0;
   for (const [o, h, l, c] of bars) { zigzag(o - previous); zigzag(c - o); varint(h - Math.max(o, c)); varint(Math.min(o, c) - l); previous = c; }
   return Uint8Array.from(out).buffer;
@@ -56,6 +57,8 @@ for (const v of vectors) {
   assert.deepEqual(cents(twin.drawn)[0], v.bars[0], `${v.name}: the first bar is as recorded`);
   for (let g = 1; g < n; g++) assert.equal(cents(twin.drawn)[g][0], v.bars[g - 1][3], `${v.name}: bar ${g + 1} opens at the close before it`);
   assert.equal(codeOf(v.bars), v.as_recorded, `${v.name}: the code as recorded is as written`);
-  if (v.as_recorded !== v.chained) assert.equal((await ask(v.as_recorded)).exact[0], 0, `${v.name}: the shape of the recorded code finds no twin`);
+  // The recorded code, where it differs, has a later bar opening away from the close before it. That is not a drawing:
+  // a drawing is a chain, and the engine refuses to search for anything else. So no drawing can find the window as recorded.
+  if (v.as_recorded !== v.chained) await assert.rejects(ask(v.as_recorded), /must open at the previous close/, `${v.name}: the shape of the recorded code is not a drawing`);
 }
 console.log(`the matcher reads all ${vectors.length} shared windows as the chains written for them`);

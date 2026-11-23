@@ -1,7 +1,8 @@
 // Composer bench. One canvas locked on the drawn shape and what it became; rows are cohorts of that shape.
 // Panels around it toggle: the named patterns, the inspector, and a drawer for windows, the g1 string and Limen.
 import { h, mount, $, label, note, quiet, menu, popover, closeMenu, menuOpen } from './dom.js';
-import { createModel, ohlc, extent, g1, namesOf, fromRows, chainBars, copyParams, moveParams, partPrice, PARTS, KIND_NAME, TF, TF_LONG, MIN_BARS, MAX_BARS, MAX_STRETCH, AFTER, NO_GIVEN, PACKET_MAX } from './model.js';
+import { createModel, ohlc, extent, fromRows, chainBars, copyParams, moveParams, partPrice, PARTS, KIND_NAME, TF, TF_LONG, MIN_BARS, MAX_BARS, MAX_STRETCH, AFTER, NO_GIVEN, PACKET_MAX } from './model.js';
+import { Candles } from './filang.js';
 import { createEngine } from './engine.js';
 import { drawLane, drawAxis, drawColumnTrack, drawGlyph, drawExample, conditioned, sharesOf, domainOf, differsFrom } from './lanes.js';
 
@@ -12,7 +13,7 @@ const QUERY = DEPLOYED ? 'https://query.vaquum.fi/' : 'http://localhost:8790/';
 
 // Query can link to a catalogue pattern at /?pattern=.
 // An id the catalogue does not know names nothing, and nothing changes.
-let wanted = (() => { const id = new URLSearchParams(location.search).get('pattern'); return (id && globalThis.CandlePatterns?.resolve(id)) || null; })();
+let wanted = (() => { const id = new URLSearchParams(location.search).get('pattern'); return (id && Candles.resolve(id)) || null; })();
 // A link can also carry a whole drawing, as the query bench sends one: the engine's drawing packet, under the same name
 // the study page uses. It is taken once the model exists, below.
 const carried = new URLSearchParams(location.search).get('drawing');
@@ -120,9 +121,10 @@ function laneSpecs() {
   if (state.rows === 'timeframes') return TF.map((name, k) => (M.tfOn[k] ? { id: 'tf' + k, kind: 'tf', k, title: name, rows: ohlc(M.bars), q: model.query({ tfs: TF.map((_, j) => j === k) }) } : null)).filter(Boolean);
   if (state.rows === 'holds') {
     // each line keeps its own hold and every hold above it
-    const { groups } = ledger(); const rows = ohlc(M.bars); let acc = [];
+    const { groups } = ledger(); const rows = ohlc(M.bars);
     if (!groups.length) return [{ id: 'offer', kind: 'offer', title: 'Nothing is held', rows }];
-    return groups.map((gp, k) => { acc = acc.concat(gp.items.map((x) => x.h)); return { id: 'hold.' + gp.id, kind: 'hold', k, gp, title: gp.text, rows, q: model.query({ holds: acc.slice() }) }; });
+    // a pin's line asks with the pins up to it and no skeleton; the skeleton's line is last and asks with everything
+    return groups.map((gp, k) => ({ id: 'hold.' + gp.id, kind: 'hold', k, gp, title: gp.text, rows, q: gp.kind === 'skeleton' ? model.query() : model.query({ pins: gp.pin + 1 }) }));
   }
   if (state.rows === 'paths') {
     // one line per complete six-bar closing path of the drawing's cohort, as the picks leave it, most common first.
@@ -224,7 +226,7 @@ function showDrawing() { state.lane = 'draw'; state.col = null; state.page = 0; 
 // uses: `drawing` and `g1`, and `pin-relations` when the question is what is pinned rather than the exact shape.
 // Only the shape and its pins cross. Query answers on its own recording, so no count is carried either way.
 // Null when the drawing holds more than a packet may carry: the reader on either side would refuse it, so no link is made.
-const queryLink = (held) => { const text = JSON.stringify(model.toPacket()); return text.length > PACKET_MAX ? null : `${QUERY}?drawing=${encodeURIComponent(text)}&g1=${encodeURIComponent(g1(M.bars, M.oriented))}${held ? '&pin-relations=1' : ''}`; };
+const queryLink = (held) => { const text = JSON.stringify(model.toPacket()); return text.length > PACKET_MAX ? null : `${QUERY}?drawing=${encodeURIComponent(text)}&g1=${encodeURIComponent(model.code())}${held ? '&pin-relations=1' : ''}`; };
 const TOO_MUCH = 'Too much is pinned to carry this shape to Query: release some pins';
 const NOT_CARRIED = 'Carried: the bars and the pins. Not carried: the skeleton, stretch, the next-bar term, timeframes and picks. Query counts on its own 15m recording.';
 /** Take the drawing a link carried in, or say why it could not be read. The link is spent either way. */
@@ -420,8 +422,8 @@ function laneHead(lane) {
   const head = (no, name, text, receipt, actions = []) => [h('span', { class: 'no' }, no || ''), h('span', { class: 'role' }, label(name), actions.length ? h('span', { class: 'acts' }, actions) : null),
     h('div', { class: 'texts' }, h('div', { class: 'text' }, text)), receipt ? h('div', { class: 'foot-line' }, h('span', { class: 'receipt' }, receipt)) : null];
   if (lane.kind === 'draw') {
-    const names = namesOf(M.bars, M.oriented); const n = M.bars.length;
-    return head('01', 'Shape', names.length ? names.slice(0, 2).map((x) => x.p.name).join(' · ') : `${cap(NWORD[n] || String(n))}-bar shape`, g1(M.bars, M.oriented),
+    const names = model.names(); const n = M.bars.length;
+    return head('01', 'Shape', names.length ? names.slice(0, 2).map((x) => x.p.name).join(' · ') : `${cap(NWORD[n] || String(n))}-bar shape`, model.code(),
       [quiet('Undo', () => model.undo() && ask(), 'Undo the last change · ⌘Z'), quiet('Flip', () => { model.flip(); ask(); }, 'Trade the first bar’s open and close · Space'),
         h('button', { class: 'quiet', type: 'button', 'aria-pressed': String(state.hold), title: 'Pick points on the drawing to hold · H', onclick: (e) => { e.stopPropagation(); toggleHold(); } }, 'Hold')]);
   }
@@ -616,7 +618,7 @@ function renderCanvas() {
   ctx.read = read; ctx.readCd = rcd;
   const st = engine.state.readings;
   mount($('#collabel'), label(`${READ[state.track]} · closing states${rcd?.picks ? ', given the picks' : ''}`), note(!p ? '' : st === 'ready' ? `${read.title}, against every window` : st === 'failed' ? 'Readings unavailable' : 'Readings are loading'));
-  const names = namesOf(M.bars, M.oriented);
+  const names = model.names();
   mount($('#names'), label('Named'), names.length
     ? h('span', { class: 'list' }, names.map((x) => h('button', { type: 'button', title: x.p.rule, onclick: () => { state.catalog = x.p.name; togglePanel('left', true); } }, h('span', { class: 'who' }, x.who), x.p.name)))
     : h('span', { class: 'none' }, 'No catalogue name fits these bars'));
@@ -815,7 +817,7 @@ async function openNamed() {
   countCatalogue();
 }
 async function countCatalogue() {
-  const C = globalThis.CandlePatterns; if (!C || !engine.state.ready) return;
+  const C = Candles; if (!engine.state.ready) return;
   const mine = ++counting; const frame = state.frame;
   for (const p of C.patterns) {
     if (mine !== counting || !ui.left) return;
@@ -826,8 +828,8 @@ async function countCatalogue() {
 }
 function renderLeft() {
   const el = $('#left'); if (!ui.left) return;
-  const C = globalThis.CandlePatterns; const q = state.catalog.trim().toLowerCase(); const top = el.scrollTop; const hadFocus = document.activeElement?.classList.contains('search');
-  const current = new Set(namesOf(M.bars, M.oriented).map((x) => x.p.id));
+  const C = Candles; const q = state.catalog.trim().toLowerCase(); const top = el.scrollTop; const hadFocus = document.activeElement?.classList.contains('search');
+  const current = new Set(model.names().map((x) => x.p.id));
   const items = (C?.patterns || []).filter((p) => !q || (p.name + ' ' + p.ja + ' ' + p.aliases.join(' ')).toLowerCase().includes(q));
   const most = Math.max(1, ...items.map((p) => infoOf(p)?.eligible || 0));
   const row = (p) => {
@@ -907,7 +909,7 @@ function renderRight() {
     const what = p.kind === 'closest' ? (fell ? 'nearest windows' : 'closest windows') : p.kind === 'hold' ? (p.n === 1 ? 'window keeps what is held' : 'windows keep what is held') : p.n === 1 ? 'exact twin' : 'exact twins';
     const aside = p.kind !== 'closest' ? null : fell ? (tally(res).raw ? 'none that holds passes the next-bar filter' : 'no window keeps every held relation') : 'under 30 twins';
     blocks.push(h('div', { class: 'block' }, h('div', { class: 'sec' }, label(kind), col ? quiet('All columns', () => { state.col = null; render(); }, 'Show the whole row') : null),
-      h('h3', null, sel.kind === 'tf' ? TF_LONG[sel.k] : sel.kind === 'draw' ? (namesOf(M.bars, M.oriented)[0]?.p.name || `${cap(NWORD[M.bars.length] || String(M.bars.length))}-bar shape`) : sel.title),
+      h('h3', null, sel.kind === 'tf' ? TF_LONG[sel.k] : sel.kind === 'draw' ? (model.names()[0]?.p.name || `${cap(NWORD[M.bars.length] || String(M.bars.length))}-bar shape`) : sel.title),
       h('div', { class: 'big', style: 'margin-top:10px' }, h('b', null, int(p.n)), h('span', { class: 'note' }, what), aside ? h('span', { class: 'vs' }, aside) : null),
       sel.kind === 'hold' && sel.prev ? h('p', { class: 'note', style: 'margin-top:8px' }, res.mode !== 'held' ? 'No window keeps this with the holds above it. The figures below read the nearest windows, which break at least one hold.' : sel.n === sel.prev ? `Removes nothing: all ${int(sel.prev)} windows on the line above already keep it.` : `${pct(sel.n / sel.prev, sel.n / sel.prev < 0.1 ? 1 : 0)} of the ${int(sel.prev)} windows on the line above; ${int(sel.prev - sel.n)} removed.`) : null,
       res.mode === 'held' && p.kind === 'hold' && sel.kind !== 'hold' ? h('p', { class: 'note', style: 'margin-top:8px' }, `${int(sel.kind === 'tf' ? res.exactF[sel.k] : sumOn(res.exactF))} of them are exact twins of the whole shape.`) : null,
@@ -979,7 +981,7 @@ function windowsTable(host) {
 }
 function renderDrawer() {
   const el = $('#drawer'); if (!ui.drawer) return;
-  const body = h('div', { class: 'body' }); const code = g1(M.bars, M.oriented); const names = namesOf(M.bars, M.oriented);
+  const body = h('div', { class: 'body' }); const code = model.code(); const names = model.names();
   const head = (title, text, ...seg) => h('header', null, label(title, 'title'), note(text), h('span', { class: 'seg' }, seg), quiet('Close', () => togglePanel(ui.drawer)));
   const copy = h('button', { type: 'button', onclick: async () => { try { await navigator.clipboard.writeText(code); copy.textContent = 'Copied'; } catch { copy.textContent = 'Select the text to copy'; } setTimeout(() => { copy.textContent = 'Copy'; }, 1400); } }, 'Copy');
   const terms = () => [h('dt', null, 'bars'), h('dd', null, `${M.bars.length}, ${M.oriented ? 'directions kept' : 'shape only'}`),

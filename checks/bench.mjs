@@ -102,17 +102,16 @@ try{
   browser=await chromium.launch({headless:true});
 
   // ---- 1. the bench sends the terms of each drawing and displays the result
-  const openingQuery={bars:[[42,68,30,56],[56,80,18,36]],oriented:true,holds:[],stretch:0,x:12,tfs:[1,1,1,1,1],next:null};
-  const lowPin={a:[0,2],b:[1,2],rel:1};
-  const skeleton=[
-    {a:[0,0],b:[1,1],rel:-1}, {a:[0,0],b:[1,2],rel:1}, {a:[0,0],b:[1,3],rel:1},
-    {a:[1,1],b:[1,2],rel:1}, {a:[1,1],b:[1,3],rel:1}, {a:[1,2],b:[1,3],rel:-1},
-    {a:[1,1],b:[0,1],rel:1}, {a:[1,2],b:[0,2],rel:-1},
-  ];
+  // The bench asks its worker with the engine's drawing packet: the opening drawing, what is pinned on it, its skeleton
+  // level and its stretch. The engine turns the pins and the skeleton into the relations it holds.
+  const asked=(pins=[],skeleton=0,stretch=0)=>({packet:{version:1,revision:'133e3017ba9143f7dc255df7218ff7bfe46d9d06',oriented:true,
+    bars:[{v:[30,42,56,68],d:'u'},{v:[18,36,56,80],d:'d'}],pins,skeleton,stretch,next:{dir:0,measure:'any',bps:10,atr:1},limit:12},tfs:[1,1,1,1,1],next:null});
+  const openingQuery=asked();
+  const lowPin={a:{bar:0,part:'L'},b:{bar:1,part:'L'}};
   const cases=[
-    {name:'one pin',holds:[lowPin],stretch:0,hash:'&p=0L.1L'},
-    {name:'a pin and a colour',holds:[lowPin,{color:true,bar:0,dir:1}],stretch:0,hash:'&p=0L.1L,c0'},
-    {name:'skeleton 1 with stretch 1',holds:skeleton,stretch:1,hash:'&k=1&st=1'},
+    {name:'one pin',pins:[lowPin],skeleton:0,stretch:0,hash:'&p=0L.1L'},
+    {name:'a pin and a colour',pins:[lowPin,{bar:0,color:true}],skeleton:0,stretch:0,hash:'&p=0L.1L,c0'},
+    {name:'skeleton 1 with stretch 1',pins:[],skeleton:1,stretch:1,hash:'&k=1&st=1'},
   ];
   const {page,faults}=await open();
   const press=key=>page.keyboard.press(key);
@@ -128,9 +127,9 @@ try{
   assert.deepEqual(v.lanes,['draw','tf0','tf1','tf2','tf3','tf4'],'timeframes: one row per timeframe under the drawing');
   for(let k=0;k<5;k++)assert.equal(int(v.receipts['tf'+k].split(' of ')[0]),opening.exactF[k],`timeframe ${k}: the row must show the matcher's own count for it`);
   await rows(page,'Closing paths');   // no row asks the matcher here, so each held case costs one question
-  for(const {name,holds,stretch,hash} of cases){
+  for(const {name,pins,skeleton,stretch,hash} of cases){
     await go(page,START+hash);await settled(page);v=await see(page);
-    const held=await answerTo(page,{...openingQuery,holds,stretch});
+    const held=await answerTo(page,asked(pins,skeleton,stretch));
     assert.equal(held?.mode,'held',`${name}: the bench must ask the matcher to keep the holds`);
     assert.equal(int(v.count),sum(held.countsF),`${name}: the readout must show the windows that keep what is held`);
     assert.match(v.readout,/keeps? /,`${name}: the readout must say the count is windows that keep the holds`);
@@ -266,7 +265,7 @@ try{
 
   // ---- 5. an address reopens the same question
   const trip=await page.evaluate(async()=>{
-    const {createModel,g1}=await import('/bench/model.js');
+    const {createModel}=await import('/bench/model.js');
     let seed=20261122;const rnd=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;},pick=a=>a[Math.floor(rnd()*a.length)];
     const bad=[];let held=0,near=0;
     for(let t=0;t<400;t++){
@@ -282,7 +281,7 @@ try{
       a.giveAll(Array.from({length:6},()=>pick(['-','-','-','U','I','D'])).join(''));
       if(m.pins.length||m.skel)held++;if(m.bars.some(b=>b.v.some(v=>v!==Math.round(v))))near++;
       const text=a.address(),b=createModel();
-      const same=b.readAddress('#'+text)&&JSON.stringify(m.bars)===JSON.stringify(b.state.bars)&&g1(m.bars,m.oriented)===g1(b.state.bars,b.state.oriented)
+      const same=b.readAddress('#'+text)&&JSON.stringify(m.bars)===JSON.stringify(b.state.bars)&&a.code()===b.code()
         &&JSON.stringify(a.query())===JSON.stringify(b.query())&&JSON.stringify(m.pins)===JSON.stringify(b.state.pins)&&m.skel===b.state.skel&&m.stretch===b.state.stretch
         &&m.given===b.state.given&&b.address()===text;
       if(!same)bad.push(text);
@@ -403,7 +402,9 @@ try{
       calm(f,`?drawing= with ${what}`);await context.close();
     }
     // the model's packet reads back as itself, whatever is drawn and held
-    const {createModel,decodePacket,g1:codeOf}=await import('../bench/model.js');
+    // under Node the model gets the engine from the folder the checks name, as the page gets it from /engine/
+    const {install}=await import('./worker.mjs');install();
+    const {createModel}=await import('../bench/model.js'),{filang}=await import('../bench/filang.js');
     let seed=20261122;const rnd=()=>(seed=(seed*1664525+1013904223)>>>0)/4294967296;
     for(let i=0;i<2000;i++){
       const a=createModel(),n=2+Math.floor(rnd()*7),tie=rnd()<0.4;
@@ -414,9 +415,9 @@ try{
       for(let k=0;k<Math.floor(rnd()*4);k++){if(rnd()<0.3)a.colorPin(Math.floor(rnd()*n));else a.pin({bar:Math.floor(rnd()*n),part:'LBTH'[Math.floor(rnd()*4)]},{bar:Math.floor(rnd()*n),part:'LBTH'[Math.floor(rnd()*4)]});}
       a.setSkel(Math.floor(rnd()*3));a.setStretch(Math.floor(rnd()*5));a.state.x=[12,24,48][Math.floor(rnd()*3)];
       const packet=a.toPacket(),text=JSON.stringify(packet);
-      assert.deepEqual(decodePacket(text),packet,'a packet reads back as written');
+      assert.deepEqual(filang.decodeDrawing(text).packet,packet,'the engine reads a packet back as written');
       const b=createModel();assert.equal(b.readPacket(text),null,'the model takes its own packet');
-      assert.equal(codeOf(b.state.bars,b.state.oriented),codeOf(a.state.bars,a.state.oriented),'the same g1 after the trip');
+      assert.equal(b.code(),a.code(),'the same g1 after the trip');
       assert.equal(JSON.stringify(b.toPacket()),text,'and the same packet again');
     }
   }

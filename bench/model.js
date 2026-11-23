@@ -1,5 +1,9 @@
-// The drawing: a chained run of bars with free prices, and what the matcher is asked about it.
+// The drawing: a chained run of bars with free prices, and what the engine is asked about it.
 // BTCUSDT trades around the clock, so the drawing puts every later open at the previous close.
+// What a drawing is and holds (its g1 code, the rules held on it, its skeleton, its names) is read by the engine.
+import { filang, Candles, DRAWING_REVISION } from './filang.js';
+
+export { DRAWING_REVISION };
 
 /* ---- the chain ---- */
 // A drawn bar is [low, body bottom, body top, high] with a direction; its open and close are the body's ends in that
@@ -43,90 +47,31 @@ const rechain = (bars) => chainBars(chainParams(bars)).map((b) => bar(b.v, b.d))
 export function ohlc(bars) {
   return bars.map((b) => { const [l, lo, hi, h] = b.v; return lo === hi ? [lo, h, l, hi] : b.d === 'u' ? [lo, h, l, hi] : [hi, h, l, lo]; });
 }
-const dense = (arr) => { const srt = Array.from(new Set(arr)).sort((a, b) => a - b); const m = new Map(); srt.forEach((v, i) => m.set(v, i)); return arr.map((v) => m.get(v)); };
-/** The g1 identity: every endpoint ranked, equal prices sharing a rank, and each bar's direction. */
-export function identity(bars) {
-  const vals = []; for (const b of bars) for (let k = 0; k < 4; k++) vals.push(b.v[k]);
-  return { r: dense(vals), d: bars.map((b) => (b.v[1] === b.v[2] ? 'z' : b.d)), n: bars.length };
-}
-export function g1(bars, oriented) {
-  const id = identity(bars);
-  return `g1:${oriented ? 'o' : 'u'}:` + Array.from({ length: id.n }, (_, i) => id.r.slice(i * 4, i * 4 + 4).join(',') + (oriented ? ',' + id.d[i] : '')).join(';');
-}
-/** The catalogue names that fit the drawing, each with the bars it covers. Needs patterns.js on the page. */
-export function namesOf(bars, oriented) {
-  const C = globalThis.CandlePatterns; if (!C) return [];
-  const q = ohlc(bars); const [o, hh, l, c] = [0, 1, 2, 3].map((k) => q.map((x) => x[k])); const out = [];
-  for (let i = 0; i < bars.length; i++) for (const p of C.patterns) {
-    if (p.group || (p.oriented && !oriented) || i < p.bars - 1 || !C.compile(p.id)(o, hh, l, c, i)) continue;
-    out.push({ who: p.bars === 1 ? `Bar ${i + 1}` : `Bars ${i - p.bars + 2}–${i + 1}`, p });
-  }
-  return out;
-}
 /* ---- what a match holds ---- */
-// A pin names two drawn endpoints by part: L low, B body bottom, T body top, H high. The matcher reads prices by kind:
-// 0 open, 1 high, 2 low, 3 close, 4 body bottom, 5 body top. With colours kept, a body end is the open or the close.
+// A pin names two drawn endpoints by part: L low, B body bottom, T body top, H high. The engine turns the pins and the
+// skeleton into held rules, each between two prices by kind: 0 open, 1 high, 2 low, 3 close, 4 body bottom, 5 body top.
 export const PARTS = ['L', 'B', 'T', 'H'];
-const KIND_LETTER = ['O', 'H', 'L', 'C', 'B', 'T'];
-const sgn = (x) => (x > 0 ? 1 : x < 0 ? -1 : 0);
-const dirOfRow = (r) => sgn(r[3] - r[0]);
-export function kindOf(rows, bar, part, oriented) {
-  if (part === 'H') return 1; if (part === 'L') return 2;
-  if (!oriented) return part === 'T' ? 5 : 4;
-  const d = dirOfRow(rows[bar]); return part === 'T' ? (d >= 0 ? 3 : 0) : (d >= 0 ? 0 : 3);
-}
-export const priceOf = (rows, bar, kind) => { const [o, h, l, c] = rows[bar]; return [o, h, l, c, Math.min(o, c), Math.max(o, c)][kind]; };
 export const KIND_NAME = ['open', 'high', 'low', 'close', 'body bottom', 'body top'];
+const KINDS = ['open', 'high', 'low', 'close', 'body_low', 'body_high'];
+const KIND_LETTER = ['O', 'H', 'L', 'C', 'B', 'T'];
 /** A drawn level by part, from an open-high-low-close row. */
 export const partPrice = (row, part) => (part === 'L' ? row[2] : part === 'H' ? row[1] : part === 'B' ? Math.min(row[0], row[3]) : Math.max(row[0], row[3]));
-// a high (low) that beats every bar within k bars on both sides has strength k; the extremes of the whole shape have strength n
-export function landmarks(rows) {
-  const n = rows.length; const out = [];
-  for (const [part, k, s] of [['H', 1, 1], ['L', 2, -1]]) for (let i = 0; i < n; i++) {
-    const v = (j) => rows[j][k] * s; let st = 0;
-    while (st < n) {
-      const lo = i - (st + 1); const hi = i + (st + 1);
-      if (lo < 0 && hi >= n) { st = n; break; }
-      if ((lo >= 0 && !(v(i) > v(lo))) || (hi < n && !(v(i) > v(hi)))) break;
-      st++;
-    }
-    if (st > 0) out.push({ bar: i, part, k: st });
-  }
-  return out;
+// What the engine reads off a packet, kept by its text: the g1 code, the held rules in the order a fallback result's
+// `broken` indexes them, the skeleton's levels and swings, and the names that fit.
+const seen = new Map();
+function read(packet) {
+  const text = JSON.stringify(packet); let d = seen.get(text);
+  if (!d) { d = filang.decodeDrawing(text); if (seen.size >= 256) seen.delete(seen.keys().next().value); seen.set(text, d); }
+  return d;
 }
-export const skelLevels = (rows) => [...new Set(landmarks(rows).map((m) => m.k))].sort((a, b) => b - a);
-export function skelMarks(rows, skel) { const lv = skelLevels(rows); if (!skel || !lv.length) return []; const min = lv[Math.min(skel, lv.length) - 1]; return landmarks(rows).filter((m) => m.k >= min); }
-/**
- * Everything held, as the matcher needs it (`h`), each with where it came from. A relation is read off the rows as
- * they stand: a pin holds two endpoints, and whichever way they lie now is what a window must keep.
- */
-export function heldOf(rows, { pins = [], skel = 0, oriented = true } = {}) {
-  const out = []; const seen = new Set(); const n = rows.length;
-  const rel = (a, ka, b, kb, from, pin) => {
-    if (a === b && ka === kb) return;
-    const key = a < b || (a === b && ka < kb) ? `${a}.${ka}|${b}.${kb}` : `${b}.${kb}|${a}.${ka}`;
-    if (seen.has(key)) return; seen.add(key);
-    const r = sgn(priceOf(rows, a, ka) - priceOf(rows, b, kb));
-    out.push({ h: { a: [a, ka], b: [b, kb], rel: r }, label: `${KIND_LETTER[ka]}${a + 1} ${r > 0 ? '>' : r < 0 ? '<' : '='} ${KIND_LETTER[kb]}${b + 1}`, from, pin });
-  };
-  pins.forEach((p, i) => {
-    if (p.color) {
-      if (p.bar < n && oriented && !seen.has('c' + p.bar)) { seen.add('c' + p.bar); const d = dirOfRow(rows[p.bar]); out.push({ h: { color: true, bar: p.bar, dir: d }, label: `bar ${p.bar + 1} ${d > 0 ? 'up' : d < 0 ? 'down' : 'open = close'}`, from: 'pin', pin: i }); }
-      return;
-    }
-    if (p.a.bar >= n || p.b.bar >= n) return;
-    rel(p.a.bar, kindOf(rows, p.a.bar, p.a.part, oriented), p.b.bar, kindOf(rows, p.b.bar, p.b.part, oriented), 'pin', i);
+/** The held rules as the bench shows them: `h` is the rule the engine holds, with where it came from. */
+function rulesOf(d) {
+  return d.held_rules.map((r) => {
+    const pin = r.source === 'pin' ? r.pin : -1;
+    if (r.colour !== undefined) return { h: { color: true, bar: r.bar, dir: r.colour }, label: `bar ${r.bar + 1} ${r.colour > 0 ? 'up' : r.colour < 0 ? 'down' : 'open = close'}`, from: r.source, pin };
+    const ka = KINDS.indexOf(r.a.price); const kb = KINDS.indexOf(r.b.price);
+    return { h: { a: [r.a.bar, ka], b: [r.b.bar, kb], rel: r.relation }, label: `${KIND_LETTER[ka]}${r.a.bar + 1} ${r.relation > 0 ? '>' : r.relation < 0 ? '<' : '='} ${KIND_LETTER[kb]}${r.b.bar + 1}`, from: r.source, pin };
   });
-  const marks = skelMarks(rows, skel);
-  if (marks.length) {
-    const pts = [];
-    if (oriented) pts.push([0, 0]);
-    for (const m of marks) pts.push([m.bar, m.part === 'H' ? 1 : 2]);
-    if (oriented) pts.push([n - 1, 3]);
-    for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) rel(pts[i][0], pts[i][1], pts[j][0], pts[j][1], 'skeleton', -1);
-    for (const m of marks) for (const j of [m.bar - 1, m.bar + 1]) if (j >= 0 && j < n) { const k = m.part === 'H' ? 1 : 2; rel(m.bar, k, j, k, 'skeleton', -1); }
-  }
-  return out;
 }
 /* ---- end of what a match holds ---- */
 
@@ -141,38 +86,9 @@ export function fromRows(rows, lo = 18, hi = 80) {
 
 export const MAX_STRETCH = 4;
 
-/* ---- the drawing packet: how a shape is carried to and from the query bench ---- */
-// The packet is Filang's own (its study/composer/drawing.js): bars as drawn, pins, skeleton, stretch, the next-bar
-// term and the number of closest windows. It names the revision of the drawing format it was written in, and the
-// engine refuses any other. This is that revision; the format is the one this model already keeps.
-export const DRAWING_REVISION = '133e3017ba9143f7dc255df7218ff7bfe46d9d06';
+// The drawing packet is the engine's own format: bars as drawn, pins, skeleton, stretch, the next-bar term and the
+// number of closest windows. The engine reads and refuses packets; a link may carry at most this much text.
 export const PACKET_MAX = 96000;
-/** Read a packet as the engine's decoder reads it: the packet, or an Error that says what is wrong with it. */
-export function decodePacket(text) {
-  const need = (ok, why) => { if (!ok) throw new Error(why); };
-  const obj = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
-  const whole = (x, lo, hi) => Number.isInteger(x) && x >= lo && x <= hi;
-  need(typeof text === 'string' && text.length > 0 && text.length <= PACKET_MAX, 'it has an invalid size');
-  let p; try { p = JSON.parse(text); } catch { p = null; }
-  need(obj(p) && p.version === 1 && p.revision === DRAWING_REVISION, 'it is not a drawing in the format this bench reads');
-  need(typeof p.oriented === 'boolean' && Array.isArray(p.bars) && whole(p.bars.length, 1, MAX_BARS), `a drawing has 1 to ${MAX_BARS} bars`);
-  need(p.coordinates === undefined || p.coordinates === 'ordinal', 'its coordinate source is not known');
-  let last;
-  for (const b of p.bars) {
-    need(obj(b) && ['u', 'd'].includes(b.d) && Array.isArray(b.v) && b.v.length === 4 && b.v.every((x, i) => Number.isFinite(x) && Math.abs(x) <= 1e12 && (!i || x >= b.v[i - 1])), 'a bar has an invalid price or direction');
-    need(last === undefined || last === openOf(b.v, b.d), 'a bar opens away from the previous close');
-    last = closeOf(b.v, b.d);
-  }
-  const n = p.bars.length;
-  need(whole(p.skeleton, 0, n) && whole(p.stretch, 0, n === 1 ? 0 : MAX_STRETCH), 'its skeleton or stretch is out of range');
-  need(Array.isArray(p.pins) && p.pins.length <= n * (4 * n + 1) * 2, 'its pins are not valid');
-  const point = (x) => obj(x) && whole(x.bar, 0, n - 1) && PARTS.includes(x.part);
-  for (const pin of p.pins) need(obj(pin) && (pin.color === true ? whole(pin.bar, 0, n - 1) : point(pin.a) && point(pin.b)), 'a pin is not valid');
-  need(obj(p.next) && [-1, 0, 1].includes(p.next.dir) && ['any', 'bps', 'atr'].includes(p.next.measure) && Number.isFinite(p.next.bps) && p.next.bps > 0 && Number.isFinite(p.next.atr) && p.next.atr > 0, 'its next-bar term is not valid');
-  need([12, 24, 48].includes(p.limit), 'its number of closest windows is not valid');
-  return p;
-}
-/* ---- end of the drawing packet ---- */
 /** Later bars a closing state can be picked for, and the pick string with none: one character per later bar. */
 export const AFTER = 6;
 export const NO_GIVEN = '-'.repeat(AFTER);
@@ -196,8 +112,16 @@ export function createModel() {
   // a pin lives on its bars: when a bar goes, so do the pins that named it, and the skeleton cannot be finer than the shape has swings
   const tidy = () => {
     const n = m.bars.length; m.pins = m.pins.filter((p) => (p.color ? p.bar < n : p.a.bar < n && p.b.bar < n));
-    m.skel = Math.min(m.skel, skelLevels(ohlc(m.bars)).length);
+    m.skel = Math.min(m.skel, top());
   };
+  // The drawing as the engine's packet: what is drawn and what is held on it, nothing rounded. `over` asks about other
+  // rows, fewer pins, or another skeleton level.
+  const packet = (over = {}) => ({ version: 1, revision: DRAWING_REVISION, oriented: m.oriented,
+    bars: over.rows ? over.rows.map(([o, h, l, c]) => ({ v: [l, Math.min(o, c), Math.max(o, c), h], d: c < o ? 'd' : 'u' })) : m.bars.map((b) => ({ v: Array.from(b.v), d: b.d })),
+    pins: (over.pins === undefined ? m.pins : m.pins.slice(0, over.pins)).map((q) => (q.color ? { bar: q.bar, color: true } : { a: { bar: q.a.bar, part: q.a.part }, b: { bar: q.b.bar, part: q.b.part } })),
+    skeleton: over.pins === undefined ? over.skeleton ?? m.skel : 0, stretch: m.stretch, next: { dir: m.next.dir, measure: m.next.measure, bps: m.next.bps, atr: m.next.atr }, limit: m.x });
+  // how many skeleton levels the shape has: read off the bars alone, whatever is pinned
+  const top = () => read(packet({ pins: 0 })).skeleton_levels;
   const same = (a, b) => (p) => !p.color && ((p.a.bar === a.bar && p.a.part === a.part && p.b.bar === b.bar && p.b.part === b.part) || (p.a.bar === b.bar && p.a.part === b.part && p.b.bar === a.bar && p.b.part === a.part));
   const api = {
     state: m,
@@ -226,7 +150,7 @@ export function createModel() {
     colorPin(b) { push(); const i = m.pins.findIndex((p) => p.color && p.bar === b); if (i >= 0) m.pins.splice(i, 1); else m.pins.push({ bar: b, color: true }); return true; },
     unpin(i) { if (!m.pins[i]) return false; push(); m.pins.splice(i, 1); return true; },
     clearHolds() { if (!m.pins.length && !m.skel) return false; push(); m.pins = []; m.skel = 0; return true; },
-    setSkel(k) { const top = skelLevels(ohlc(m.bars)).length; k = Math.max(0, Math.min(top, k)); if (k === m.skel) return false; push(); m.skel = k; return true; },
+    setSkel(k) { k = Math.max(0, Math.min(top(), k)); if (k === m.skel) return false; push(); m.skel = k; return true; },
     setStretch(k) { k = Math.max(0, Math.min(MAX_STRETCH, k)); if (k === m.stretch) return false; push(); m.stretch = k; return true; },
     /**
      * Pick the closing state of later bar +j (1 to 6): 'U', 'I' or 'D'. The same pick again, or '-', frees the bar;
@@ -239,27 +163,27 @@ export function createModel() {
     },
     /** Replace every pick at once: a whole closing path, or NO_GIVEN to free every bar. */
     giveAll(text) { if (!/^[UID-]{6}$/.test(text) || text === m.given) return false; push(); m.given = text; return true; },
-    skelTop: () => skelLevels(ohlc(m.bars)).length,
+    skelTop: top,
     /** The swings the skeleton keeps, at its level or at another one. */
-    skelMarks: (level = m.skel) => skelMarks(ohlc(m.bars), level),
+    skelMarks: (level = m.skel) => read(packet({ skeleton: level })).skeleton_marks.map((x) => ({ bar: x.bar, part: x.price === 'high' ? 'H' : 'L', k: x.strength })),
     /** Everything held on the drawing, or on other rows read with the drawing's pins and skeleton level. */
-    held(rows) { return heldOf(rows || ohlc(m.bars), { pins: m.pins, skel: m.skel, oriented: m.oriented }); },
+    held(rows) { return rulesOf(read(packet(rows ? { rows } : {}))); },
+    /** The drawing's g1 code. */
+    code: () => read(packet()).shape.code,
+    /** The catalogue names that fit the drawing, each with the bars it covers. */
+    names: () => read(packet()).names.map(({ id, start, end }) => ({ who: end - start === 1 ? `Bar ${end}` : `Bars ${start + 1}–${end}`, p: Candles.patterns.find((p) => p.id === id) })),
     /**
-     * The matcher's query includes the drawn bars, held relations, and search terms.
-     * `over.rows` asks about other bars with the same pins; `over.holds` sends a chosen part of what is held.
+     * What the worker is asked: the drawing as a packet, the timeframes shown, and Composer's next-bar filter.
+     * `over.rows` asks about other bars with the same pins and skeleton; `over.pins` keeps only that many of the pins,
+     * in order, and no skeleton; `over.tfs` shows other timeframes.
      */
     query(over = {}) {
       const nx = m.next; const next = nx.dir ? { dir: nx.dir, measure: nx.measure, value: nx.measure === 'bps' ? nx.bps : nx.measure === 'atr' ? nx.atr : 0 } : null;
-      const rows = over.rows || ohlc(m.bars);
-      return { bars: rows, oriented: m.oriented, holds: over.holds || api.held(rows).map((x) => x.h), stretch: m.stretch, x: m.x, tfs: (over.tfs || m.tfOn).map(Number), next };
+      return { packet: packet(over), tfs: (over.tfs || m.tfOn).map(Number), next };
     },
 
     /** The drawing as the packet the query bench reads: what is drawn and what is held on it, nothing rounded. */
-    toPacket() {
-      return { version: 1, revision: DRAWING_REVISION, oriented: m.oriented, bars: m.bars.map((b) => ({ v: Array.from(b.v), d: b.d })),
-        pins: m.pins.map((q) => (q.color ? { bar: q.bar, color: true } : { a: { bar: q.a.bar, part: q.a.part }, b: { bar: q.b.bar, part: q.b.part } })),
-        skeleton: m.skel, stretch: m.stretch, next: { dir: m.next.dir, measure: m.next.measure, bps: m.next.bps, atr: m.next.atr }, limit: m.x };
-    },
+    toPacket: () => packet(),
     /** Whether a pin holds something the engine reads as a rule on fixed candles: a colour pin does only with directions kept. */
     pinned: () => m.pins.some((q) => !q.color || m.oriented),
     /**
@@ -268,13 +192,15 @@ export function createModel() {
      * read off another shape. Null when it was taken; otherwise the reason, with nothing changed. History is left alone.
      */
     readPacket(text) {
-      let p; try { p = decodePacket(text); } catch (e) { return String(e.message || e); }
+      if (typeof text !== 'string' || !text.length || text.length > PACKET_MAX) return 'it has an invalid size';
+      let p; try { p = filang.decodeDrawing(text).packet; } catch (e) { return String(e.message || e).replace(/\.$/, ''); }
+      if (p.dimensions?.length) return 'it carries dimensions, which this bench does not draw yet';
       if (p.bars.length < MIN_BARS) return `this bench draws ${MIN_BARS} bars or more`;
       m.bars = rechain(p.bars.map((b) => bar(b.v, b.d))); m.sel = m.bars.length - 1; m.oriented = p.oriented;
       // a pin is a colour pin only as the decoder judged it one (`color === true`): any other pin was checked as two
       // endpoints, and is taken as two endpoints, whatever else it carries
       m.pins = p.pins.filter((q) => q.color === true || q.a.bar !== q.b.bar || q.a.part !== q.b.part).map((q) => (q.color === true ? { bar: q.bar, color: true } : { a: { bar: q.a.bar, part: q.a.part }, b: { bar: q.b.bar, part: q.b.part } }));
-      m.skel = Math.min(p.skeleton, skelLevels(ohlc(m.bars)).length); m.stretch = p.stretch;
+      m.skel = Math.min(p.skeleton, top()); m.stretch = p.stretch;
       m.next = { dir: p.next.dir, measure: p.next.measure, bps: p.next.bps, atr: p.next.atr }; m.x = p.limit; m.given = NO_GIVEN;
       return null;
     },
@@ -315,7 +241,7 @@ export function createModel() {
         if (c && +c[1] < n) pins.push({ bar: +c[1], color: true });
         else if (r && +r[1] < n && +r[3] < n && !(r[1] === r[3] && r[2] === r[4])) pins.push({ a: { bar: +r[1], part: r[2] }, b: { bar: +r[3], part: r[4] } });
       }
-      m.pins = pins; m.skel = Math.max(0, Math.min(skelLevels(ohlc(m.bars)).length, Math.trunc(+p.get('k')) || 0)); m.stretch = Math.max(0, Math.min(MAX_STRETCH, Math.trunc(+p.get('st')) || 0));
+      m.pins = pins; m.skel = Math.max(0, Math.min(top(), Math.trunc(+p.get('k')) || 0)); m.stretch = Math.max(0, Math.min(MAX_STRETCH, Math.trunc(+p.get('st')) || 0));
       // the closing states picked for the later bars, one character per bar
       m.given = /^[UID-]{6}$/.test(p.get('gv') || '') ? p.get('gv') : NO_GIVEN;
       return true;

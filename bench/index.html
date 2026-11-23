@@ -54,7 +54,17 @@
     </span>
     <span id="status"></span>
   </footer>
-  <script src="/patterns.js"></script>
+  <!-- The engine and the bars are what a first answer waits for: both start downloading with the page. -->
+  <link rel="preload" href="/engine/filang_engine.wasm" as="fetch" type="application/wasm" crossorigin="anonymous">
+  <link rel="preload" href="/bars" as="fetch" crossorigin="anonymous">
+  <link rel="modulepreload" href="/engine/index.mjs">
+  <link rel="modulepreload" href="/matcher.js">
+  <link rel="modulepreload" href="/bench/filang.js">
+  <link rel="modulepreload" href="/bench/model.js">
+  <link rel="modulepreload" href="/bench/engine.js">
+  <link rel="modulepreload" href="/bench/lanes.js">
+  <link rel="modulepreload" href="/bench/dom.js">
+  <link rel="modulepreload" href="/bench/motion.js">
   <script type="module" src="/bench/bench.js"></script>
 </body>
 </html>

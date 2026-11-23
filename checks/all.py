@@ -9,7 +9,7 @@ checks = [
     ['node', 'checks/chain.mjs'],
     ['node', 'checks/chained-vectors.mjs'],
     *[[sys.executable, 'checks/with_bars.py', f'checks/{name}.mjs'] for name in
-      ('similarity-windows', 'similarity-look', 'similarity-equivalence', 'panes', 'activity-preparation', 'search-performance', 'loading-performance', 'bench')],
+      ('similarity-windows', 'similarity-look', 'panes', 'engine-parity', 'activity-preparation', 'search-performance', 'loading-performance', 'bench')],
     [sys.executable, 'checks/container.py'],
     [sys.executable, 'checks/lint_workflows.py'],
 ]

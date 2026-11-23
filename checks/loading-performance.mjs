@@ -58,9 +58,12 @@ try{
   const matchCount=await page.locator('#readout > b').textContent();
   const cancelled=await page.evaluate(async()=>{
     let c=42;const bars=Array.from({length:20},(_,i)=>{const o=c;c+=i%3===1?-18:14;return[o,Math.max(o,c)+12,Math.min(o,c)-12,c];});
-    __loadWorker.postMessage({type:'query',id:999,q:{bars,holds:[{color:true,bar:0,dir:1}],stretch:4,tfs:[1,1,1,1,1],oriented:true,x:48}});
+    // the worker takes a drawing as the engine's packet: the bars, what is pinned, the stretch and how many windows to show
+    const {DRAWING_REVISION:revision}=await import('/bench/filang.js');
+    const packet=(rows,pins,stretch,limit)=>({version:1,revision,oriented:true,bars:rows.map(([o,h,l,c])=>({v:[l,Math.min(o,c),Math.max(o,c),h],d:c<o?'d':'u'})),pins,skeleton:0,stretch,next:{dir:0,measure:'any',bps:10,atr:1},limit});
+    __loadWorker.postMessage({type:'query',id:999,q:{packet:packet(bars,[{bar:0,color:true}],4,48),tfs:[1,1,1,1,1],next:null}});
     await new Promise(r=>setTimeout(r,20));const at=performance.now();
-    __loadWorker.postMessage({type:'query',id:1000,q:{bars:bars.slice(0,2),holds:[],stretch:0,tfs:[0,0,0,0,1],oriented:true,x:12}});
+    __loadWorker.postMessage({type:'query',id:1000,q:{packet:packet(bars.slice(0,2),[],0,12),tfs:[0,0,0,0,1],next:null}});
     return at;
   });
   await page.waitForFunction(()=>__loadEvents.some(e=>e.id===1000));
