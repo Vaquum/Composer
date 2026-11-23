@@ -70,7 +70,7 @@ export function createEngine({ onState }) {
       if (m.type === 'progress') { if (flight && m.id === flight.id && flight.onProgress) flight.onProgress(m.f); return; }
       if (m.type === 'result' && flight && m.id === flight.id) { answered = true; useActivity(); const f = flight; flight = null; f.resolve(m); pump(); }
       // a question the engine refuses is answered with nothing, and says why
-      if (m.type === 'refused' && flight && m.id === flight.id) { const f = flight; flight = null; state.note = m.message; console.error(m.message); f.resolve(null); tell(); pump(); }
+      if (m.type === 'refused' && flight && m.id === flight.id) { answered = true; useActivity(); const f = flight; flight = null; state.note = m.message; console.error(m.message); f.resolve(null); tell(); pump(); }
     };
     loadPayload('/bars', {}, (response) => { barsTag = response.headers.get('ETag') || ''; }).then((buffer) => {
       const b = new Uint8Array(buffer);
