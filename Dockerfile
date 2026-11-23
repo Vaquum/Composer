@@ -2,7 +2,7 @@ FROM python:3.12-slim
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
 WORKDIR /app
-COPY matcher.js patterns.js bars.py server.py engine.py engine.json ./
+COPY matcher.js bars.py server.py engine.py engine.json ./
 COPY bench ./bench
 # The shared Filang engine, served to the page at /engine/: one published release, checked against the digest
 # engine.json names. The server does not start without it.

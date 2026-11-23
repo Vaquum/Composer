@@ -13,7 +13,7 @@ recorded open is often a cent away from the previous close, and read as recorded
 break the joint's tie. The record itself is not changed. Hold the relations that must stay true
 (pins, a skeleton, colours), let the drawn bars skip bars of history (stretch), and filter on what
 the next bar did. Composer
-searches the 15m, 30m, 1h, 2h and 4h BTCUSDT bars in the browser and shows the closest windows,
+searches the 15m, 30m, 1h, 2h and 4h BTCUSDT bars in the browser, with the shared Filang engine, and shows the closest windows,
 ranked by how they look: colours first, then shape, then sizes, with a small charge for each
 comparison that flips. Prices are compared exactly as the engine does, in integer cents.
 
@@ -44,9 +44,8 @@ python3 engine.py
 python3 server.py --port 8488
 ```
 
-`engine.py` fetches the shared [Filang](https://github.com/Vaquum/Filang) engine's browser package into `engine/`:
-the release that `engine.json` names, checked against the digest it names. The server serves it at `/engine/` and
-does not start without it. The page does not ask it yet: Composer's matching moves onto it in the changes that follow.
+`engine.py` fetches the shared Filang engine into `engine/`: the release that `engine.json` names, checked against
+the digest it names. Composer does not start without it.
 
 Open [127.0.0.1:8488](http://127.0.0.1:8488). The page answers immediately. A checksummed history snapshot in `~/.cache/composer`
 (or `COMPOSER_CACHE_DIR`) serves data across restarts while newer files load in the background.
@@ -55,12 +54,19 @@ Bars download before activity so the first matches need only the matching payloa
 
 ## Files
 
-- `bench/` contains the page, drawing model and interface.
-- `matcher.js` runs the matcher as a Web Worker.
-- `bars.py` reads the kline files and encodes them for the matcher.
-- `engine.json` names the Filang release served at `/engine/`; `engine.py` fetches and checks it.
+- `bench/` contains the page, drawing model and interface. `bench/filang.js` is the engine in the page: it reads a
+  drawing's g1 code, the relations held on it, its skeleton and the catalogue names that fit.
+- `matcher.js` is the Web Worker. It hands the bars to the engine, asks it which windows match, and describes those
+  windows from its own copy of the bars: the next bar, what followed, and the activity readings.
+- `engine.json` names the Filang release Composer runs on; `engine.py` fetches and checks it.
+- `bars.py` reads the kline files and encodes them for the worker.
 - `server.py` serves the page, the worker, the engine, `/bars`, `/activity` and `/healthz` on `127.0.0.1` only.
 - `tests/` and `checks/` cover reading, encoding, serving, matching and browser behavior.
+
+Composer has no matching of its own. Which windows match a drawing (exact twins, the windows that keep what is
+held, stretch, the closest-looking windows, the shapes one comparison away) and what a drawing is (its g1 code, its
+held rules, its names) are the shared [Filang](https://github.com/Vaquum/Filang) engine's answers, the same engine
+the query bench and Limen use.
 
 ## Checks
 
@@ -71,12 +77,14 @@ python3 engine.py
 python3 -m unittest discover -s tests -v
 python3 checks/with_bars.py checks/similarity-windows.mjs
 python3 checks/with_bars.py checks/similarity-look.mjs
-python3 checks/with_bars.py checks/similarity-equivalence.mjs
 python3 checks/with_bars.py checks/panes.mjs
+python3 checks/with_bars.py checks/engine-parity.mjs
 python3 checks/with_bars.py checks/bench.mjs
 ```
 
-`with_bars.py` reads the current bars as the server does, once, and runs the check on them.
+`with_bars.py` reads the current bars as the server does, once, and runs the check on them. The similarity and panes
+checks recompute the engine's answers independently, from their definitions. `engine-parity.mjs` compares every
+figure with the matcher Composer had before it moved onto the engine (commit `bd6a0ba`, read from git).
 `python3 checks/all.py` runs all required checks sequentially, including the container build.
 
 ## Deploy
@@ -102,7 +110,7 @@ as the Market State Cube Explorer does. `DEPLOY_DIR` names the directory on the 
 
 Open **Patterns** to browse the English and Japanese names or open a link such as `/?pattern=hammer`. Choose a timeframe to count every complete window satisfying the displayed rule and inspect its most recent closes in UTC. Clicking a name under the drawing opens the same rule. Gaps reset two-bar windows. These counts use observed OHLC prices, including recorded opens, independently of the drawing's nearest matches, pins, next-bar filters and closing paths.
 
-[patterns.js](patterns.js) defines profile v1. Every entry has a stable ID, names, a window length and an executable comparison tree. Operands are integer price levels, body or wick lengths, direction, and positive integral multiples; `prev.` refers to the preceding bar. Relations use exact price ticks, including ties. A changed rule needs a new version. Downstream clients pin and copy this file without rewriting its predicates. A G1 string expresses endpoint order; wick-to-body length ratios require measured OHLC distances.
+The catalogue is the Filang engine's: profile v1, where every entry has a stable ID, names, a window length and a rule over exact price ticks, including ties. A changed rule needs a new version. Composer shows the catalogue and asks the engine to count it and to name a drawing; it holds no copy of the rules. A G1 string expresses endpoint order; wick-to-body length ratios require measured OHLC distances.
 
 The original names use the geometry in [Composer at 133e301](https://github.com/Vaquum/Composer/blob/133e3017ba9143f7dc255df7218ff7bfe46d9d06/index.html#L730). Profile v1 adds Hammer and Inverted hammer shapes, Spinning top, Four-price doji and the Inside/Outside bar range relations already described on the paper. A Hammer requires a nonzero body, a lower wick at least twice its length and an upper wick at most half its length. Short-wick tolerance is a Composer convention. The profile tests geometry at the close and imposes no preceding trend or subsequent reversal confirmation. Other implementations can choose different definitions, including the adaptive lookbacks in [TA-Lib Hammer](https://ta-lib.org/functions/cdlhammer) and [Limen's CDL indicators](https://github.com/Vaquum/Limen/tree/main/limen/indicators).
 

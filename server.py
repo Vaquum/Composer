@@ -28,7 +28,6 @@ import bars
 ROOT = Path(__file__).resolve().parent
 PAGES = {
     '/': ('bench/index.html', 'text/html; charset=utf-8'),
-    '/patterns.js': ('patterns.js', 'text/javascript; charset=utf-8'),
     '/matcher.js': ('matcher.js', 'text/javascript; charset=utf-8'),
 }
 BENCH_ASSETS = {'base.css': 'text/css', 'bench.css': 'text/css', 'composer.css': 'text/css',

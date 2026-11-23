@@ -74,6 +74,7 @@ class Server(unittest.TestCase):
         self.assertEqual(self.get('/bench/composer.css').headers['Content-Type'], 'text/css; charset=utf-8')
         self.assertEqual(self.get('/motion.js').status, 404)
         self.assertEqual(self.get('/panes.css').status, 404)
+        self.assertEqual(self.get('/patterns.js').status, 404)
         got = self.get('/bars')
         self.assertEqual(got.version, 11)
         etag = got.headers['ETag']
