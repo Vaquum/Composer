@@ -27,7 +27,7 @@ import json, urllib.request
 assert b'<script type="module" src="/bench/bench.js">' in urllib.request.urlopen('http://127.0.0.1:8488/',timeout=2).read()
 health=json.load(urllib.request.urlopen('http://127.0.0.1:8488/healthz',timeout=2))
 assert health['ready'] and len(health['files'])==5
-for path,magic in [('bars',b'CBAR1'),('activity',b'CACT1')]:
+for path,magic in [('bars',b'CBAR1'),('activity',b'CACT1'),('engine/filang_engine.wasm',b'\\0asm'),('engine/index.mjs',b'const ABI')]:
     assert urllib.request.urlopen('http://127.0.0.1:8488/'+path,timeout=2).read().startswith(magic)
 '''
 try:

@@ -4,3 +4,5 @@ __pycache__/
 bars.bin
 
 node_modules/
+# the Filang engine's browser package, fetched by engine.py
+engine/

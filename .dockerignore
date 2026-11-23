@@ -6,4 +6,5 @@ checks
 .env
 
 node_modules
+engine
 package*.json

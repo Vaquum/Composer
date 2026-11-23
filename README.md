@@ -40,8 +40,13 @@ No data is committed to this repository.
 
 ```sh
 pip install -r requirements.txt
+python3 engine.py
 python3 server.py --port 8488
 ```
+
+`engine.py` fetches the shared [Filang](https://github.com/Vaquum/Filang) engine's browser package into `engine/`:
+the release that `engine.json` names, checked against the digest it names. The server serves it at `/engine/` and
+does not start without it. The page does not ask it yet: Composer's matching moves onto it in the changes that follow.
 
 Open [127.0.0.1:8488](http://127.0.0.1:8488). The page answers immediately. A checksummed history snapshot in `~/.cache/composer`
 (or `COMPOSER_CACHE_DIR`) serves data across restarts while newer files load in the background.
@@ -53,7 +58,8 @@ Bars download before activity so the first matches need only the matching payloa
 - `bench/` contains the page, drawing model and interface.
 - `matcher.js` runs the matcher as a Web Worker.
 - `bars.py` reads the kline files and encodes them for the matcher.
-- `server.py` serves the page, the worker, `/bars`, `/activity` and `/healthz` on `127.0.0.1` only.
+- `engine.json` names the Filang release served at `/engine/`; `engine.py` fetches and checks it.
+- `server.py` serves the page, the worker, the engine, `/bars`, `/activity` and `/healthz` on `127.0.0.1` only.
 - `tests/` and `checks/` cover reading, encoding, serving, matching and browser behavior.
 
 ## Checks
@@ -61,6 +67,7 @@ Bars download before activity so the first matches need only the matching payloa
 ```sh
 npm ci
 npx playwright install chromium
+python3 engine.py
 python3 -m unittest discover -s tests -v
 python3 checks/with_bars.py checks/similarity-windows.mjs
 python3 checks/with_bars.py checks/similarity-look.mjs

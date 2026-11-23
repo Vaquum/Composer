@@ -17,6 +17,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+# The server serves the Filang engine's two files from the folder this names. These tests do not run the engine, so
+# they serve stand-ins of their own: the folder is named before the server reads it.
+ENGINE = tempfile.TemporaryDirectory()
+(Path(ENGINE.name) / 'index.mjs').write_text('const ABI = 1;\n' + 'export const filler = 0;\n' * 400)
+(Path(ENGINE.name) / 'filang_engine.wasm').write_bytes(b'\0asm\x01\0\0\0' + bytes(4096))
+os.environ['COMPOSER_ENGINE_DIR'] = ENGINE.name
 import bars  # noqa: E402
 import server  # noqa: E402
 
@@ -78,6 +84,24 @@ class Server(unittest.TestCase):
         self.assertNotEqual(traded.headers['ETag'], etag)
         self.assertEqual(self.get('/activity', {'If-None-Match': traded.headers['ETag']}).status, 304)
         self.assertEqual(self.get('/nothing').status, 404)
+
+    def test_the_engine_is_served_compressed_and_revalidated(self) -> None:
+        wasm = self.get('/engine/filang_engine.wasm')
+        self.assertEqual((wasm.status, wasm.headers['Content-Type']), (200, 'application/wasm'))
+        raw = wasm.read()
+        self.assertTrue(raw.startswith(b'\0asm'))
+        self.assertEqual(self.get('/engine/index.mjs').headers['Content-Type'], 'text/javascript; charset=utf-8')
+        self.assertEqual(self.get('/engine/worker.mjs').status, 404)
+        packed = self.get('/engine/filang_engine.wasm', {'Accept-Encoding': 'gzip'})
+        self.assertEqual((packed.headers['Content-Encoding'], packed.headers['Vary']), ('gzip', 'Accept-Encoding'))
+        body = packed.read()
+        self.assertLess(len(body), len(raw))
+        self.assertEqual(gzip.decompress(body), raw)
+        # each form has its own validator, and a page that has not changed is not sent again
+        self.assertNotEqual(packed.headers['ETag'], wasm.headers['ETag'])
+        again = self.get('/engine/filang_engine.wasm', {'Accept-Encoding': 'gzip', 'If-None-Match': packed.headers['ETag']})
+        self.assertEqual((again.status, again.read()), (304, b''))
+        self.assertEqual(self.get('/bench/bench.js', {'If-None-Match': self.get('/bench/bench.js').headers['ETag']}).status, 304)
 
     def test_page_aliases_keep_the_query(self) -> None:
         query = '?drawing=%7B%22bars%22%3A%5B%5D%7D&pattern=hammer'
