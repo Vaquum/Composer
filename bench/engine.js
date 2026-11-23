@@ -1,5 +1,8 @@
-// The worker (matcher.js) receives the bars, then the activity for the readings.
+// The worker (matcher.js) receives the engine's compiled module and the bars, hands the bars to the engine, then
+// receives the activity for the readings.
 // It answers only its latest query, so queries run one at a time here. `clear()` drops unsent queries.
+
+import { engineModule } from './filang.js';
 
 async function loadPayload(path) {
   for (let attempt = 0; ; attempt++) {
@@ -22,7 +25,7 @@ export function createEngine({ onState }) {
   function start() {
     // The bench is still being set up while this runs, and what it does on a change of state reads the engine it
     // has not been handed yet. So a failure here is told once the caller has it; every other change arrives later.
-    try { worker = new Worker('/matcher.js'); } catch (err) { state.failed = 'This browser cannot run the matcher in the background.'; queueMicrotask(tell); return; }
+    try { worker = new Worker('/matcher.js', { type: 'module' }); worker.postMessage({ type: 'engine', module: engineModule }); } catch (err) { state.failed = 'This browser cannot run the matcher in the background.'; queueMicrotask(tell); return; }
     worker.onerror = (e) => { state.failed = `The matcher stopped: ${e.message || 'unknown error'}.`; tell(); };
     worker.onmessage = (e) => {
       const m = e.data;
@@ -33,6 +36,8 @@ export function createEngine({ onState }) {
       if (m.type === 'named-pattern') { const w = named.get(m.id); if (w) { named.delete(m.id); w(m); } return; }
       if (m.type === 'progress') { if (flight && m.id === flight.id && flight.onProgress) flight.onProgress(m.f); return; }
       if (m.type === 'result' && flight && m.id === flight.id) { const f = flight; flight = null; f.resolve(m); pump(); }
+      // a question the engine refuses is answered with nothing, and says why
+      if (m.type === 'refused' && flight && m.id === flight.id) { const f = flight; flight = null; state.note = m.message; console.error(m.message); f.resolve(null); tell(); pump(); }
     };
     loadPayload('/bars').then((buffer) => {
       const b = new Uint8Array(buffer);
@@ -62,7 +67,7 @@ export function createEngine({ onState }) {
       return new Promise((resolve) => {
         if (!state.ready) { resolve({ error: 'The history is still loading.' }); return; }
         const n = ++id; named.set(n, resolve);
-        worker.postMessage({ type: 'named-pattern', id: n, pattern, timeframe, catalogURL: new URL('/patterns.js', location.href).href });
+        worker.postMessage({ type: 'named-pattern', id: n, pattern, timeframe });
       });
     },
   };

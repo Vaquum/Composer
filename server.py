@@ -33,10 +33,11 @@ PAGES = {
 }
 BENCH_ASSETS = {'base.css': 'text/css', 'bench.css': 'text/css', 'composer.css': 'text/css',
                 'bench.js': 'text/javascript', 'lanes.js': 'text/javascript', 'engine.js': 'text/javascript',
-                'model.js': 'text/javascript', 'motion.js': 'text/javascript', 'dom.js': 'text/javascript'}
+                'model.js': 'text/javascript', 'motion.js': 'text/javascript', 'dom.js': 'text/javascript',
+                'filang.js': 'text/javascript'}
 PAGES.update({f'/bench/{name}': (f'bench/{name}', f'{kind}; charset=utf-8') for name, kind in BENCH_ASSETS.items()})
-# The shared Filang engine's browser package, for the page and its worker to load from /engine/. It is one published
-# release, fetched and checked by engine.py into this folder (or the one COMPOSER_ENGINE_DIR names).
+# The shared Filang engine's browser package: the page and the worker ask it everything about patterns. It is one
+# published release, fetched and checked by engine.py into this folder (or the one COMPOSER_ENGINE_DIR names).
 ENGINE_DIR = Path(os.environ.get('COMPOSER_ENGINE_DIR', str(ROOT / 'engine')))
 ENGINE_ASSETS = {'index.mjs': 'text/javascript; charset=utf-8', 'filang_engine.wasm': 'application/wasm'}
 PAGES.update({f'/engine/{name}': (str(ENGINE_DIR / name), kind) for name, kind in ENGINE_ASSETS.items()})

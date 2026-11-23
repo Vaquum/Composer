@@ -35,6 +35,8 @@ jobs:
       - run: pip install -r requirements.txt
       - name: The shared Filang engine, at the release engine.json names
         run: python engine.py
+      - name: The matcher this branch replaced, for the comparison below
+        run: git fetch --depth 1 origin bd6a0ba32e18548b641267418491bfb5f011a274
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - name: Unit tests
@@ -47,8 +49,8 @@ jobs:
         run: python checks/with_bars.py checks/similarity-windows.mjs
       - name: Two-bar colours and proportions
         run: python checks/with_bars.py checks/similarity-look.mjs
-      - name: Bounded search against the unbounded one
-        run: python checks/with_bars.py checks/similarity-equivalence.mjs
+      - name: Every figure against the matcher this replaced, on the current bars
+        run: python checks/with_bars.py checks/engine-parity.mjs
       - name: The panes against an independent recomputation
         run: python checks/with_bars.py checks/panes.mjs
       - name: Real-history search latency and cancellation work slices
