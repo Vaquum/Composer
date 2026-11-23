@@ -24,14 +24,17 @@ T0 = 1577836800  # 2020-01-01 00:00 UTC
 
 
 def parquet(times: list[int], rows: list[tuple[float, float, float, float]], unit: str = 'ms', tz: str | None = 'UTC',
-            traded: list[tuple[float, float, int, float]] | None = None) -> bytes:
+            traded: list[tuple] | None = None) -> bytes:
+    """A kline file. `traded` is per bar the volume, the quote volume, the trades, the maker volume and, when given, the
+    maker side of the quote volume (none of it otherwise)."""
     scale = {'s': 1, 'ms': 1000}[unit]
-    traded = traded or [(10.0 + i, 70000.0 * (10 + i), 100 + i, 4.0) for i in range(len(rows))]
+    traded = traded or [(10.0 + i, 70000.0 * (10 + i), 100 + i, 4.0, 28000.5 * (10 + i)) for i in range(len(rows))]
     table = pa.table({
         'datetime': pa.array([t * scale for t in times], pa.timestamp(unit, tz=tz)),
         'open': [r[0] for r in rows], 'high': [r[1] for r in rows], 'low': [r[2] for r in rows], 'close': [r[3] for r in rows],
         'volume': [x[0] for x in traded], 'liquidity_sum': [x[1] for x in traded],
         'no_of_trades': pa.array([x[2] for x in traded], pa.uint64()), 'maker_volume': [x[3] for x in traded],
+        'maker_liquidity': [x[4] if len(x) > 4 else 0.0 for x in traded],
     })
     out = io.BytesIO()
     pq.write_table(table, out)
@@ -59,6 +62,8 @@ class Frames(unittest.TestCase):
         self.assertEqual((f.opens[0], f.highs[0], f.lows[0], f.closes[0]), (719524, 724500, 717546, 722501))
         self.assertEqual(f.closes[3], 720000)
         self.assertEqual((f.volumes[1], f.quotes[1], f.trades[1], f.makers[1]), (11.0, 770000.0, 101, 4.0))
+        # the taker-buy quote volume is what traded less its maker side: the one float that subtraction gives
+        self.assertEqual(f.taker_quotes, [70000.0 * (10 + i) - 28000.5 * (10 + i) for i in range(4)])
 
     def test_bad_files_are_refused(self) -> None:
         good = (100.0, 101.0, 99.0, 100.5)
@@ -70,6 +75,9 @@ class Frames(unittest.TestCase):
             'not UTC': (parquet([T0], [good], tz=None), 1, 'UTC timestamp'),
             'no volume': (parquet([T0], [good], traded=[(0.0, 1.0, 1, 0.0)]), 1, 'no usable volume'),
             'maker beyond volume': (parquet([T0], [good], traded=[(1.0, 1.0, 1, 1.5)]), 1, 'no usable volume'),
+            'maker side beyond the quote volume': (parquet([T0], [good], traded=[(1.0, 100.0, 1, 0.5, 100.1)]), 1, 'no usable taker-buy quote volume'),
+            'a negative maker side': (parquet([T0], [good], traded=[(1.0, 100.0, 1, 0.5, -0.1)]), 1, 'no usable taker-buy quote volume'),
+            'more trades than the counters hold': (parquet([T0], [good], traded=[(1.0, 100.0, 2 ** 32, 0.5, 50.0)]), 1, 'no usable taker-buy quote volume'),
         }
         for label, (data, rows, message) in cases.items():
             with self.subTest(label), self.assertRaisesRegex(ValueError, message):
@@ -151,6 +159,57 @@ class Activity(unittest.TestCase):
     def test_activity_must_cover_every_bar(self) -> None:
         with self.assertRaisesRegex(ValueError, 'does not cover every bar'):
             bars.encode_activity([bars.Frame('15m', 900, [T0], [1], [2], [1], [2])])
+
+
+class Counters(unittest.TestCase):
+    """What a g1 dimension is read from is carried exactly: an order and a tie must survive the packing."""
+
+    def frames(self) -> list[bars.Frame]:
+        # amounts that differ in their last bit, amounts a quantized code would merge, and the largest trade count
+        quotes = [292226.0, 9.1e7, 1.086850286e9, 0.1 + 0.2, 0.30000000000000004, 652854.14]
+        takers = [146113.0, 9.1e7, 0.0, 0.1, 0.30000000000000004, 652854.14 - 317056.78]
+        trades = [224, 51234, 0xFFFFFFFF, 1, 2, 100]
+        times = [T0 + 900 * i for i in range(6)]
+        return [
+            bars.Frame('15m', 900, times, [1] * 6, [2] * 6, [1] * 6, [2] * 6, [1.0] * 6, quotes, trades, [0.5] * 6, takers),
+            bars.Frame('4h', 14400, [T0], [1], [2], [1], [2], [5.887], [400000.0], [300], [5.887], [0.0]),
+        ]
+
+    def test_the_matcher_decodes_the_counters_bit_for_bit(self) -> None:
+        node = shutil.which('node')
+        if node is None:
+            self.fail('node is needed to check that matcher.js decodes what bars.py encodes')
+        frames = self.frames()
+        with tempfile.NamedTemporaryFile(suffix='.cnt') as tmp:
+            tmp.write(bars.encode_counters(frames))
+            tmp.flush()
+            out = subprocess.run([node, str(ROOT / 'tests' / 'decode.mjs'), str(ROOT / 'matcher.js'), '--counters', tmp.name],
+                                 capture_output=True, text=True, check=True).stdout
+        decoded = json.loads(out)
+        self.assertEqual(len(decoded), 2)
+        for f, d in zip(frames, decoded):
+            self.assertEqual((d['name'], d['n']), (f.name, len(f.times)))
+            # hexadecimal floats: equal means the same bits, which a comparison of printed decimals would not show
+            self.assertEqual(d['vol'], [x.hex() for x in f.quotes])
+            self.assertEqual(d['tbvol'], [x.hex() for x in f.taker_quotes])
+            self.assertEqual(d['cnt'], f.trades)
+
+    def test_counters_must_cover_every_bar_and_be_amounts(self) -> None:
+        with self.assertRaisesRegex(ValueError, 'do not cover every bar'):
+            bars.encode_counters([bars.Frame('15m', 900, [T0], [1], [2], [1], [2], [1.0], [100.0], [10], [0.5])])
+        for label, (quote, taker, count) in {'taker buys beyond what traded': (100.0, 100.5, 10), 'a negative amount': (100.0, -1.0, 10),
+                                             'an amount that is not finite': (float('inf'), 1.0, 10), 'a count that is not whole': (100.0, 50.0, 10.5)}.items():
+            with self.subTest(label), self.assertRaisesRegex(ValueError, 'not amounts and a whole count'):
+                bars.encode_counters([bars.Frame('15m', 900, [T0], [1], [2], [1], [2], [1.0], [quote], [count], [0.5], [taker])])
+
+    def test_the_files_are_read_once_for_all_three_payloads(self) -> None:
+        data = parquet([T0, T0 + 900], [(100.0, 101.0, 99.0, 100.5), (100.5, 102.0, 100.0, 101.0)])
+        found = [source(data, 2)]
+        with mock.patch.object(bars, 'download', return_value=data) as download:
+            payload, activity, counters = bars.read_all(found)
+            self.assertEqual(download.call_count, 1)
+            self.assertEqual(bars.read(found), (payload, activity))
+        self.assertTrue(payload.startswith(bars.MAGIC) and activity.startswith(bars.ACTIVITY_MAGIC) and counters.startswith(bars.COUNTERS_MAGIC))
 
 
 if __name__ == '__main__':

@@ -15,3 +15,6 @@ for (const p of patterns) for (const key of [p.id, ...p.labels]) if (!named.has(
 export const Candles = { patterns, resolve: (name) => (typeof name === 'string' ? named.get(norm(name)) : undefined) };
 /** The revision a plain drawing packet is marked with. */
 export const DRAWING_REVISION = filang.drawingProtocol().plain;
+
+/** The engine's revision for a drawing carrying dimension parts. */
+export const DIMENSIONS_REVISION = filang.drawingProtocol().dimensioned;

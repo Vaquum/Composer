@@ -1,4 +1,7 @@
-"""Expose the production HTTP handler with real cached payloads to the browser checks."""
+"""Expose the production HTTP handler with real cached payloads to the browser checks.
+
+Usage: python3 checks/loading_origin.py BARS ACTIVITY [COUNTERS]
+"""
 
 from __future__ import annotations
 
@@ -15,7 +18,7 @@ import server  # noqa: E402
 
 def main() -> None:
     state = server.Bars()
-    state._replace(Path(sys.argv[1]).read_bytes(), Path(sys.argv[2]).read_bytes(), [])
+    state._replace(Path(sys.argv[1]).read_bytes(), Path(sys.argv[2]).read_bytes(), [], *(Path(p).read_bytes() for p in sys.argv[3:4]))
     pages = {path: ((ROOT / name).read_bytes(), kind) for path, (name, kind) in server.PAGES.items()}
     output_lock = threading.Lock()
 

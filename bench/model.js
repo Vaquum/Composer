@@ -1,9 +1,9 @@
 // The drawing: a chained run of bars with free prices, and what the engine is asked about it.
 // BTCUSDT trades around the clock, so the drawing puts every later open at the previous close.
 // What a drawing is and holds (its g1 code, the rules held on it, its skeleton, its names) is read by the engine.
-import { filang, Candles, DRAWING_REVISION } from './filang.js';
+import { filang, Candles, DRAWING_REVISION, DIMENSIONS_REVISION } from './filang.js';
 
-export { DRAWING_REVISION };
+export { DRAWING_REVISION, DIMENSIONS_REVISION };
 
 /* ---- the chain ---- */
 // A drawn bar is [low, body bottom, body top, high] with a direction; its open and close are the body's ends in that
@@ -38,15 +38,50 @@ export function flipParams(P) { const Q = copyParams(P); Q.o0 = P.c[0]; Q.c[0] =
 export const TF = ['15m', '30m', '1h', '2h', '4h'];
 export const TF_LONG = ['15-minute bars', '30-minute bars', '1-hour bars', '2-hour bars', '4-hour bars'];
 export const MIN_BARS = 2; export const MAX_BARS = 20;
-const bar = (v, d) => ({ v: v.slice(), d });
+const bar = (v, d, m) => (m ? { v: v.slice(), d, m: { ...m } } : { v: v.slice(), d });
 /** Composer's opening drawing: a rising bar, then a falling bar that covers it. */
 export const START = () => [bar([30, 42, 56, 68], 'u'), bar([18, 36, 62, 80], 'd')];
-const rechain = (bars) => chainBars(chainParams(bars)).map((b) => bar(b.v, b.d));
+const rechain = (bars) => chainBars(chainParams(bars)).map((b, i) => bar(b.v, b.d, bars[i].m));
 
 /** Open, high, low, close of each bar, as the matcher takes them. A doji reads as open = close. */
 export function ohlc(bars) {
   return bars.map((b) => { const [l, lo, hi, h] = b.v; return lo === hi ? [lo, h, l, hi] : b.d === 'u' ? [lo, h, l, hi] : [hi, h, l, lo]; });
 }
+const dense = (marks) => { const levels = [...new Set(marks)].sort((a, b) => a - b); return marks.map((v) => levels.indexOf(v)); };
+export const DIMENSIONS = Object.freeze([
+  Object.freeze({ name: 'volume', label: 'Volume', zero: false }),
+  Object.freeze({ name: 'trades', label: 'Trades', zero: false }),
+  Object.freeze({ name: 'delta', label: 'Delta', zero: true }),
+  Object.freeze({ name: 'size', label: 'Trade size', zero: false }),
+  Object.freeze({ name: 'imbalance', label: 'Net taker imbalance', zero: true }),
+]);
+const DIM = new Map(DIMENSIONS.map((d) => [d.name, d]));
+/** The dimensions a run of bars carries marks for, in the order their parts are written. */
+export const dimsOf = (bars) => DIMENSIONS.filter((d) => bars.length > 0 && bars.every((b) => b.m && Number.isFinite(b.m[d.name]))).map((d) => d.name);
+/** One dimension's marks, bar by bar. */
+export const marksOf = (bars, name) => bars.map((b) => b.m[name]);
+/** Marks with the same order, whole and dense: from 0 up, or outward from the zero line when the dimension has one. */
+export function settled(name, marks) {
+  if (!DIM.get(name).zero) return dense(marks);
+  const up = Array.from(new Set(marks.filter((v) => v > 0))).sort((a, b) => a - b); const down = Array.from(new Set(marks.filter((v) => v < 0))).sort((a, b) => b - a);
+  return marks.map((v) => (v > 0 ? up.indexOf(v) + 1 : v < 0 ? -(down.indexOf(v) + 1) : 0));
+}
+// The engine writes dimension parts. Composer keeps only editable marks and display levels.
+const partsOf = (axes, n) => filang.draw(Array.from({ length: n }, () => [0, 0, 0, 0]), { axes }).code.split('|').slice(1);
+export const dimPart = (name, marks) => partsOf({ [name]: marks }, marks.length)[0];
+const dimParts = (bars) => { const dims = dimsOf(bars); return dims.length ? partsOf(Object.fromEntries(dims.map((name) => [name, marksOf(bars, name)])), bars.length) : []; };
+// Only called after the engine has validated the complete packet.
+const dimensionMarks = (parts) => Object.fromEntries(parts.map((part) => {
+  const [name, text] = part.split(':'); const [values, zero] = text.split('/');
+  return [name, values.split(',').map((v) => Number(v) - Number(zero || 0))];
+}));
+export function stepped(name, marks, i, dir) {
+  const here = marks[i]; const others = marks.filter((_, k) => k !== i); if (DIM.get(name).zero) others.push(0);
+  if (others.includes(here)) return here + dir / 2;
+  const beyond = others.filter((v) => (dir > 0 ? v > here : v < here));
+  return beyond.length ? (dir > 0 ? Math.min(...beyond) : Math.max(...beyond)) : null;
+}
+
 /* ---- what a match holds ---- */
 // A pin names two drawn endpoints by part: L low, B body bottom, T body top, H high. The engine turns the pins and the
 // skeleton into held rules, each between two prices by kind: 0 open, 1 high, 2 low, 3 close, 4 body bottom, 5 body top.
@@ -96,6 +131,7 @@ export function createModel() {
   const m = {
     bars: rechain(START()), sel: 1, oriented: true, tfOn: [true, true, true, true, true], x: 12,
     next: { dir: 0, measure: 'any', bps: 10, atr: 1 }, past: [], future: [],
+    dims: [],
     pins: [],     // relations held: { a: { bar, part }, b: { bar, part } }, or { bar, color: true }
     skel: 0,      // 0 off, then 1 (the extremes) up to every swing
     stretch: 0,   // recorded bars the drawn bars may skip between the first and the last; counts only while something is held
@@ -104,11 +140,30 @@ export function createModel() {
   // What is asked of the drawing besides the drawing itself. Changing a term is not an undo step, so an ordinary
   // snapshot leaves the terms alone; following a link replaces them, so that snapshot takes them too (`all`).
   const terms = () => ({ oriented: m.oriented, tfOn: m.tfOn.slice(), x: m.x, next: { ...m.next } });
-  const snap = (all = false) => ({ bars: m.bars.map((b) => bar(b.v, b.d)), pins: JSON.parse(JSON.stringify(m.pins)), skel: m.skel, stretch: m.stretch, given: m.given, ...(all === true ? { terms: terms() } : {}) });
+  const snap = (all = false) => ({ bars: m.bars.map((b) => bar(b.v, b.d, b.m)), dims: m.dims.slice(), pins: JSON.parse(JSON.stringify(m.pins)), skel: m.skel, stretch: m.stretch, given: m.given, ...(all === true ? { terms: terms() } : {}) });
   const push = (was) => { m.past.push(was || snap()); if (m.past.length > 400) m.past.shift(); m.future = []; };
-  const restore = (st) => { m.bars = st.bars.map((b) => bar(b.v, b.d)); m.pins = JSON.parse(JSON.stringify(st.pins)); m.skel = st.skel; m.stretch = st.stretch; m.given = st.given || NO_GIVEN; m.sel = Math.min(m.sel, m.bars.length - 1);
+  const restore = (st) => { m.bars = st.bars.map((b) => bar(b.v, b.d, b.m)); m.dims = st.dims.slice(); m.pins = JSON.parse(JSON.stringify(st.pins)); m.skel = st.skel; m.stretch = st.stretch; m.given = st.given || NO_GIVEN; m.sel = Math.min(m.sel, m.bars.length - 1);
     if (st.terms) { m.oriented = st.terms.oriented; m.tfOn = st.terms.tfOn.slice(); m.x = st.terms.x; m.next = { ...st.terms.next }; }
   };
+  // Every bar carries one mark for each dimension switched on, and no other. A bar that has none yet takes a level
+  // of its own beyond the others: above them all, or, against a zero line, on the side its colour says (a rising
+  // bar net buying, a falling one net selling). Marks are then settled, so removing a bar leaves no empty level.
+  const conform = () => {
+    m.dims = DIMENSIONS.map((d) => d.name).filter((name) => m.dims.includes(name));
+    const next = m.bars.map(() => ({}));
+    for (const name of m.dims) {
+      const zero = DIM.get(name).zero; const marks = [];
+      for (const b of m.bars) {
+        let v = b.m ? b.m[name] : undefined;
+        if (!Number.isFinite(v)) v = !zero ? Math.max(-1, ...marks) + 1 : b.d === 'u' ? Math.max(0, ...marks) + 1 : Math.min(0, ...marks) - 1;
+        marks.push(v);
+      }
+      settled(name, marks).forEach((v, i) => { next[i][name] = v; });
+    }
+    m.bars.forEach((b, i) => { if (m.dims.length) b.m = next[i]; else delete b.m; });
+  };
+  // prices redrawn from chain parameters keep the marks, bar for bar
+  const redrawn = (P) => chainBars(P).map((b, i) => bar(b.v, b.d, m.bars[i]?.m));
   // a pin lives on its bars: when a bar goes, so do the pins that named it, and the skeleton cannot be finer than the shape has swings
   const tidy = () => {
     const n = m.bars.length; m.pins = m.pins.filter((p) => (p.color ? p.bar < n : p.a.bar < n && p.b.bar < n));
@@ -116,10 +171,11 @@ export function createModel() {
   };
   // The drawing as the engine's packet: what is drawn and what is held on it, nothing rounded. `over` asks about other
   // rows, fewer pins, or another skeleton level.
-  const packet = (over = {}) => ({ version: 1, revision: DRAWING_REVISION, oriented: m.oriented,
+  const packet = (over = {}) => { const dimensions = dimParts(m.bars); return { version: 1, revision: dimensions.length ? DIMENSIONS_REVISION : DRAWING_REVISION, oriented: m.oriented,
+    ...(dimensions.length ? { dimensions } : {}),
     bars: over.rows ? over.rows.map(([o, h, l, c]) => ({ v: [l, Math.min(o, c), Math.max(o, c), h], d: c < o ? 'd' : 'u' })) : m.bars.map((b) => ({ v: Array.from(b.v), d: b.d })),
     pins: (over.pins === undefined ? m.pins : m.pins.slice(0, over.pins)).map((q) => (q.color ? { bar: q.bar, color: true } : { a: { bar: q.a.bar, part: q.a.part }, b: { bar: q.b.bar, part: q.b.part } })),
-    skeleton: over.pins === undefined ? over.skeleton ?? m.skel : 0, stretch: m.stretch, next: { dir: m.next.dir, measure: m.next.measure, bps: m.next.bps, atr: m.next.atr }, limit: m.x });
+    skeleton: over.pins === undefined ? over.skeleton ?? m.skel : 0, stretch: m.stretch, next: { dir: m.next.dir, measure: m.next.measure, bps: m.next.bps, atr: m.next.atr }, limit: m.x }; };
   // how many skeleton levels the shape has: read off the bars alone, whatever is pinned
   const top = () => read(packet({ pins: 0 })).skeleton_levels;
   const same = (a, b) => (p) => !p.color && ((p.a.bar === a.bar && p.a.part === a.part && p.b.bar === b.bar && p.b.part === b.part) || (p.a.bar === b.bar && p.a.part === b.part && p.b.bar === a.bar && p.b.part === a.part));
@@ -127,19 +183,39 @@ export function createModel() {
     state: m,
     params: () => chainParams(m.bars),
     /** Replace the bars from chain parameters. `was` is the snapshot to undo to, taken before a drag began. */
-    setParams(P, { record = false, was = null } = {}) { if (record) push(was); m.bars = chainBars(P).map((b) => bar(b.v, b.d)); },
+    setParams(P, { record = false, was = null } = {}) { if (record) push(was); m.bars = redrawn(P); },
     snapshot: snap,
     record: push,
-    setBars(bars, record = true) { if (record) push(); m.bars = rechain(bars); m.sel = Math.min(m.sel, m.bars.length - 1); tidy(); },
+    setBars(bars, record = true) { if (record) push(); m.bars = rechain(bars.map((b, i) => bar(b.v, b.d, b.m || m.bars[i]?.m))); m.sel = Math.min(m.sel, m.bars.length - 1); conform(); tidy(); },
     add() {
       if (m.bars.length >= MAX_BARS) return false;
       push(); const last = m.bars[m.bars.length - 1]; const c = closeOf(last.v, last.d); const size = Math.max(4, (last.v[2] - last.v[1]) * 0.7); const up = last.d !== 'u';
       const nc = up ? c + size : c - size;
-      m.bars = rechain([...m.bars, bar([Math.min(c, nc) - size * 0.4, Math.min(c, nc), Math.max(c, nc), Math.max(c, nc) + size * 0.4], up ? 'u' : 'd')]); m.sel = m.bars.length - 1; return true;
+      m.bars = rechain([...m.bars, bar([Math.min(c, nc) - size * 0.4, Math.min(c, nc), Math.max(c, nc), Math.max(c, nc) + size * 0.4], up ? 'u' : 'd')]); m.sel = m.bars.length - 1; conform(); return true;
     },
-    remove() { if (m.bars.length <= MIN_BARS) return false; push(); m.bars = rechain(m.bars.slice(0, -1)); m.sel = Math.min(m.sel, m.bars.length - 1); tidy(); return true; },
-    flip() { push(); m.bars = chainBars(flipParams(chainParams(m.bars))).map((b) => bar(b.v, b.d)); },
-    nudge(i, dv) { push(); m.bars = chainBars(moveParams(chainParams(m.bars), i, dv)).map((b) => bar(b.v, b.d)); },
+    remove() { if (m.bars.length <= MIN_BARS) return false; push(); m.bars = rechain(m.bars.slice(0, -1)); m.sel = Math.min(m.sel, m.bars.length - 1); conform(); tidy(); return true; },
+    flip() { push(); m.bars = redrawn(flipParams(chainParams(m.bars))); },
+    nudge(i, dv) { push(); m.bars = redrawn(moveParams(chainParams(m.bars), i, dv)); },
+    /** Switch a dimension on or off. On, every bar takes a mark for it; off, its marks go. False when nothing changes. */
+    setDim(name, on) {
+      if (!DIM.has(name) || m.dims.includes(name) === !!on) return false;
+      push(); m.dims = on ? [...m.dims, name] : m.dims.filter((d) => d !== name); conform(); return true;
+    },
+    /** One dimension's marks, bar by bar; null when it is off. */
+    marks: (name) => (m.dims.includes(name) ? marksOf(m.bars, name) : null),
+    /**
+     * Put a mark where it is dragged, as it is: any level, between two others or beyond them all. Nothing is
+     * recorded and nothing settled, so the other marks stay where they are until the drag ends.
+     */
+    placeMark(name, i, level) { if (!m.dims.includes(name) || !m.bars[i] || !Number.isFinite(level)) return false; m.bars[i].m[name] = level; return true; },
+    /** Settle every mark onto whole, dense levels: the order stays, the empty levels go. */
+    settle() { conform(); },
+    /** Move bar i's mark one step up (1) or down (-1) among the others. False when it has nowhere to go. */
+    stepMark(name, i, dir) {
+      if (!m.dims.includes(name) || !m.bars[i]) return false;
+      const to = stepped(name, marksOf(m.bars, name), i, dir); if (to === null) return false;
+      push(); m.bars[i].m[name] = to; conform(); return true;
+    },
     // a step that carries the terms is undone and redone with them, so both directions restore the whole question
     undo() { if (!m.past.length) return false; const st = m.past.pop(); m.future.push(snap(!!st.terms)); restore(st); return true; },
     redo() { if (!m.future.length) return false; const st = m.future.pop(); m.past.push(snap(!!st.terms)); restore(st); return true; },
@@ -194,9 +270,9 @@ export function createModel() {
     readPacket(text) {
       if (typeof text !== 'string' || !text.length || text.length > PACKET_MAX) return 'it has an invalid size';
       let p; try { p = filang.decodeDrawing(text).packet; } catch (e) { return String(e.message || e).replace(/\.$/, ''); }
-      if (p.dimensions?.length) return 'it carries dimensions, which this bench does not draw yet';
       if (p.bars.length < MIN_BARS) return `this bench draws ${MIN_BARS} bars or more`;
-      m.bars = rechain(p.bars.map((b) => bar(b.v, b.d))); m.sel = m.bars.length - 1; m.oriented = p.oriented;
+      const marks = dimensionMarks(p.dimensions || []); m.dims = Object.keys(marks);
+      m.bars = rechain(p.bars.map((b, i) => bar(b.v, b.d, m.dims.length ? Object.fromEntries(m.dims.map((name) => [name, marks[name][i]])) : undefined))); conform(); m.sel = m.bars.length - 1; m.oriented = p.oriented;
       // a pin is a colour pin only as the decoder judged it one (`color === true`): any other pin was checked as two
       // endpoints, and is taken as two endpoints, whatever else it carries
       m.pins = p.pins.filter((q) => q.color === true || q.a.bar !== q.b.bar || q.a.part !== q.b.part).map((q) => (q.color === true ? { bar: q.bar, color: true } : { a: { bar: q.a.bar, part: q.a.part }, b: { bar: q.b.bar, part: q.b.part } }));
@@ -214,7 +290,7 @@ export function createModel() {
       const num = (v) => String(v).replace('+', '');   // "1e+21" would lose its sign to the address's own decoding
       const nx = m.next;
       return `s=${m.bars.map((b) => [...b.v.map(num), b.d].join(',')).join(';')}&o=${+m.oriented}&tf=${m.tfOn.map(Number).join('')}&x=${m.x}&n=${nx.dir ? [nx.dir, nx.measure, nx.measure === 'bps' ? nx.bps : nx.atr].join(',') : 0}`
-        + (m.pins.length ? `&p=${m.pins.map((q) => (q.color ? 'c' + q.bar : `${q.a.bar}${q.a.part}.${q.b.bar}${q.b.part}`)).join(',')}` : '') + (m.skel ? `&k=${m.skel}` : '') + (m.stretch ? `&st=${m.stretch}` : '') + (m.given !== NO_GIVEN ? `&gv=${m.given}` : '');
+        + (m.pins.length ? `&p=${m.pins.map((q) => (q.color ? 'c' + q.bar : `${q.a.bar}${q.a.part}.${q.b.bar}${q.b.part}`)).join(',')}` : '') + (m.skel ? `&k=${m.skel}` : '') + (m.stretch ? `&st=${m.stretch}` : '') + (m.given !== NO_GIVEN ? `&gv=${m.given}` : '') + (m.dims.length ? `&dim=${dimParts(m.bars).join('|')}` : '');
     },
     /**
      * Take the drawing an address names, with everything asked of it; what the address leaves out goes back to how
@@ -227,7 +303,12 @@ export function createModel() {
         bars = sh.split(';').map((t) => { const a = t.split(','); const v = a.slice(0, 4).map(Number); if (a.length !== 5 || v.some((x) => !Number.isFinite(x)) || !['u', 'd'].includes(a[4])) throw new Error('bar'); return bar(v, a[4]); });
       } catch { return false; }
       if (bars.length < MIN_BARS || bars.length > MAX_BARS) return false;
-      m.bars = rechain(bars); m.sel = m.bars.length - 1;
+      const parts = p.has('dim') ? p.get('dim').split('|') : [];
+      try {
+        if (parts.length) filang.decodeDrawing(JSON.stringify({ ...packet(), revision: DIMENSIONS_REVISION, dimensions: parts, bars, pins: [], skeleton: 0 }));
+      } catch { return false; }
+      const marks = dimensionMarks(parts); m.dims = Object.keys(marks);
+      m.bars = rechain(bars.map((b, i) => bar(b.v, b.d, m.dims.length ? Object.fromEntries(m.dims.map((name) => [name, marks[name][i]])) : undefined))); conform(); m.sel = m.bars.length - 1;
       m.oriented = p.get('o') !== '0';
       const tf = p.get('tf') || ''; m.tfOn = /^[01]{5}$/.test(tf) && tf.includes('1') ? [...tf].map((c) => c === '1') : [true, true, true, true, true];
       m.x = [12, 24, 48].includes(+p.get('x')) ? +p.get('x') : 12;

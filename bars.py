@@ -15,7 +15,16 @@ Activity (served beside it for the panes): b'CACT1', the timeframe count, then p
 name and bar count, then the volume, the quote volume (USDT) and the trade count, each as its
 natural log quantized to a u16 between the timeframe's least and greatest (a little-endian f64 for
 the least and one for the step, then the codes), then the maker share of volume as a u16 of 65535.
-A log code's step is under 0.03% of the value.
+A log code's step is under 0.03% of the value. Volume here is the base volume (BTC); the maker share is
+the file's `maker_volume` over it, the part of the base volume whose buyer was the resting side.
+
+Counters (served beside both, and fetched only when a g1 dimension is switched on): b'CCNT1', the
+timeframe count, then per timeframe its name and bar count, then the USDT traded and the taker-buy
+USDT of every bar as little-endian f64s and the trade count of every bar as a little-endian u32.
+These are exact: the USDT traded is the file's `liquidity_sum` and the trade count its
+`no_of_trades`, bit for bit, and the taker-buy USDT is `liquidity_sum - maker_liquidity`, the one
+float that subtraction gives. A g1 dimension ranks values for exact order and equality, which the
+quantized activity cannot carry, so the activity payload is left as it was for its readers.
 """
 
 from __future__ import annotations
@@ -40,6 +49,7 @@ TIMEFRAMES = (
 )
 MAGIC = b'CBAR1'
 ACTIVITY_MAGIC = b'CACT1'
+COUNTERS_MAGIC = b'CCNT1'
 MAX_FILE_BYTES = 256 * 1024 * 1024
 TIMEOUT_SECONDS = 120
 
@@ -72,6 +82,7 @@ class Frame:
     quotes: list[float] = field(default_factory=list)
     trades: list[int] = field(default_factory=list)
     makers: list[float] = field(default_factory=list)
+    taker_quotes: list[float] = field(default_factory=list)   # taker-buy USDT: what was traded less the maker side of it
 
 
 def _get(url: str, limit: int) -> bytes:
@@ -121,7 +132,7 @@ def frame(source: Source, data: bytes) -> Frame:
     import pyarrow as pa
     import pyarrow.parquet as pq
 
-    table = pq.read_table(io.BytesIO(data), columns=['datetime', 'open', 'high', 'low', 'close', 'volume', 'liquidity_sum', 'no_of_trades', 'maker_volume'])
+    table = pq.read_table(io.BytesIO(data), columns=['datetime', 'open', 'high', 'low', 'close', 'volume', 'liquidity_sum', 'no_of_trades', 'maker_volume', 'maker_liquidity'])
     label = f'{source.repo}/{source.file_name}'
     if table.num_rows != source.row_count:
         raise ValueError(f'{label} has {table.num_rows} rows, latest.json says {source.row_count}')
@@ -144,7 +155,14 @@ def frame(source: Source, data: bytes) -> Frame:
         # every bar traded: volume, quote volume and trades are positive, and the maker volume is part of the volume
         if v is None or q is None or n is None or m is None or not (v > 0 and q > 0 and n > 0 and 0 <= m <= v * (1 + 1e-9)):
             raise ValueError(f'{label}: the bar opening at {times[i]} has no usable volume, quote volume, trades or maker volume')
-    return Frame(source.name, source.seconds, times, opens, highs, lows, closes, volumes, quotes, trades, makers)
+    # The counters a g1 dimension is read from are kept exactly, so they are checked exactly: the maker side of the
+    # USDT traded is finite and part of it, and the trade count is whole and fits the field it is packed in.
+    taker_quotes = []
+    for i, (q, n, m) in enumerate(zip(quotes, trades, table.column('maker_liquidity').to_pylist())):
+        if m is None or not (math.isfinite(q) and 0 <= m <= q) or n != int(n) or n > 0xFFFFFFFF:
+            raise ValueError(f'{label}: the bar opening at {times[i]} has no usable taker-buy quote volume or trade count')
+        taker_quotes.append(q - m)
+    return Frame(source.name, source.seconds, times, opens, highs, lows, closes, volumes, quotes, trades, makers, taker_quotes)
 
 
 def _varint(out: bytearray, value: int) -> None:
@@ -206,12 +224,37 @@ def encode_activity(frames: list[Frame]) -> bytes:
     return bytes(out)
 
 
+def encode_counters(frames: list[Frame]) -> bytes:
+    """What a g1 dimension is read from, exactly: per bar the USDT traded, the taker-buy USDT and the trade count."""
+    out = bytearray(COUNTERS_MAGIC)
+    out.append(len(frames))
+    for f in frames:
+        name = f.name.encode()
+        out.append(len(name))
+        out += name
+        n = len(f.times)
+        if not (len(f.quotes) == len(f.taker_quotes) == len(f.trades) == n):
+            raise ValueError(f'{f.name}: the counters do not cover every bar')
+        for q, b, k in zip(f.quotes, f.taker_quotes, f.trades):
+            # what the reader refuses is never written: amounts finite and nonnegative, taker buys within what
+            # traded, and a whole trade count
+            if not (math.isfinite(q) and math.isfinite(b) and 0 <= b <= q and k == int(k) and 0 <= k <= 0xFFFFFFFF):
+                raise ValueError(f'{f.name}: a bar has counters that are not amounts and a whole count')
+        out += struct.pack(f'<I{n}d{n}d{n}I', n, *f.quotes, *f.taker_quotes, *(int(k) for k in f.trades))
+    return bytes(out)
+
+
 def current() -> list[Source]:
     """Every timeframe's current file, as `latest.json` names it."""
     return [latest(name, seconds, repo) for name, seconds, repo in TIMEFRAMES]
 
 
+def read_all(sources: list[Source]) -> tuple[bytes, bytes, bytes]:
+    """Those files, downloaded, checked and encoded: the bars, what traded in them, and their exact counters."""
+    frames = [frame(source, download(source)) for source in sources]
+    return encode(frames), encode_activity(frames), encode_counters(frames)
+
+
 def read(sources: list[Source]) -> tuple[bytes, bytes]:
     """Those files, downloaded, checked and encoded: the bars, and what traded in them."""
-    frames = [frame(source, download(source)) for source in sources]
-    return encode(frames), encode_activity(frames)
+    return read_all(sources)[:2]

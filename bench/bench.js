@@ -1,10 +1,10 @@
 // Composer bench. One canvas locked on the drawn shape and what it became; rows are cohorts of that shape.
 // Panels around it toggle: the named patterns, the inspector, and a drawer for windows, the g1 string and Limen.
 import { h, mount, $, label, note, quiet, menu, popover, closeMenu, menuOpen } from './dom.js';
-import { createModel, ohlc, extent, fromRows, chainBars, copyParams, moveParams, partPrice, PARTS, KIND_NAME, TF, TF_LONG, MIN_BARS, MAX_BARS, MAX_STRETCH, AFTER, NO_GIVEN, PACKET_MAX } from './model.js';
+import { createModel, ohlc, extent, fromRows, chainBars, copyParams, moveParams, partPrice, dimPart, DIMENSIONS, PARTS, KIND_NAME, TF, TF_LONG, MIN_BARS, MAX_BARS, MAX_STRETCH, AFTER, NO_GIVEN, PACKET_MAX } from './model.js';
 import { Candles } from './filang.js';
 import { createEngine } from './engine.js';
-import { drawLane, drawAxis, drawColumnTrack, drawGlyph, drawExample, conditioned, sharesOf, domainOf, differsFrom } from './lanes.js';
+import { drawLane, drawAxis, drawColumnTrack, drawGlyph, drawExample, conditioned, sharesOf, domainOf, differsFrom, trackHeight } from './lanes.js';
 
 // The other two aspects of the tool. On a vaquum.fi host they are the deployed sites behind the same Portal login.
 const DEPLOYED = location.hostname.endsWith('.vaquum.fi');
@@ -23,6 +23,7 @@ const ui = { left: saved.left ?? false, right: saved.right ?? window.innerWidth 
 const state = { rows: saved.rows ?? 'timeframes', track: saved.track ?? 'range', lane: 'draw', col: null, page: 0,
   sort: { key: 'rank', dir: 1 }, winPage: 0, catalog: '', frame: saved.frame ?? 2, message: '',
   hold: false, pend: null, hot: null,     // hold mode: picking points on the drawing; the first point picked; the point under the pointer or the keys
+  dim: null,                              // the dimension track the nudge keys move a mark on; null and they move the bar's prices
   seek: null };                           // a window picked in the drawer: the canvas turns to the page that holds it
 const persist = () => { try { localStorage.setItem('composer.bench', JSON.stringify({ ...ui, rows: state.rows, track: state.track, frame: state.frame })); } catch { /* storage is optional */ } };
 const model = createModel(); const M = model.state;
@@ -192,6 +193,7 @@ function tidyPicks() {
   const n = M.bars.length; const gone = (q) => !!q && ((q.bar !== undefined && q.bar >= n) || (q.kind === 'knot' && !M.pins[q.pin]));
   if (gone(state.pend)) state.pend = null;
   if (gone(state.hot)) state.hot = null;
+  if (state.dim && !M.dims.includes(state.dim)) state.dim = null;   // a track goes with its switch
 }
 
 let ctx = null;
@@ -213,6 +215,7 @@ function mark() {
   d.answer = !hero ? 'none' : fresh() ? 'current' : 'stale';
   d.waiting = String(ctx ? ctx.lanes.filter((l) => l.wait).length : 0);
   d.bar = String(M.sel + 1); d.col = !state.col ? '' : state.col.after ? `+${state.col.after}` : `bar ${state.col.bar + 1}`;
+  d.counters = st.counters; d.dim = state.dim || '';
 }
 
 // ---------------------------------------------------------------- address
@@ -228,12 +231,12 @@ function showDrawing() { state.lane = 'draw'; state.col = null; state.page = 0; 
 // Null when the drawing holds more than a packet may carry: the reader on either side would refuse it, so no link is made.
 const queryLink = (held) => { const text = JSON.stringify(model.toPacket()); return text.length > PACKET_MAX ? null : `${QUERY}?drawing=${encodeURIComponent(text)}&g1=${encodeURIComponent(model.code())}${held ? '&pin-relations=1' : ''}`; };
 const TOO_MUCH = 'Too much is pinned to carry this shape to Query: release some pins';
-const NOT_CARRIED = 'Carried: the bars and the pins. Not carried: the skeleton, stretch, the next-bar term, timeframes and picks. Query counts on its own 15m recording.';
+const notCarried = () => `Carried: the bars${M.dims.length ? ', the dimensions switched on' : ''} and the pins. Not carried: the skeleton, stretch, the next-bar term, timeframes and picks. Query counts on its own 15m recording.`;
 /** Take the drawing a link carried in, or say why it could not be read. The link is spent either way. */
 function takeCarried(text) {
   const why = model.readPacket(text);
   if (why) state.message = `The drawing in the link could not be read: ${why}`;
-  else { wanted = null; showDrawing(); const k = M.pins.length; state.message = `Drawn from Query · ${M.bars.length} bars${k ? ` · ${k} ${k === 1 ? 'pin' : 'pins'}` : ''} · counted on this history`; }
+  else { wanted = null; showDrawing(); const k = M.pins.length; const dm = M.dims.length; state.message = `Drawn from Query · ${M.bars.length} bars${dm ? ` · ${dm} ${dm === 1 ? 'dimension' : 'dimensions'}` : ''}${k ? ` · ${k} ${k === 1 ? 'pin' : 'pins'}` : ''} · counted on this history`; }
   // left in the query string, a reload would draw it over whatever came after
   try { history.replaceState(null, '', location.pathname + location.hash); } catch { /* the address is optional */ }
 }
@@ -266,7 +269,8 @@ function renderBars() {
         : [h('b', { class: 'none' }, '0'), note(c.raw ? `windows keep ${every} and pass the next-bar filter` : `windows keep ${every}`)];
     // with a later bar picked, the readout says how many windows closed there; the whole cohort's rates would misstate them
     const cd = conditioned(p.cont, M.given); const share = cd?.picks ? rateOf(cd.n, cd.base) : null;
-    mount(rd, lead, p.kind === 'closest' ? note(c.mode === 'fallback' ? `· reading the ${int(p.n)} nearest windows instead` : `· reading the ${int(p.n)} closest windows`) : null,
+    // with a dimension on, the closest windows are the closest that stand in its order: there may be none at all
+    mount(rd, lead, p.kind === 'closest' ? note(!p.n && M.dims.length ? '· no window stands in the order of the dimensions' : c.mode === 'fallback' ? `· reading the ${int(p.n)} nearest windows instead` : `· reading the ${int(p.n)} closest windows`) : null,
       p.next || p.cont ? h('span', { class: 'sep' }) : null,
       cd?.picks ? [h('span', { class: 'sub', title: `${int(cd.n)} of ${int(cd.base)} complete windows closed where the picks say` }, `given ${givenList().length > 2 ? `${givenList().length} later bars` : givenWords()} `, h('b', { class: 'fig' }, int(cd.n)), ` of ${int(cd.base)}`), share ? h('span', { class: 'sub' }, h('b', { class: 'fig' }, pct(share[0]))) : null]
         : [rate(p.next, 'next bar up'), rate(p.cont?.aboveHigh, 'broke the high'), rate(p.cont?.belowLow, 'broke the low')]);
@@ -281,6 +285,7 @@ function renderBars() {
       h('button', { type: 'button', title: 'Add a bar · +', 'aria-label': 'Add a bar', disabled: n >= MAX_BARS, onclick: () => model.add() && ask() }, '+')),
     enc('Colours', M.oriented ? 'Up and down' : 'Shape only', (b) => menu(b, { title: 'Colours', hint: 'Whether a window must rise and fall where the drawing does.', value: M.oriented,
       options: [{ value: true, label: 'Up and down', detail: 'Each bar’s direction is part of the shape' }, { value: false, label: 'Shape only', detail: 'Only the order of the prices counts' }], onChange: (v) => edit(() => { M.oriented = v; }) })),
+    enc('Dimensions', dimsValue(), (b) => dimsMenu(b)),
     enc('Next bar', NEXT.find((x) => x[0] === nextValue())?.[1] || 'Custom', (b) => menu(b, { title: 'Next bar', hint: 'Keep only the windows whose next bar did this.', value: nextValue(),
       options: NEXT.map(([value, text, detail]) => ({ value, label: text, detail })), onChange: (v) => edit(() => { const a = v.split(','); M.next.dir = +a[0] || 0; M.next.measure = a[1] || 'any'; if (a[1] === 'bps') M.next.bps = +a[2]; if (a[1] === 'atr') M.next.atr = +a[2]; }) })),
     enc('Timeframes', on === 5 ? 'All five' : TF.filter((_, k) => M.tfOn[k]).join(', '), (b) => menu(b, { title: 'Timeframes', hint: 'Bars searched. The figure is the exact twins on each.', multi: true, value: TF.map((_, k) => k).filter((k) => M.tfOn[k]),
@@ -302,6 +307,33 @@ function renderBars() {
       options: TRACKS.map(([value, text]) => ({ value, label: text, detail: cap(READ_NOTE[value]) })), onChange: (v) => { state.track = v; persist(); render(); } })),
     enc('Windows', String(M.x), (b) => menu(b, { title: 'Matched windows', hint: 'How many of the closest windows are listed.', value: M.x, options: [12, 24, 48].map((v) => ({ value: v, label: `${v} windows` })), onChange: (v) => edit(() => { M.x = v; }) })));
 }
+
+// ---- dimensions: one switch each, and a track under the drawing for each one switched on
+const dimOf = (name) => DIMENSIONS.find((d) => d.name === name);
+const DIM_NOTE = { volume: 'USDT traded', trades: 'Number of trades', delta: 'Taker buys less taker sells · against zero too', size: 'USDT per trade', imbalance: 'Delta over volume · against zero too' };
+// The dimensions switched on, as the terms bar says them.
+function dimsValue() { return M.dims.length ? `${M.dims.length} on` : 'None'; }
+/** Switch a dimension on or off. One switched on becomes the track the nudge keys move. */
+function switchDim(name) {
+  if (drag?.dim) drag.finish();
+  const on = !M.dims.includes(name); if (!model.setDim(name, on)) return;
+  state.message = ''; state.dim = on ? name : state.dim === name ? null : state.dim; if (on) state.lane = 'draw';
+  ask();
+}
+/** The switches: one per dimension, under Cube's names. The bar is redrawn by a change, so the menu reopens where it was. */
+function dimsMenu(anchor) {
+  menu(anchor, { title: 'Dimensions', hint: 'One mark per bar, under the candles. Only the order of the marks is read.', multi: true, value: M.dims.slice(),
+    options: DIMENSIONS.map((d) => ({ value: d.name, label: d.label, detail: DIM_NOTE[d.name], figure: M.dims.includes(d.name) ? dimPart(d.name, model.marks(d.name)).slice(d.name.length + 1) : '' })),
+    onChange: (name) => { switchDim(name); document.querySelector('[data-enc="Dimensions"]')?.click(); document.querySelectorAll('.pop li button')[DIMENSIONS.findIndex((d) => d.name === name)]?.focus({ preventScroll: true }); } });
+}
+const dimsMenuOpen = () => menuOpen() && document.querySelector('.pop header .label')?.textContent === 'Dimensions';
+/** The tracks under the drawing, in the order of the g1 code. While a mark is dragged its track keeps the levels the drag began on. */
+function dimTracks() {
+  const n = M.bars.length;
+  return M.dims.map((name) => { const d = dimOf(name); return { name, zero: d.zero, marks: model.marks(name), height: trackHeight(n, d.zero), active: state.dim === name && state.lane === 'draw', scale: drag?.dim === name ? drag.scale : null }; });
+}
+/** Make a track the one the nudge keys move, or hand the keys back to the prices. */
+function pickTrack(name) { state.dim = name; state.lane = 'draw'; state.message = ''; render(); }
 
 // What is held, as the terms bar says it.
 function holdsValue() {
@@ -344,8 +376,12 @@ function holdsPopover(anchor) {
 }
 
 function statusLine() {
-  const st = engine.state; const el = $('#status'); el.className = st.failed ? 'err' : '';
-  el.textContent = st.failed ? st.failed : !st.ready ? 'Loading the history' : !fresh() ? `Searching ${Math.round(progress * 100)}%` : state.hold ? (state.pend ? 'Pick the second point · Esc to cancel' : 'Hold mode · pick two points, a body or a knot · Esc to leave') : state.message || `${hero.ms} ms${st.readings === 'ready' ? '' : st.readings === 'failed' ? ' · readings unavailable' : ' · readings loading'}`;
+  const st = engine.state; const el = $('#status');
+  // a dimension is read from the bars' exact counters, fetched when the first one is switched on
+  const uncounted = st.ready && M.dims.length > 0 && st.counters === 'failed';
+  el.className = st.failed || uncounted ? 'err' : '';
+  el.textContent = st.failed ? st.failed : !st.ready ? 'Loading the history' : uncounted ? `The counters could not be loaded (${st.counted}): no dimension can be read`
+    : !fresh() && M.dims.length && st.counters !== 'ready' ? 'Loading the counters' : !fresh() ? `Searching ${Math.round(progress * 100)}%` : state.hold ? (state.pend ? 'Pick the second point · Esc to cancel' : 'Hold mode · pick two points, a body or a knot · Esc to leave') : state.message || `${hero.ms} ms${st.readings === 'ready' ? '' : st.readings === 'failed' ? ' · readings unavailable' : ' · readings loading'}`;
 }
 
 // ---------------------------------------------------------------- canvas
@@ -423,9 +459,14 @@ function laneHead(lane) {
     h('div', { class: 'texts' }, h('div', { class: 'text' }, text)), receipt ? h('div', { class: 'foot-line' }, h('span', { class: 'receipt' }, receipt)) : null];
   if (lane.kind === 'draw') {
     const names = model.names(); const n = M.bars.length;
-    return head('01', 'Shape', names.length ? names.slice(0, 2).map((x) => x.p.name).join(' · ') : `${cap(NWORD[n] || String(n))}-bar shape`, model.code(),
+    // each track is named in the head beside it, with its ranks as the g1 code writes them; the name picks the track for the nudge keys
+    const rows = ctx?.dimRows; const heads = rows?.tracks.length ? h('div', { class: 'dimheads', style: `top:${rows.top}px` }, rows.tracks.map((t) => h('button', { class: 'dimhead', type: 'button', 'data-dim': t.name, style: `height:${t.height}px`, 'aria-pressed': String(t.active),
+      title: `${dimOf(t.name).label}: ${DIM_NOTE[t.name].toLowerCase()}. ${t.active ? '⇧↑↓ move the picked bar’s mark' : 'Pick this track for ⇧↑↓'} · T`,
+      onclick: (e) => { e.stopPropagation(); pickTrack(t.active ? null : t.name); $(`.dimhead[data-dim="${t.name}"]`)?.focus({ preventScroll: true }); } },
+    label(dimOf(t.name).label), h('span', { class: 'receipt' }, dimPart(t.name, t.marks).slice(t.name.length + 1))))) : null;
+    return [head('01', 'Shape', names.length ? names.slice(0, 2).map((x) => x.p.name).join(' · ') : `${cap(NWORD[n] || String(n))}-bar shape`, model.code(),
       [quiet('Undo', () => model.undo() && ask(), 'Undo the last change · ⌘Z'), quiet('Flip', () => { model.flip(); ask(); }, 'Trade the first bar’s open and close · Space'),
-        h('button', { class: 'quiet', type: 'button', 'aria-pressed': String(state.hold), title: 'Pick points on the drawing to hold · H', onclick: (e) => { e.stopPropagation(); toggleHold(); } }, 'Hold')]);
+        h('button', { class: 'quiet', type: 'button', 'aria-pressed': String(state.hold), title: 'Pick points on the drawing to hold · H', onclick: (e) => { e.stopPropagation(); toggleHold(); } }, 'Hold')]), heads];
   }
   if (lane.kind === 'path') return head(pad(lane.i + 1), 'Path', lane.title, `${int(lane.n)} of ${int(lane.of)} windows`,
     [quiet('Given this path', () => { model.giveAll(lane.key); state.lane = 'draw'; state.col = null; render(); }, 'Pick this path’s close at every later bar')]);
@@ -468,7 +509,11 @@ function nodeFor(id) {
   });
   n.el.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target === n.el) selectLane(n.lane); });
   n.svgHost.addEventListener('mousemove', (e) => hover(n, e));
-  n.svgHost.addEventListener('pointerdown', (e) => { if (n.lane.kind !== 'draw') return; if (state.hold) holdDown(n, e); else heroDown(n, e); });
+  n.svgHost.addEventListener('pointerdown', (e) => {
+    if (n.lane.kind !== 'draw') return;
+    const track = state.hold || !n.geo ? null : n.geo.dimAt(e.clientY - n.svgHost.getBoundingClientRect().top);
+    if (track) dimDown(n, e, track); else if (state.hold) holdDown(n, e); else heroDown(n, e);
+  });
   nodes.set(id, n);
   return n;
 }
@@ -531,6 +576,7 @@ function drawOne(lane, n, domain, height, direct = false, ext = null) {
   else if (lane.kind === 'offer' && model.skelTop()) marks = { bones: bonesOf(ex, 1) };
   n.geo = drawLane(n.svgHost, { bars: ex, cont, states, next: lane.next ? scaled([lane.next], extent(lane.rows))[0] : null, domain, height, ...marks,
     mark: markOf(lane), pooled, diff: pooled && states ? differsFrom(states, cd.n, pooled) : null,
+    dims: draws ? dimTracks() : null,
     given: cont ? M.given : NO_GIVEN, loose: !!cd?.picks, path: lane.kind === 'path' ? lane.key : null, overlay: lane.kind === 'draw' && ctx?.sel?.kind === 'path' ? ctx.sel.key : null, col: state.col?.after || 0,
     hero: lane.kind === 'draw', pick: lane.kind === 'draw' && (state.lane === 'draw' || !!drag) ? M.sel : -1, direct, wait: lane.wait, numbers: lane.kind === 'draw' || (sel && height >= 120),
     why: lane.kind === 'window' ? (lane.next ? '' : 'NO NEXT BAR') : lane.kind === 'offer' ? 'NOTHING IS HELD · A HOLD ADDS A LINE HERE' : lane.kind === 'hold' && lane.res && lane.res.mode !== 'held' ? (tally(lane.res).raw ? 'NONE THAT KEEPS IT PASSES THE NEXT-BAR FILTER' : 'NO WINDOW KEEPS THIS') : lane.res && !cont ? 'FEWER THAN 30 COMPLETE WINDOWS'
@@ -562,8 +608,17 @@ function renderCanvas() {
   host.classList.toggle('stale', !fresh());
   let rest = lanes.slice(1); const MIN = 64;
   // the selected row is drawn tall, as the drawing is; the others stay compact and share what is left
-  const heroFor = (expanded) => Math.round(Math.max(expanded ? 168 : 190, Math.min(340, avail * (expanded ? 0.34 : 0.42))));
+  // The drawing's row carries its dimension tracks at its foot, and they add to its height. The candles then give up
+  // room, down to a floor, so that the rows under the drawing still fit: `rows` of them when the count is known, and
+  // otherwise so that the drawing and its tracks take no more than most of the canvas.
+  const dimsH = dimTracks().reduce((a, t) => a + t.height, 0);
   const tallH = Math.round(Math.max(128, Math.min(232, avail * 0.27)));
+  const heroFor = (expanded, rows = 0) => {
+    const base = Math.round(Math.max(expanded ? 168 : 190, Math.min(340, avail * (expanded ? 0.34 : 0.42))));
+    if (!dimsH) return base;
+    const room = rows ? avail - dimsH - (expanded ? tallH + (rows - 1) * (MIN + 1) : rows * (MIN + 1)) : Math.round(avail * 0.64) - dimsH;
+    return Math.max(150, Math.min(base, room)) + dimsH;
+  };
   const paged = rest.length > 0 && (state.rows === 'windows' || (state.rows === 'paths' && rest[0].kind === 'path'));
   if (paged) {
     // a page holds what fits when one of its rows is open
@@ -580,7 +635,8 @@ function renderCanvas() {
   const all = [lanes[0], ...rest]; ctx.all = all;
   if (!all.some((l) => l.id === state.lane)) state.lane = 'draw';
   const sel = all.find((l) => l.id === state.lane); ctx.sel = sel;
-  const open = sel.id !== 'draw'; const heroH = rest.length ? heroFor(open) : Math.max(190, avail - 1);
+  const open = sel.id !== 'draw'; const heroH = rest.length ? heroFor(open, paged ? 0 : rest.length) : Math.max(190 + dimsH, avail - 1);
+  ctx.dimRows = { top: heroH - 1 - dimsH, tracks: dimTracks() };
   const openH = !open ? 0 : rest.length === 1 ? Math.max(tallH, avail - heroH - 1) : tallH;
   const others = rest.length - (open ? 1 : 0);
   const laneH = others > 0 ? Math.min(tallH, Math.max(MIN, Math.floor((avail - heroH - openH) / others) - 1)) : 0;
@@ -596,6 +652,8 @@ function renderCanvas() {
     setHeight(n, height); n.born = false;
     const cells = laneTrack(lane); n.track.classList.toggle('lead2', !!cells.lead2);
     mount(n.head, laneHead(lane)); mount(n.track, cells);
+    // the head's own lines stay beside the candles, clear of the tracks named under them
+    n.head.style.paddingBottom = lane.id === 'draw' && dimsH ? `${dimsH + 8}px` : '';
   });
   if (host.querySelectorAll(':scope > .lane').length !== all.length) host.append(...slots.map((id) => nodes.get(id).el));
   for (const lane of all) drawOne(lane, lane.node, domain, heights.get(lane.id) - 1);
@@ -632,6 +690,21 @@ function hover(n, e) {
   const box = n.svgHost.getBoundingClientRect(); const hostBox = host.getBoundingClientRect(); const col = G.at(e.clientX - box.left);
   if (lane.kind === 'draw') { const hit = hitTest(n, e.clientX - box.left, e.clientY - box.top); n.svgHost.classList.toggle('over-level', !!hit && hit.kind !== 'move' && hit.kind !== 'select'); n.svgHost.classList.toggle('over-body', !!hit && hit.kind === 'move'); }
   const cell = e.currentTarget === n.svgHost ? cellOf(n, e) : null; n.svgHost.classList.toggle('over-cell', !!cell);
+  // over a dimension track: the mark of the bar in that column, and how it stands among the others
+  const track = lane.kind === 'draw' && e.currentTarget === n.svgHost ? n.geo.dimAt(e.clientY - box.top) : null;
+  if (track) {
+    n.svgHost.classList.remove('over-body'); n.svgHost.classList.toggle('over-level', col.bar !== undefined);
+    if (col.bar === undefined) { unhover(); return; }
+    const d = dimOf(track.name); const marks = model.marks(track.name); const v = marks[col.bar]; const level = dimPart(track.name, marks).slice(track.name.length + 1).split(/[,/]/)[col.bar];
+    const tied = marks.map((w, k) => (k !== col.bar && w === v ? k + 1 : 0)).filter(Boolean);
+    const xt = box.left - hostBox.left + G.xb(col.bar);
+    cursor.style.left = xt + 'px'; cursor.style.height = host.scrollHeight + 'px'; $('.band').classList.remove('hot');
+    mount(tip, h('b', null, `${d.label} · bar ${col.bar + 1}`),
+      [d.zero ? (v > 0 ? 'above zero · net buying' : v < 0 ? 'below zero · net selling' : 'on zero · balanced') : null, `rank ${level}${tied.length ? ` · level with bar ${tied.join(', ')}` : ''}`, 'drag, or ⇧↑↓, to move it'].filter(Boolean).map((t) => h('span', null, t)));
+    tip.style.top = n.el.offsetTop + 8 + 'px';
+    tip.style.left = (xt + 14 + tip.offsetWidth > host.clientWidth - 8 ? xt - 14 - tip.offsetWidth : xt + 14) + 'px';
+    host.classList.add('hot'); return;
+  }
   const x = box.left - hostBox.left + (col.bar !== undefined ? G.xb(col.bar) : G.xa(col.after));
   cursor.style.left = x + 'px'; cursor.style.height = host.scrollHeight + 'px';
   // one cursor through every lane and the column track under them
@@ -708,6 +781,51 @@ function heroDown(n, e) {
     const d = drag; drag = null; n.dragged = d.moved; setTimeout(() => { n.dragged = false; }, 60);
     if (d.moved) { model.record(d.was); state.message = ''; state.col = null; ask(); } else render();
   };
+  n.svgHost.addEventListener('pointermove', move); n.svgHost.addEventListener('pointerup', up); n.svgHost.addEventListener('pointercancel', up);
+}
+
+// ---------------------------------------------------------------- marks by hand
+
+/**
+ * Drag a bar's mark in a dimension track. The track keeps the levels the drag began on, so the other marks stay
+ * where they are: the mark goes onto one of them, level with it, or to a half level between two or beyond them all,
+ * for a level of its own. When it is let go the marks settle onto whole levels and the question is asked again.
+ */
+function dimDown(n, e, track) {
+  if (e.button !== 0) return;
+  const box = n.svgHost.getBoundingClientRect(); const G = n.geo; const px = e.clientX - box.left; const name = track.name;
+  // the row's own click, which follows when the button is let go, would select a column: a mark is not that
+  const clearClick = (ev) => {
+    window.removeEventListener('pointerup', clearClick); window.removeEventListener('pointercancel', clearClick);
+    if (ev.type === 'pointercancel') n.dragged = false; else setTimeout(() => { n.dragged = false; }, 80);
+  };
+  n.dragged = true; window.addEventListener('pointerup', clearClick); window.addEventListener('pointercancel', clearClick);
+  if (px > G.g.band[1] + 3) { pickTrack(name); return; }
+  e.preventDefault(); n.svgHost.setPointerCapture(e.pointerId);
+  const i = G.g.at(px).bar; const before = dimPart(name, model.marks(name));
+  M.sel = i; state.dim = name; state.lane = 'draw';
+  drag = { n, dim: name, bar: i, scale: [track.lo, track.hi], was: model.snapshot(), moved: false, height: G.height };
+  n.svgHost.classList.add('dragging'); $('#lanes').classList.remove('hot');
+  const move = (ev) => {
+    if (!model.marks(name)) { up(); return; }
+    const y = ev.clientY - n.svgHost.getBoundingClientRect().top;
+    const level = Math.max(track.lo, Math.min(track.hi, Math.round(track.levelAt(y) * 2) / 2));
+    if (level === model.marks(name)[i]) return;
+    model.placeMark(name, i, level); drag.moved = true; wantKey = '';
+    $('#lanes').classList.add('stale'); $('#readout').classList.add('stale');
+    drawOne({ ...n.lane, rows: ohlc(M.bars) }, n, ctx.domain, drag.height, true);
+  };
+  const up = (ev) => {
+    n.svgHost.removeEventListener('pointermove', move); n.svgHost.removeEventListener('pointerup', up); n.svgHost.removeEventListener('pointercancel', up);
+    n.svgHost.classList.remove('dragging');
+    if (ev) clearClick(ev);
+    if (n.svgHost.hasPointerCapture(e.pointerId)) n.svgHost.releasePointerCapture(e.pointerId);
+    const d = drag; drag = null; model.settle(); const marks = model.marks(name);
+    // a mark let go where the order is what it was changes nothing, and is no step to undo
+    if (d.moved && marks && dimPart(name, marks) !== before) { model.record(d.was); state.message = ''; state.col = null; }
+    if (d.moved) ask(); else render();
+  };
+  drag.finish = up;
   n.svgHost.addEventListener('pointermove', move); n.svgHost.addEventListener('pointerup', up); n.svgHost.addEventListener('pointercancel', up);
 }
 
@@ -985,6 +1103,7 @@ function renderDrawer() {
   const head = (title, text, ...seg) => h('header', null, label(title, 'title'), note(text), h('span', { class: 'seg' }, seg), quiet('Close', () => togglePanel(ui.drawer)));
   const copy = h('button', { type: 'button', onclick: async () => { try { await navigator.clipboard.writeText(code); copy.textContent = 'Copied'; } catch { copy.textContent = 'Select the text to copy'; } setTimeout(() => { copy.textContent = 'Copy'; }, 1400); } }, 'Copy');
   const terms = () => [h('dt', null, 'bars'), h('dd', null, `${M.bars.length}, ${M.oriented ? 'directions kept' : 'shape only'}`),
+    M.dims.length ? [h('dt', null, 'dimensions'), h('dd', null, M.dims.map((name) => dimOf(name).label).join(' · '))] : null,
     h('dt', null, 'timeframes'), h('dd', null, TF.filter((_, k) => M.tfOn[k]).join(' · ')),
     h('dt', null, 'next bar'), h('dd', null, NEXT.find((x) => x[0] === nextValue())?.[1] || 'Any'),
     h('dt', null, 'held'), h('dd', null, model.held().length ? `${model.held().map((x) => x.label).join(' · ')}${M.stretch ? ` · stretch ${M.stretch}` : ''}` : 'nothing'),
@@ -994,13 +1113,13 @@ function renderDrawer() {
     mount(el, head('Windows', hero ? `${hero.mode === 'nearest' ? 'The closest recorded windows, distinct in time' : hero.mode === 'held' ? 'Windows that keep everything held, closest in shape first' : 'No window keeps everything held: the nearest, each with what it breaks'} · click a column to sort, a row to inspect it` : ''), body);
     windowsTable(body);
   } else if (ui.drawer === 'g1') {
-    mount(el, head('g1', 'Every endpoint ranked, equal prices sharing a rank, then each bar’s direction.', copy), body);
+    mount(el, head('g1', `Every endpoint ranked, equal prices sharing a rank, then each bar’s direction.${M.dims.length ? ' Then each dimension’s marks, ranked among themselves.' : ''}`, copy), body);
     const pinned = model.pinned(); const out = (held, text, title) => { const link = queryLink(held); return link ? h('a', { class: 'link', href: link, target: '_blank', rel: 'noopener', title }, text) : h('span', { class: 'dim', title: TOO_MUCH }, text.replace(' ↗', '')); };
     mount(body, h('div', { class: 'g1' }, h('code', null, code),
       h('div', { class: 'askq' }, label('Ask in Query'),
         out(false, 'The exact shape ↗', 'Windows whose endpoints have this order, these ties and these directions'),
         pinned ? out(true, 'What is pinned, on fixed candles ↗', 'Windows that keep each pinned relation and colour. Only which side each level lies on is kept.') : null,
-        note(NOT_CARRIED)),
+        note(notCarried())),
       h('dl', null, terms())));
   } else {
     mount(el, head('Limen', 'Hand-off of this shape as a rule. Not connected: nothing is sent anywhere.',
@@ -1035,12 +1154,20 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     // one thing at a time, nearest first: a menu, a half-made hold, hold mode, the pick on the picked later bar, the column, every pick
     if (menuOpen()) closeMenu(); else if (state.pend) { state.pend = null; render(); } else if (state.hold) toggleHold(false);
+    else if (state.dim) pickTrack(null);
     else if (state.col?.after && M.given[state.col.after - 1] !== '-') give(state.col.after, -1);
     else if (state.col) { state.col = null; render(); }
     else if (givenAny()) { model.giveAll(NO_GIVEN); render(); }
     return;
   }
   if (k === 'h' && !at.closest('.pop')) { e.preventDefault(); closeMenu(); toggleHold(); return; }
+  // D opens the switches, and closes them; T walks the nudge keys through the tracks and back to the prices
+  if (k === 'd') { e.preventDefault(); if (dimsMenuOpen()) closeMenu(); else document.querySelector('[data-enc="Dimensions"]')?.click(); return; }
+  if (k === 't' && !at.closest('.pop')) {
+    e.preventDefault();
+    if (!M.dims.length) { state.message = 'No dimension is switched on · D opens the switches'; render(); return; }
+    pickTrack([...M.dims, null][M.dims.indexOf(state.lane === 'draw' ? state.dim : null) + 1]); return;
+  }
   if (state.hold && !at.closest('.pop, table, button, a, [role="button"]') && holdKey(e)) return;
   const map = { p: 'left', i: 'right', w: 'windows', g: 'g1', l: 'limen' };
   if (map[k]) { e.preventDefault(); togglePanel(map[k]); return; }
@@ -1068,6 +1195,12 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
     if (at.closest('.pop, table')) return;
     e.preventDefault();
+    if (e.shiftKey && state.dim) {
+      // on a dimension track the nudge moves the picked bar's mark one step among the others
+      const up = e.key === 'ArrowUp'; state.lane = 'draw';
+      if (model.stepMark(state.dim, M.sel, up ? 1 : -1)) { state.message = ''; ask(); } else { state.message = `Bar ${M.sel + 1} is already ${up ? 'above' : 'below'} every other mark`; render(); }
+      return;
+    }
     if (e.shiftKey) { const [lo, hi] = extent(ohlc(M.bars)); model.nudge(M.sel, (e.key === 'ArrowUp' ? 1 : -1) * (hi - lo) * 0.03); state.lane = 'draw'; ask(); return; }
     const row = ctx.all.findIndex((l) => l.id === state.lane); const next = ctx.all[row + (e.key === 'ArrowDown' ? 1 : -1)];
     if (next) { state.col = null; selectLane(next); }

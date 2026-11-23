@@ -121,6 +121,25 @@ svg.moving .b-col, svg.moving .b-wash, svg.moving .b-sharebar, svg.moving .b-poo
 .lane.draw .b-pick.b-down rect { fill: var(--gold); stroke: var(--gold); }
 .b-axis.pick { fill: var(--gold); }
 
+/* dimension tracks: under the drawing's candles, one for each dimension switched on. A mark is a level line as wide
+   as a body, on one of the track's level hairlines; the zero line is the lens's dashed rule. Gold is the picked bar's
+   mark on the track the nudge keys move, and nothing else. */
+.b-level { stroke: var(--line); stroke-width: 1; shape-rendering: crispEdges; }
+.b-dimmark { stroke: var(--t2); stroke-width: 2; shape-rendering: crispEdges; transition: stroke var(--t-short) var(--ease); }
+.b-dimmark.on { stroke: var(--t1); }
+.b-dimmark.on.pick { stroke: var(--gold); }
+svg.moving .b-level, svg.moving .b-dimmark { shape-rendering: auto; }
+.lane-head .dimheads { position: absolute; left: 0; right: 0; }
+.lane-head .dimhead { display: flex; align-items: center; gap: 12px; width: 100%; min-width: 0; padding: 0 16px 0 44px; text-align: left; border-top: 1px solid var(--line-2); outline-offset: -2px;
+  transition: background-color var(--t-short) var(--ease); }
+.lane-head .dimhead:hover { background: var(--wash-2); }
+.lane-head .dimhead .label { flex: none; color: var(--t3); transition: color var(--t-short) var(--ease); }
+.lane-head .dimhead[aria-pressed='true'] .label { color: var(--t1); }
+.lane-head .dimhead .receipt { flex: 1 1 0; min-width: 0; margin: 0; text-align: right; white-space: nowrap; }
+.composer #canvas:not([data-fit='roomy']) .lane-head .dimhead { padding-inline: 14px 10px; }
+.composer #canvas:not([data-fit='roomy']) .lane-head .dimhead .label { flex: 0 1 auto; }
+.composer #canvas:not([data-fit='roomy']) .lane-head .dimhead .receipt { display: none; }
+
 /* what is held: a relation is a hairline between its two endpoints with a knot at its middle, a held colour a knot
    on the body, the skeleton the line through the swings it keeps. Quiet at rest; the one in question stands out. */
 .b-hold { fill: none; stroke: var(--t2); stroke-width: 1; opacity: .62; transition: opacity var(--t-short) var(--ease); }
@@ -231,6 +250,12 @@ svg.moving .b-holdknot, svg.moving .b-bone, svg.moving .b-frame, svg.moving .b-t
 .composer .g1 .askq .link { color: var(--t1); text-decoration: none; border-bottom: 1px solid var(--line-2); padding: 0 0 1px; }
 .composer .g1 .askq .link:hover, .composer .g1 .askq .link:focus-visible { border-bottom-color: var(--t2); }
 .composer .g1 .askq .note { flex-basis: 100%; color: var(--t3); }
+
+/* the terms bar gives way before a term is cut off: the terms draw closer, then lose their carets, and under that
+   the bar scrolls sideways, as it does on a phone */
+@media (max-width: 1480px) { .composer .enc { padding-inline: 7px; gap: 6px; } }
+@media (max-width: 1360px) { .composer .enc > i { display: none; } }
+@media (max-width: 1220px) { .composer .encbar { overflow-x: auto; scrollbar-width: none; } }
 
 /* a narrow window keeps the keys and drops the swatches */
 @media (max-width: 1280px) { .composer .foot .keys { display: flex; } .composer .foot .key:not(.hint) { display: none; } }
