@@ -10,6 +10,7 @@ async function loadPayload(path, options = {}, loaded = null) {
   for (let attempt = 0; ; attempt++) {
     const response = await fetch(path, options);
     if (response.status === 503 && attempt < 180) { await new Promise((resolve) => setTimeout(resolve, 1000)); continue; }
+    if (response.status === 409) throw new Error('history changed; reload the page');
     if (!response.ok) throw new Error(`the server answered ${response.status}`);
     if (loaded) loaded(response);
     return response.arrayBuffer();
