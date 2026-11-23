@@ -6,8 +6,9 @@
 // The body of a later bar is measured from that open; every other reading is of the bar as recorded.
 // Usage: node checks/panes.mjs MATCHER_JS BARS_FILE ACTIVITY_FILE
 import fs from 'node:fs';
+import { openWorker } from './worker.mjs';
 const [matcherFile, barsFile, activityFile] = process.argv.slice(2);
-const M = new Function('self', 'window', fs.readFileSync(matcherFile, 'utf8') + '\nreturn { decode, decodeActivity, readings, search, setBars: t => { BARS = t; }, setRead: r => { READ = r; }, setLatest: v => { latest = v; } };')(undefined, undefined);
+const M = await openWorker(matcherFile);
 const load = f => { const b = fs.readFileSync(f); return b.buffer.slice(b.byteOffset, b.byteOffset + b.length); };
 const tape = M.decode(load(barsFile)), act = M.decodeActivity(load(activityFile));
 M.setBars(tape);

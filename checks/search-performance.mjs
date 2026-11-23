@@ -2,8 +2,9 @@
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 import {performance} from 'node:perf_hooks';
+import { openWorker } from './worker.mjs';
 const root=process.cwd();
-const M=new Function('self','window',fs.readFileSync(root+'/matcher.js','utf8')+`;let yieldObserver=null;const originalTick=tick;tick=()=>{yieldObserver?.();return originalTick();};return {decode,decodeActivity,readings,search,observeYield:f=>{yieldObserver=f},setBars:t=>{BARS=t},setRead:t=>{READ=t},setLatest:v=>{latest=v}};`)(undefined,undefined);
+const M = await openWorker(root+'/matcher.js');
 const file=process.argv[3];
 const bytes=f=>{const b=fs.readFileSync(f);return b.buffer.slice(b.byteOffset,b.byteOffset+b.length)};
 let t=performance.now();const history=M.decode(bytes(file));M.setBars(history);console.log(JSON.stringify({stage:'decode',ms:performance.now()-t,bars:history.reduce((a,x)=>a+x.n,0),through:new Date(history[0].ts.at(-1)*1000).toISOString()}));
