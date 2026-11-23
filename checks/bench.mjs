@@ -6,10 +6,10 @@ import {spawn} from 'node:child_process';
 import {createInterface} from 'node:readline';
 import {chromium} from 'playwright';
 
-const [,barsFile,activityFile,python]=process.argv.slice(2);
+const [,barsFile,activityFile,python,countersFile]=process.argv.slice(2);
 assert.ok(python,'run through checks/with_bars.py to use its Python runtime');
 const began=Date.now();
-const origin=spawn(python,['checks/loading_origin.py',barsFile,activityFile],{stdio:['ignore','pipe','pipe']});
+const origin=spawn(python,['checks/loading_origin.py',barsFile,activityFile,countersFile],{stdio:['ignore','pipe','pipe']});
 let stderr='',startupTimer,browser;
 origin.stderr.on('data',bytes=>{stderr+=bytes;});
 const exited=new Promise(resolve=>{origin.once('exit',resolve);origin.once('error',resolve);});
@@ -412,6 +412,7 @@ try{
       let close=price();const bars=[];
       for(let k=0;k<n;k++){const o=close,c=price(),lo=Math.min(o,c),hi=Math.max(o,c);bars.push({v:[lo-(rnd()<0.3?0:price()/4),lo,hi,hi+(rnd()<0.3?0:price()/4)],d:c>=o?'u':'d'});close=c;}
       a.setBars(bars,false);a.state.oriented=rnd()<0.85;
+      if(i%3===0) for(const name of ['volume','delta','imbalance']) {a.setDim(name,true);for(let k=0;k<n;k++)a.placeMark(name,k,Math.floor(rnd()*7)-3);a.settle();}
       for(let k=0;k<Math.floor(rnd()*4);k++){if(rnd()<0.3)a.colorPin(Math.floor(rnd()*n));else a.pin({bar:Math.floor(rnd()*n),part:'LBTH'[Math.floor(rnd()*4)]},{bar:Math.floor(rnd()*n),part:'LBTH'[Math.floor(rnd()*4)]});}
       a.setSkel(Math.floor(rnd()*3));a.setStretch(Math.floor(rnd()*5));a.state.x=[12,24,48][Math.floor(rnd()*3)];
       const packet=a.toPacket(),text=JSON.stringify(packet);
@@ -421,6 +422,161 @@ try{
       assert.equal(JSON.stringify(b.toPacket()),text,'and the same packet again');
     }
   }
+
+  // ---- 8. dimensions: one switch each, a track under the candles for each one on, and the matcher keeps their order
+  {const {DIMENSIONS_REVISION}=await import('../bench/model.js');
+    const {page:p,faults:f,context}=await open();
+    const key=k=>p.keyboard.press(k);
+    let counted=0;p.on('request',r=>{if(new URL(r.url()).pathname==='/counters')counted++;});
+    await p.goto(`${base}/`,{waitUntil:'domcontentloaded'});await settled(p);
+    const link=()=>p.evaluate(()=>{const u=new URL(document.querySelector('#to-query').href);return {drawing:u.searchParams.get('drawing'),g1:u.searchParams.get('g1')};});
+    const dim=async()=>{const n=await see(p);return {...n,dim:new URLSearchParams(n.hash).get('dim')||'',...await p.evaluate(()=>{
+      const d=document.querySelector('#canvas').dataset,box=el=>{const r=el.getBoundingClientRect();return {x:r.left+r.width/2,y:r.top+r.height/2};},order=['volume','trades','delta','size','imbalance'];
+      return {track:d.dim,counters:d.counters,term:document.querySelector('[data-enc="Dimensions"] .val').textContent,
+        heads:[...document.querySelectorAll('.lane.draw .dimhead')].map(b=>[b.dataset.dim,b.querySelector('.label').textContent,b.querySelector('.receipt').textContent,b.getAttribute('aria-pressed')]),
+        // in the order of the tracks, then of the bars: the drawing keeps each mark's element, so the page's own order is the order they were made in
+        marks:[...document.querySelectorAll('.lane.draw .b-dimmark')].map(m=>({dim:m.dataset.dim,bar:+m.dataset.bar,gold:m.classList.contains('pick')&&m.classList.contains('on'),...box(m)})).sort((a,b)=>order.indexOf(a.dim)-order.indexOf(b.dim)||a.bar-b.bar),
+        zeros:[...document.querySelectorAll('.lane.draw .b-zero')].map(z=>({dim:z.dataset.dim,...box(z)})),
+        candles:[...document.querySelectorAll('.lane.draw .b-in')].map(c=>box(c).x),hero:document.querySelector('.lane.draw').offsetHeight};})};};
+    let was=await dim();const opened=await answerTo(p,openingQuery),plainLink=await link(),plainHero=was.hero;
+    assert.equal(counted,0,'with every dimension off the counters are never asked for');
+    assert.deepEqual([was.dim,was.term,was.track,was.counters,was.heads.length,was.marks.length,was.zeros.length],['','None','','idle',0,0,0],'the bench opens with every dimension off and no track');
+    assert.equal(plainLink.g1,'g1:o:1,3,4,5,u;0,2,4,6,d');
+    // the switches: one per dimension, under the cube's names, all off
+    await key('d');
+    const switches=()=>p.evaluate(()=>[...document.querySelectorAll('.pop li button')].map(b=>[b.querySelector('span').firstChild.textContent,b.getAttribute('role'),b.getAttribute('aria-checked')]));
+    assert.equal(await p.evaluate(()=>document.querySelector('.pop header .label').textContent),'Dimensions','D opens the switches');
+    assert.deepEqual(await switches(),['Volume','Trades','Delta','Trade size','Net taker imbalance'].map(name=>[name,'menuitemcheckbox','false']),'one switch for each dimension, named as the cube names them');
+    // Volume on, by the keys: a track under the candles, a mark per bar, and the counters fetched for it
+    await key('Enter');await settled(p);let v=await dim();
+    assert.equal(v.hash,`${START}&dim=volume:0,1`,'Volume on: the address carries its part');
+    assert.deepEqual([v.term,v.track,v.counters,counted],['1 on','volume','ready',1],'Volume on: the term says so, its track takes the nudge keys, and the counters are fetched once');
+    assert.deepEqual((await switches()).map(x=>x[2]),['true','false','false','false','false'],'the switch shows on, in the menu left open');
+    await key('d');assert.equal(await p.evaluate(()=>document.querySelector('.pop')),null,'D closes the switches');
+    assert.deepEqual(v.heads,[['volume','Volume','0,1','true']],'the track is named beside it, with its ranks as the code writes them');
+    assert.deepEqual(v.marks.map(m=>[m.dim,m.bar]),[['volume',1],['volume',2]],'one mark for each drawn bar');
+    v.marks.forEach((m,i)=>assert.ok(Math.abs(m.x-v.candles[i])<1.5,`mark ${i+1} must stand under its candle (${m.x} against ${v.candles[i]})`));
+    assert.ok(v.marks[1].y<v.marks[0].y-4,'a higher rank is a higher mark');assert.ok(v.marks[1].gold&&!v.marks[0].gold,'gold is the picked bar\'s mark on the track the keys move');
+    assert.ok(v.hero>was.hero,'the drawing\'s row grows by its tracks');
+    const up=await answerTo(p,{...openingQuery,packet:{...openingQuery.packet,revision:DIMENSIONS_REVISION,dimensions:['volume:0,1']}});
+    assert.equal(up?.mode,'nearest','the question carries the dimension parts');assert.equal(int(v.count),sum(up.exactF),'the readout shows the twins that also stand in the order of the marks');
+    assert.equal((await link()).g1,'g1:o:1,3,4,5,u;0,2,4,6,d|volume:0,1','the link to Query carries the code with its dimension part');
+    // the nudge keys move the picked bar's mark a step at a time: level with the other, then under it, and no further
+    await key('Shift+ArrowDown');await settled(p);v=await dim();
+    assert.equal(v.dim,'volume:0,0');assert.ok(Math.abs(v.marks[0].y-v.marks[1].y)<0.75,'marks at one height are level');
+    const level=await answerTo(p,{...openingQuery,packet:{...openingQuery.packet,revision:DIMENSIONS_REVISION,dimensions:['volume:0,0']}});
+    await key('Shift+ArrowDown');await settled(p);v=await dim();
+    assert.equal(v.dim,'volume:1,0');assert.ok(v.marks[1].y>v.marks[0].y+4);
+    const down=await answerTo(p,{...openingQuery,packet:{...openingQuery.packet,revision:DIMENSIONS_REVISION,dimensions:['volume:1,0']}});
+    // the three orders of two volumes split the price twins between them, on every timeframe: a dimension only refines
+    assert.ok(level&&down,'each order is asked of the matcher');
+    assert.deepEqual(opened.exactF.map((_,k)=>up.exactF[k]+level.exactF[k]+down.exactF[k]),opened.exactF,'the twins with volume rising, level and falling are together the twins with volume off');
+    assert.ok(sum(up.exactF)>0&&sum(down.exactF)>0&&sum(up.exactF)<sum(opened.exactF),'volume must split the twins');
+    was=v;await key('Shift+ArrowDown');v=await dim();
+    assert.equal(v.dim,'volume:1,0');assert.match(v.status,/already below every other mark/,'a mark under every other has nowhere lower to go');assert.equal(v.posted,was.posted);
+    await key('Control+z');await settled(p);assert.equal((await dim()).dim,'volume:0,0','a step is one undo');
+    await key('Control+z');await settled(p);assert.equal((await dim()).dim,'volume:0,1');
+    // T hands the nudge keys back to the prices, and on to the track again
+    await key('t');v=await dim();assert.equal(v.track,'','T leaves the track');assert.deepEqual(v.heads[0][3],'false');
+    await key('Shift+ArrowUp');await settled(p);was=await dim();assert.ok(was.s!==v.s&&was.dim==='volume:0,1','off the track the nudge moves prices, and the marks stay');
+    await key('Control+z');await settled(p);await key('t');assert.equal((await dim()).track,'volume','T takes the track again');
+    await key('Escape');assert.equal((await dim()).track,'','Esc leaves the track');
+    // Delta on, by the pointer: its marks take the side their bars' colours say, about a zero line
+    await p.click('[data-enc="Dimensions"]');await p.click('.pop li button:has-text("Delta")');await settled(p);await key('Escape');v=await dim();
+    assert.equal(v.dim,'volume:0,1|delta:2,0/1','Delta on: the rising bar net buying, the falling bar net selling');
+    assert.deepEqual(v.heads.map(x=>x.slice(0,3)),[['volume','Volume','0,1'],['delta','Delta','2,0/1']],'tracks in the order of the code');
+    assert.deepEqual(v.zeros.map(z=>z.dim),['delta'],'a zero line on the dimension that is ranked against zero, and on no other');
+    const delta=()=>dim().then(n=>({...n,d:n.marks.filter(m=>m.dim==='delta'),zero:n.zeros[0]}));
+    v=await delta();assert.ok(v.d[0].y<v.zero.y-3&&v.d[1].y>v.zero.y+3,'marks sit above and below the zero line');
+    assert.equal(counted,1,'the counters are fetched once, whatever is switched on after');
+    const both=await answerTo(p,{...openingQuery,packet:{...openingQuery.packet,revision:DIMENSIONS_REVISION,dimensions:['volume:0,1','delta:2,0/1']}});
+    assert.equal(int(v.count),sum(both.exactF));assert.ok(sum(both.exactF)<sum(up.exactF),'a second dimension refines the first');
+    // a mark dragged onto the zero line is level with it; dragged under every other mark it has a level of its own
+    const drag=async(from,toY)=>{await p.mouse.move(from.x,from.y);await p.mouse.down();await p.mouse.move(from.x,toY,{steps:8});await p.mouse.up();await settled(p);return delta();};
+    v=await drag(v.d[0],v.zero.y);
+    assert.equal(v.dim,'volume:0,1|delta:1,0/1','dragged onto the zero line: balanced');assert.ok(Math.abs(v.d[0].y-v.zero.y)<0.75);assert.equal(v.track,'delta','a dragged mark takes its track');
+    v=await drag(v.d[0],v.d[1].y+60);
+    assert.equal(v.dim,'volume:0,1|delta:0,1/2','dragged under every other mark: a level of its own, below');assert.ok(v.d[0].y>v.d[1].y+3&&v.d[1].y>v.zero.y+3);
+    v=await drag(v.d[0],v.d[1].y);
+    assert.equal(v.dim,'volume:0,1|delta:0,0/1','dragged onto another mark: level with it');
+    was=v;v=await drag(v.d[0],v.d[0].y+1);assert.equal(v.dim,was.dim,'a mark let go where it was changes nothing');
+    await key('Control+z');await settled(p);assert.equal((await dim()).dim,'volume:0,1|delta:0,1/2','a drag is one undo');
+    await key('Control+z');await key('Control+z');await settled(p);v=await delta();assert.equal(v.dim,'volume:0,1|delta:2,0/1');
+    // hovering a mark says what it is
+    await p.mouse.move(v.d[1].x,v.d[1].y);
+    assert.match(await p.evaluate(()=>document.querySelector('#tip').innerText.replace(/\s+/g,' ')),/^DELTA · BAR 2 below zero · net selling rank 0 /i,'a mark says where it stands');
+    await p.mouse.move(2,2);
+    // a bar added takes a mark on every track, and a bar removed leaves the marks as they were
+    await key('Equal');await settled(p);v=await dim();
+    assert.equal(v.dim,'volume:0,1,2|delta:2,0,3/1','the new bar: over every volume, and on the side its colour says');
+    assert.deepEqual(v.marks.map(m=>[m.dim,m.bar]),[['volume',1],['volume',2],['volume',3],['delta',1],['delta',2],['delta',3]]);
+    v.marks.forEach(m=>assert.ok(Math.abs(m.x-v.candles[m.bar-1])<1.5,'every mark stays under its candle'));
+    await key('Minus');await settled(p);v=await dim();assert.equal(v.dim,'volume:0,1|delta:2,0/1','the bar removed: the tracks are as they were');assert.equal(v.marks.length,4);
+    await key('Control+z');await key('Control+z');await settled(p);
+    // to Query: the code with its parts, and the packet in the revision that carries them
+    const l=await link(),packet=JSON.parse(l.drawing);
+    assert.equal(l.g1,'g1:o:1,3,4,5,u;0,2,4,6,d|volume:0,1|delta:2,0/1');
+    assert.deepEqual([packet.revision,packet.dimensions],[DIMENSIONS_REVISION,['volume:0,1','delta:2,0/1']]);
+    assert.deepEqual({...packet,dimensions:undefined,revision:JSON.parse(plainLink.drawing).revision},{...JSON.parse(plainLink.drawing),dimensions:undefined},'the rest of the packet is the packet of the same drawing with every dimension off');
+    await key('g');assert.match(await p.locator('#drawer .askq .note').textContent(),/^Carried: the bars, the dimensions switched on and the pins\./);
+    assert.equal(await p.locator('#drawer .g1 code').textContent(),l.g1,'the g1 drawer shows the code with its parts');await key('g');
+    // a link opened in the tab is applied, an unreadable dimension leaves the bench as it is, and a reload reopens it
+    await go(p,`${START}&dim=trades:1,0|imbalance:0,0/1`);await settled(p);v=await dim();
+    assert.deepEqual(v.heads.map(x=>x.slice(0,3)),[['trades','Trades','1,0'],['imbalance','Net taker imbalance','0,0/1']],'a link names the dimensions and their marks');
+    for(const bad of ['volume:0,2','delta:0,1','trades:1,0|volume:0,1','volume:0,1,2','rumour:0,1']){
+      await go(p,`${START}&dim=${bad}`);await p.waitForFunction(h=>location.hash.slice(1)===h,`${START}&dim=trades:1,0|imbalance:0,0/1`);}
+    await p.reload({waitUntil:'domcontentloaded'});await settled(p);v=await dim();
+    assert.equal(v.dim,'trades:1,0|imbalance:0,0/1','a reload reopens the dimensions');assert.equal(counted,2,'a page that opens with a dimension on fetches the counters');
+    // every switch off again: the bench it was, to the letter
+    await p.click('[data-enc="Dimensions"]');await p.click('.pop li button:has-text("Trades")');await p.click('.pop li button:has-text("Net taker imbalance")');await settled(p);await key('Escape');v=await dim();
+    assert.equal(v.hash,START,'every switch off: the opening address');assert.deepEqual([v.term,v.heads.length,v.marks.length,v.zeros.length,v.hero],['None',0,0,0,plainHero],'every switch off: no track, and the drawing\'s row as tall as it was');
+    assert.deepEqual(await link(),plainLink,'every switch off: the same packet and the same g1');
+    assert.equal(int(v.count),sum(opened.exactF),'every switch off: the same count');
+    const again=await answerTo(p,openingQuery);assert.deepEqual(again,opened,'every switch off: the same question, with the same answer');
+    calm(f,'the dimensions');await context.close();}
+  // a drawing carried in from Query brings its dimensions; one that names them wrongly is refused
+  {const PACKET=JSON.parse('{"version":1,"revision":"133e3017ba9143f7dc255df7218ff7bfe46d9d06","oriented":true,"bars":[{"v":[15,20,40,50],"d":"u"},{"v":[30,40,60,85],"d":"u"}],"pins":[],"skeleton":0,"stretch":0,"next":{"dir":0,"measure":"any","bps":10,"atr":1},"limit":12}');
+    const {DIMENSIONS_REVISION}=await import('../bench/model.js');
+    const carried=async text=>{const {page:p,faults:f,context}=await open();
+      await p.goto(`${base}/?drawing=${encodeURIComponent(text)}`,{waitUntil:'domcontentloaded'});
+      await p.waitForFunction(()=>location.search==='',null,{timeout:90000});await settled(p);const n=await see(p);calm(f,'a drawing carried in with dimensions');await context.close();return n;};
+    let n=await carried(JSON.stringify({...PACKET,revision:DIMENSIONS_REVISION,dimensions:['volume:1,0','delta:0,1/2']}));
+    assert.equal(n.hash,'s=15,20,40,50,u;30,40,60,85,u&o=1&tf=11111&x=12&n=0&dim=volume:1,0|delta:0,1/2','?drawing=: the dimensions it carries');
+    assert.match(n.status,/^Drawn from Query · 2 bars · 2 dimensions · counted on this history$/);
+    n=await carried(JSON.stringify({...PACKET,revision:DIMENSIONS_REVISION}));
+    assert.equal(n.hash,'s=15,20,40,50,u;30,40,60,85,u&o=1&tf=11111&x=12&n=0','?drawing=: the later revision with no dimensions means every dimension off');
+    for(const [what,packet] of Object.entries({
+      'dimensions in the first revision':{...PACKET,dimensions:['volume:1,0']},
+      'a part that is not canonical':{...PACKET,revision:DIMENSIONS_REVISION,dimensions:['volume:0,2']},
+      'a part for another number of bars':{...PACKET,revision:DIMENSIONS_REVISION,dimensions:['volume:0,1,2']},
+      'parts out of order':{...PACKET,revision:DIMENSIONS_REVISION,dimensions:['delta:0,1/2','volume:1,0']},
+      'dimensions that are not a list':{...PACKET,revision:DIMENSIONS_REVISION,dimensions:'volume:1,0'},
+    })){
+      n=await carried(JSON.stringify(packet));
+      assert.equal(n.hash,START,`?drawing= with ${what}: the drawing must not change`);assert.match(n.status,/^The drawing in the link could not be read: /,`?drawing= with ${what}: it must say so`);
+    }}
+  // at a phone's width the tracks are there and the page does not scroll sideways
+  {const context=await browser.newContext({viewport:{width:390,height:844},reducedMotion:'reduce'});
+    await context.route(/fonts\.(googleapis|gstatic)\.com/,route=>route.fulfill({status:200,contentType:'text/css',body:''}));await context.addInitScript(record);
+    const p=await context.newPage(),f=[];p.on('pageerror',error=>f.push(`uncaught: ${error.message}`));
+    await p.goto(`${base}/#${START}&dim=volume:0,1|trades:0,1|delta:2,0/1|size:1,0|imbalance:2,0/1`,{waitUntil:'domcontentloaded'});await settled(p);
+    const n=await p.evaluate(()=>({page:document.documentElement.scrollWidth,body:document.body.scrollWidth,width:innerWidth,lanes:document.querySelector('#lanes').scrollWidth-document.querySelector('#lanes').clientWidth,
+      marks:[...document.querySelectorAll('.lane.draw .b-dimmark')].map(m=>m.getBoundingClientRect()).filter(r=>r.left>=0&&r.right<=innerWidth).length,heads:[...document.querySelectorAll('.lane.draw .dimhead .label')].map(x=>x.textContent)}));
+    assert.ok(n.page<=n.width&&n.body<=n.width&&n.lanes<=0,`a phone must not scroll sideways: ${JSON.stringify(n)}`);
+    assert.equal(n.marks,10,'every mark of five tracks is on a phone\'s screen');assert.deepEqual(n.heads,['Volume','Trades','Delta','Trade size','Net taker imbalance']);
+    calm(f,'a phone');await context.close();}
+  // counters that cannot be loaded: it says so, nothing is counted as if a dimension were read, and switching it off recovers
+  {const {page:p,context}=await open();allFaults.pop();
+    await context.route('**/counters',route=>route.fulfill({status:500,body:'no'}));
+    await p.goto(`${base}/`,{waitUntil:'domcontentloaded'});await settled(p);const count=(await see(p)).count;
+    await p.keyboard.press('d');await p.keyboard.press('Enter');
+    await p.waitForFunction(()=>document.querySelector('#canvas').dataset.counters==='failed'&&document.querySelector('#status').classList.contains('err'));
+    const n=await see(p);
+    assert.match(n.status,/^The counters could not be loaded \(the server answered 500\): no dimension can be read$/);
+    assert.equal(await p.evaluate(()=>document.querySelector('#canvas').dataset.answer),'stale','no answer is shown as the answer to a dimension that could not be read');
+    await p.keyboard.press('Enter');await settled(p);const back=await see(p);
+    assert.equal(back.hash,START);assert.equal(back.count,count,'with the dimension off again the bench answers as before');assert.doesNotMatch(back.status,/counters/);
+    await context.close();}
 
   for(const f of allFaults)calm(f,'at the end');
   console.log(`Composer passed matching, keyboard controls, rows, picks, shared addresses and the Query handoff in ${((Date.now()-began)/1000).toFixed(1)} s.`);

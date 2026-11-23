@@ -26,6 +26,14 @@ The address records the drawing, search terms and closing-state picks for sharin
 `/bench/` links open at `/` with their drawing or pattern intact. Use **Query** to carry the drawing
 and its holds to the Filang query bench.
 
+**Dimensions** switches on Volume, Trades, Delta, Trade size and Net taker imbalance. Each adds one
+editable mark per bar below the candles; Delta and Net taker imbalance include a zero line. Drag a
+mark, or select its track and use Shift+Up/Down. **D** opens the switches; **T** cycles tracks.
+The engine writes and matches their g1 parts. Drawing links and Query handoffs preserve the marks.
+With all switches off, packets and matching stay unchanged and the extra counters are never fetched.
+The counters retain exact USDT volume, taker-buy USDT (`liquidity_sum - maker_liquidity`) and trade
+counts from the same history generation as the bars; the activity readings keep their existing payload.
+
 ## Data
 
 The bars are the Vaquum HuggingFace kline datasets `vaquum/binance_btcusdt_{15m,30m,1h,2h,4h}_klines`,
@@ -75,6 +83,7 @@ npm ci
 npx playwright install chromium
 python3 engine.py
 python3 -m unittest discover -s tests -v
+node checks/dimension-vectors.mjs
 python3 checks/with_bars.py checks/similarity-windows.mjs
 python3 checks/with_bars.py checks/similarity-look.mjs
 python3 checks/with_bars.py checks/panes.mjs

@@ -22,6 +22,7 @@ const WORK_SLICE_MS = 16;
 let BARS = null, latest = 0, pending = null, engine = null;
 // what Composer reads about each bar beside its shape, once the activity has arrived (per timeframe, aligned with BARS)
 let READ = null, pendingActivity = null, activityVersion = 0;
+let pendingCounters = null;
 
 // Each bar as a later bar of a window: JO is its open at the close of the recorded bar just before it, JH and JL its
 // high and low widened to include that open. After a gap there is no such bar, and no window puts a later bar there:
@@ -77,8 +78,32 @@ function decode(buffer) {
   return out;
 }
 
-// what traded in each bar, served beside the bars: volume, quote volume (USDT) and trades as quantized natural logs,
-// and the maker share of the volume (bars.py says how they are packed)
+// Exact USDT volume, taker-buy USDT and trade counts for the engine, packed by bars.py.
+function decodeCounters(buffer) {
+  const dv = new DataView(buffer), size = buffer.byteLength;
+  if (size < 6 || String.fromCharCode(dv.getUint8(0), dv.getUint8(1), dv.getUint8(2), dv.getUint8(3), dv.getUint8(4)) !== 'CCNT1') throw new Error('This is not Composer counter data.');
+  let p = 5;
+  const out = [], count = dv.getUint8(p++);
+  for (let k = 0; k < count; k++) {
+    let name = '';
+    if (p >= size) throw new Error('The counter data is truncated.');
+    const len = dv.getUint8(p++);
+    if (p + len + 4 > size) throw new Error('The counter data is truncated.');
+    for (let i = 0; i < len; i++) name += String.fromCharCode(dv.getUint8(p++));
+    const n = dv.getUint32(p, true); p += 4;
+    if (p + n * 20 > size) throw new Error('The counter data is truncated.');
+    const vol = new Float64Array(n), tbvol = new Float64Array(n), cnt = new Float64Array(n);
+    for (let i = 0; i < n; i++, p += 8) vol[i] = dv.getFloat64(p, true);
+    for (let i = 0; i < n; i++, p += 8) tbvol[i] = dv.getFloat64(p, true);
+    for (let i = 0; i < n; i++, p += 4) cnt[i] = dv.getUint32(p, true);
+    for (let i = 0; i < n; i++) if (!(vol[i] >= 0 && vol[i] < Infinity && tbvol[i] >= 0 && tbvol[i] <= vol[i])) throw new Error(`The ${name} counters are not amounts: taker buys must lie within what traded.`);
+    out.push({ name, n, vol, tbvol, cnt });
+  }
+  if (p !== size) throw new Error('The counter data has trailing bytes.');
+  return out;
+}
+
+
 function decodeActivity(buffer) {
   const dv = new DataView(buffer);
   if (buffer.byteLength < 6 || String.fromCharCode(dv.getUint8(0), dv.getUint8(1), dv.getUint8(2), dv.getUint8(3), dv.getUint8(4)) !== 'CACT1') throw new Error('This is not Composer activity data.');
@@ -229,9 +254,9 @@ function tick() {
 const cents = (v) => { if (v < 100) { const a = v < 0 ? -v : v; return `${v < 0 ? '-' : ''}${Math.trunc(a / 100)}.${a % 100 < 10 ? '0' : ''}${a % 100}`; } const s = '' + v; return s.slice(0, -2) + '.' + s.slice(-2); };
 // One timeframe as the engine's CSV, and the way back from the engine's grid slots to this copy's bars: the engine
 // counts every bar interval since the first bar, missing or not, and Composer keeps only the bars that exist.
-function frameCsv(T) {
-  const rows = new Array(T.n + 1); rows[0] = 'open_ms,open,high,low,close,volume';
-  for (let i = 0; i < T.n; i++) rows[i + 1] = `${T.ts[i] * 1000},${cents(T.O[i])},${cents(T.H[i])},${cents(T.L[i])},${cents(T.C[i])},0`;
+function frameCsv(T, counters = null) {
+  const rows = new Array(T.n + 1); rows[0] = counters ? 'open_ms,open,high,low,close,base_volume,volume,taker_buy_volume,trade_count' : 'open_ms,open,high,low,close,volume';
+  for (let i = 0; i < T.n; i++) rows[i + 1] = `${T.ts[i] * 1000},${cents(T.O[i])},${cents(T.H[i])},${cents(T.L[i])},${cents(T.C[i])},${counters ? `0,${counters.vol[i]},${counters.tbvol[i]},${counters.cnt[i]}` : 0}`;
   return rows.join('\n') + '\n';
 }
 function gridOf(T) {
@@ -249,6 +274,15 @@ function give(filang, tables) {
     if (slots !== T.slots) throw new Error(`The engine reads ${slots} ${T.name} slots where Composer reads ${T.slots}.`);
   }
   studied = null;
+}
+
+/** Give exact counters to the engine only after the first dimension is requested. */
+function giveCounters(filang, tables, counters) {
+  if (counters.length !== tables.length || counters.some((C, k) => C.name !== tables[k].name || C.n !== tables[k].n)) throw new Error('The counters do not cover every bar.');
+  for (const [k, T] of tables.entries()) {
+    const { slots } = filang.loadComposerFrame(frameCsv(T, counters[k]), T.sec * 1000);
+    if (slots !== T.slots) throw new Error('The counters changed the engine grid.');
+  }
 }
 
 /* ---- named candles ---- */
@@ -485,7 +519,7 @@ async function search(q, id, report) {
   return { mode, exact: found.exact, exactF: found.qualified_exact, counts: found.held, countsF: found.qualified_held, split, base, filter: f, results, holds: filang.decodeDrawing(JSON.stringify(packet)).held_rules.length, stretch, panes, ms: Date.now() - t0 };
 }
 
-export { TF_NAMES, READINGS, decode, decodeActivity, readings, prepareReadings, give, search, named, wilson, tMean, outcomeInto, passes };
+export { TF_NAMES, READINGS, decode, decodeActivity, decodeCounters, giveCounters, readings, prepareReadings, give, search, named, wilson, tMean, outcomeInto, passes };
 /** For the worker's own messages and for checks that drive these functions directly. */
 export const state = {
   set engine(v) { engine = v; }, get engine() { return engine; },
@@ -521,9 +555,18 @@ if (typeof self !== 'undefined' && typeof self.postMessage === 'function' && typ
         give(await filang, tables);
         BARS = tables; READ = null; activityVersion++; memo.clear();
         self.postMessage({ type: 'ready', bars: BARS.reduce((a, T) => a + T.n, 0), from: BARS[0].ts[0], to: BARS[0].ts[BARS[0].n - 1] + BARS[0].sec });
+        if (pendingCounters) { const c = pendingCounters; pendingCounters = null; await self.onmessage({ data: { type: 'counters', buffer: c } }); }
         if (pendingActivity) { const a = pendingActivity; pendingActivity = null; self.onmessage({ data: { type: 'activity', buffer: a } }); }
         if (pending) { const p = pending; pending = null; run(p); }
       } catch (err) { self.postMessage({ type: 'error', message: String(err.message || err) }); }
+      return;
+    }
+    if (m.type === 'counters') {
+      if (!BARS) { pendingCounters = m.buffer; return; }
+      try {
+        const loaded = await filang; latest++; giveCounters(loaded, BARS, decodeCounters(m.buffer)); memo.clear();
+        self.postMessage({ type: 'counters' });
+      } catch (err) { self.postMessage({ type: 'counters-error', message: String(err.message || err) }); }
       return;
     }
     if (m.type === 'activity') {
