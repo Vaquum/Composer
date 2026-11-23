@@ -35,6 +35,11 @@ BENCH_ASSETS = {'base.css': 'text/css', 'bench.css': 'text/css', 'composer.css':
                 'bench.js': 'text/javascript', 'lanes.js': 'text/javascript', 'engine.js': 'text/javascript',
                 'model.js': 'text/javascript', 'motion.js': 'text/javascript', 'dom.js': 'text/javascript'}
 PAGES.update({f'/bench/{name}': (f'bench/{name}', f'{kind}; charset=utf-8') for name, kind in BENCH_ASSETS.items()})
+# The shared Filang engine's browser package, for the page and its worker to load from /engine/. It is one published
+# release, fetched and checked by engine.py into this folder (or the one COMPOSER_ENGINE_DIR names).
+ENGINE_DIR = Path(os.environ.get('COMPOSER_ENGINE_DIR', str(ROOT / 'engine')))
+ENGINE_ASSETS = {'index.mjs': 'text/javascript; charset=utf-8', 'filang_engine.wasm': 'application/wasm'}
+PAGES.update({f'/engine/{name}': (str(ENGINE_DIR / name), kind) for name, kind in ENGINE_ASSETS.items()})
 PAGE_ALIASES = {'/index.html', '/bench', '/bench/', '/bench/index.html'}
 REFRESH_SECONDS = 3600
 
@@ -208,6 +213,17 @@ class Bars:
             time.sleep(REFRESH_SECONDS if self.payload else 5)
 
 
+_COMPRESSED: dict[bytes, bytes] = {}
+
+
+def compressed(body: bytes) -> bytes:
+    """A page's bytes gzipped, kept by its digest so each page is compressed once."""
+    key = hashlib.sha256(body).digest()
+    if key not in _COMPRESSED:
+        _COMPRESSED[key] = gzip.compress(body, 6, mtime=0)
+    return _COMPRESSED[key]
+
+
 def handler(state: Bars, pages: dict[str, tuple[bytes, str]]):
     class Handler(BaseHTTPRequestHandler):
         server_version = 'Composer'
@@ -233,7 +249,16 @@ def handler(state: Bars, pages: dict[str, tuple[bytes, str]]):
             path, separator, query = self.path.partition('?')
             if path in pages:
                 body, kind = pages[path]
-                self._send(200, body, kind)
+                # a page is revalidated, not sent again, and sent compressed: the engine alone is close to a megabyte
+                packed = 'gzip' in ','.join(self.headers.get_all('Accept-Encoding', [])).lower()
+                etag = '"' + hashlib.sha256(body).hexdigest()[:32] + ('-gzip"' if packed else '"')
+                headers = {'ETag': etag, 'Vary': 'Accept-Encoding'}
+                if packed:
+                    headers['Content-Encoding'] = 'gzip'
+                if not_modified(','.join(self.headers.get_all('If-None-Match', [])), etag):
+                    self._send(304, b'', kind, headers)
+                else:
+                    self._send(200, compressed(body) if packed else body, kind, headers)
             elif path in PAGE_ALIASES:
                 self._send(308, b'', 'text/plain; charset=utf-8', {'Location': f'/{separator}{query}'})
             elif path in ('/bars', '/activity'):
