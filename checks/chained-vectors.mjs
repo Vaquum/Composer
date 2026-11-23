@@ -6,9 +6,10 @@
 // Usage: node checks/chained-vectors.mjs   (from the repository root)
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
+import { openWorker } from './worker.mjs';
 
 const root = process.cwd();
-const M = new Function('self', 'window', fs.readFileSync(root + '/matcher.js', 'utf8') + '\nreturn { decode, search, setBars: t => { BARS = t; }, setLatest: v => { latest = v; } };')(undefined, undefined);
+const M = await openWorker(root + '/matcher.js');
 const { vectors } = JSON.parse(fs.readFileSync(root + '/checks/chained-vectors.json', 'utf8'));
 
 // one timeframe of bars as bars.py writes them (CBAR1), with no gaps
@@ -19,7 +20,7 @@ function payload(bars) {
   const zigzag = v => varint(v < 0 ? -2 * v - 1 : 2 * v);
   for (const ch of 'CBAR1') out.push(ch.charCodeAt(0));
   out.push(1, 3, ...[...'15m'].map(ch => ch.charCodeAt(0)));
-  u32(900); u32(bars.length); u32(1700000000); u32(0);
+  u32(900); u32(bars.length); u32(1700000100); u32(0);   // the first bar opens on the 15m grid, as recorded bars do
   let previous = 0;
   for (const [o, h, l, c] of bars) { zigzag(o - previous); zigzag(c - o); varint(h - Math.max(o, c)); varint(Math.min(o, c) - l); previous = c; }
   return Uint8Array.from(out).buffer;

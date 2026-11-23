@@ -3,7 +3,10 @@
 // every close, puts every later open exactly on the previous close, colours each bar by its close against its open,
 // keeps the shadows around the bodies and changes nothing a second time; that moving a later bar swings it from its
 // open; and that choosing the first bar's colour keeps its body and moves the next bar's open to its other end.
-import { closeOf, openOf, chainParams, chainBars, moveParams, flipParams } from '../bench/model.js';
+import { install } from './worker.mjs';
+
+install();
+const { closeOf, openOf, chainParams, chainBars, moveParams, flipParams } = await import('../bench/model.js');
 
 const fails = [];
 const fail = (what, ...why) => { if (fails.length < 30) fails.push(`${what}: ${why.join(' ')}`); };
