@@ -7,9 +7,10 @@
 // second bar opens at the first one's close. The matcher reads a window the same way, so what it shows (`drawn`) is
 // the window as a chain: its second bar opens at the close of the recorded bar just before it.
 import fs from 'node:fs';
+import { openWorker } from './worker.mjs';
 // Usage: node checks/similarity-look.mjs MATCHER_JS BARS_FILE (BARS_FILE as bars.py writes it)
 const [matcherFile, barsFile] = process.argv.slice(2);
-const M = new Function('self', 'window', fs.readFileSync(matcherFile, 'utf8') + '\nreturn { decode, search, setBars: t => { BARS = t; }, setLatest: v => { latest = v; } };')(undefined, undefined);
+const M = await openWorker(matcherFile);
 const buf = fs.readFileSync(barsFile);
 M.setBars(M.decode(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.length)));
 const dir = b => (b[3] > b[0] ? 'u' : b[3] < b[0] ? 'd' : 'z');

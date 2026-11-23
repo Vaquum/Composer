@@ -11,9 +11,10 @@
 // the first bar taken is as recorded; every later bar taken opens at the close of the recorded bar just before it
 // (with stretch, that may be a skipped bar), and its low and high widen to include that open.
 import fs from 'node:fs';
+import { openWorker } from './worker.mjs';
 // Usage: node checks/similarity-windows.mjs MATCHER_JS BARS_FILE (BARS_FILE as bars.py writes it)
 const [matcherFile, barsFile] = process.argv.slice(2);
-const M = new Function('self', 'window', fs.readFileSync(matcherFile, 'utf8') + '\nreturn { decode, search, setBars: t => { BARS = t; }, setLatest: v => { latest = v; } };')(undefined, undefined);
+const M = await openWorker(matcherFile);
 const buf = fs.readFileSync(barsFile);
 const history = M.decode(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.length)); M.setBars(history);
 const TF = ['15m', '30m', '1h', '2h', '4h'];
