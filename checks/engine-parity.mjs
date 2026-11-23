@@ -13,7 +13,7 @@ import { pathToFileURL } from 'node:url';
 import { openWorker, ROOT } from './worker.mjs';
 
 const ORACLE = 'bd6a0ba32e18548b641267418491bfb5f011a274';
-const [matcherFile, barsFile, activityFile, , only] = process.argv.slice(2);
+const [matcherFile, barsFile, activityFile, , , only] = process.argv.slice(2);
 const show = (path) => execFileSync('git', ['show', `${ORACLE}:${path}`], { cwd: ROOT, maxBuffer: 1 << 26 }).toString();
 const old = new Function('self', 'window', show('matcher.js') + ';return {decode, decodeActivity, readings, search, set: (t, r) => { BARS = t; READ = r; }, setId: id => { latest = id; }};')(undefined, undefined);
 const scope = {}; new Function('globalThis', show('patterns.js'))(scope);
@@ -49,6 +49,7 @@ const close = (a, b, at) => {
   for (const k of Object.keys(a)) close(a[k], b[k], at + '.' + k);
 };
 
+if (only) assert.ok(cases.some(([name]) => name === only), `Unknown parity case: ${only}`);
 let id = 0; const rows = [];
 for (const [name, width, pins, stretch, tf, oriented, skeleton = 0, bars = drawing(width), next = null] of cases) {
   if (only && name !== only) continue;
