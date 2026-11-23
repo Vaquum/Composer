@@ -566,9 +566,9 @@ try{
     assert.equal(n.marks,10,'every mark of five tracks is on a phone\'s screen');assert.deepEqual(n.heads,['Volume','Trades','Delta','Trade size','Net taker imbalance']);
     calm(f,'a phone');await context.close();}
   // Turning a dimension off while its counters are downloading must still answer the changed plain drawing.
-  {const {page:p,faults:f,context}=await open();
+  for(const malformed of [false,true]) {const {page:p,faults:f,context}=await open();
     let release,requested;const gate=new Promise(r=>{release=r;}),request=new Promise(r=>{requested=r;});
-    await context.route('**/counters',async route=>{const response=await route.fetch();requested();await gate;await route.fulfill({response});});
+    await context.route('**/counters',async route=>{const response=await route.fetch();requested();await gate;await route.fulfill(malformed?{status:200,body:'invalid counters'}:{response});});
     await p.goto(`${base}/`,{waitUntil:'domcontentloaded'});await settled(p);
     await p.keyboard.press('d');await p.keyboard.press('Enter');await request;await p.keyboard.press('Escape');
     for(let i=0;i<18;i++)await p.keyboard.press('Equal');
