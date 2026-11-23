@@ -315,6 +315,7 @@ const DIM_NOTE = { volume: 'USDT traded', trades: 'Number of trades', delta: 'Ta
 function dimsValue() { return M.dims.length ? `${M.dims.length} on` : 'None'; }
 /** Switch a dimension on or off. One switched on becomes the track the nudge keys move. */
 function switchDim(name) {
+  if (drag?.dim) drag.finish();
   const on = !M.dims.includes(name); if (!model.setDim(name, on)) return;
   state.message = ''; state.dim = on ? name : state.dim === name ? null : state.dim; if (on) state.lane = 'draw';
   ask();
@@ -794,7 +795,11 @@ function dimDown(n, e, track) {
   if (e.button !== 0) return;
   const box = n.svgHost.getBoundingClientRect(); const G = n.geo; const px = e.clientX - box.left; const name = track.name;
   // the row's own click, which follows when the button is let go, would select a column: a mark is not that
-  n.dragged = true; window.addEventListener('pointerup', () => setTimeout(() => { n.dragged = false; }, 80), { once: true });
+  const clearClick = (ev) => {
+    window.removeEventListener('pointerup', clearClick); window.removeEventListener('pointercancel', clearClick);
+    if (ev.type === 'pointercancel') n.dragged = false; else setTimeout(() => { n.dragged = false; }, 80);
+  };
+  n.dragged = true; window.addEventListener('pointerup', clearClick); window.addEventListener('pointercancel', clearClick);
   if (px > G.g.band[1] + 3) { pickTrack(name); return; }
   e.preventDefault(); n.svgHost.setPointerCapture(e.pointerId);
   const i = G.g.at(px).bar; const before = dimPart(name, model.marks(name));
@@ -802,6 +807,7 @@ function dimDown(n, e, track) {
   drag = { n, dim: name, bar: i, scale: [track.lo, track.hi], was: model.snapshot(), moved: false, height: G.height };
   n.svgHost.classList.add('dragging'); $('#lanes').classList.remove('hot');
   const move = (ev) => {
+    if (!model.marks(name)) { up(); return; }
     const y = ev.clientY - n.svgHost.getBoundingClientRect().top;
     const level = Math.max(track.lo, Math.min(track.hi, Math.round(track.levelAt(y) * 2) / 2));
     if (level === model.marks(name)[i]) return;
@@ -809,14 +815,17 @@ function dimDown(n, e, track) {
     $('#lanes').classList.add('stale'); $('#readout').classList.add('stale');
     drawOne({ ...n.lane, rows: ohlc(M.bars) }, n, ctx.domain, drag.height, true);
   };
-  const up = () => {
+  const up = (ev) => {
     n.svgHost.removeEventListener('pointermove', move); n.svgHost.removeEventListener('pointerup', up); n.svgHost.removeEventListener('pointercancel', up);
     n.svgHost.classList.remove('dragging');
-    const d = drag; drag = null; model.settle();
+    if (ev) clearClick(ev);
+    if (n.svgHost.hasPointerCapture(e.pointerId)) n.svgHost.releasePointerCapture(e.pointerId);
+    const d = drag; drag = null; model.settle(); const marks = model.marks(name);
     // a mark let go where the order is what it was changes nothing, and is no step to undo
-    if (d.moved && dimPart(name, model.marks(name)) !== before) { model.record(d.was); state.message = ''; state.col = null; }
+    if (d.moved && marks && dimPart(name, marks) !== before) { model.record(d.was); state.message = ''; state.col = null; }
     if (d.moved) ask(); else render();
   };
+  drag.finish = up;
   n.svgHost.addEventListener('pointermove', move); n.svgHost.addEventListener('pointerup', up); n.svgHost.addEventListener('pointercancel', up);
 }
 

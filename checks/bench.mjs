@@ -534,6 +534,28 @@ try{
     assert.equal(int(v.count),sum(opened.exactF),'every switch off: the same count');
     const again=await answerTo(p,openingQuery);assert.deepEqual(again,opened,'every switch off: the same question, with the same answer');
     calm(f,'the dimensions');await context.close();}
+  // Ending a dimension drag through its switch or pointer cancellation must remove the old gesture.
+  for(const mode of ['switch','moved-switch','cancel']) {
+    const {page:p,faults:f,context}=await open();
+    await p.goto(`${base}/#${START}&dim=volume:0,1`,{waitUntil:'domcontentloaded'});await settled(p);
+    const marks=await p.evaluate(()=>[...document.querySelectorAll('.lane.draw .b-dimmark')].map(el=>{const r=el.getBoundingClientRect();return{x:r.left+r.width/2,y:r.top+r.height/2};}));
+    await p.mouse.move(marks[0].x,marks[0].y);await p.mouse.down();
+    if(mode!=='switch')await p.mouse.move(marks[0].x,marks[1].y-18,{steps:4});
+    if(mode==='cancel') {
+      await p.locator('.lane.draw .lane-svg').dispatchEvent('pointercancel',{pointerId:1,pointerType:'mouse',isPrimary:true,bubbles:true});
+      await settled(p);
+      await p.evaluate(x=>{const host=document.querySelector('.lane.draw .lane-svg');host.dispatchEvent(new MouseEvent('click',{bubbles:true,clientX:x,clientY:host.getBoundingClientRect().top+8}));},marks[1].x);
+      assert.equal((await see(p)).col,'bar 2','a cancelled mark drag must not swallow the next empty-space click');
+      await p.mouse.up();
+    } else {
+      await p.keyboard.press('d');await p.keyboard.press('Enter');
+      await p.mouse.move(marks[0].x,marks[0].y+10);await p.mouse.up();await p.keyboard.press('Escape');await settled(p);
+      assert.equal(await term(p,'Dimensions'),'None','the dragged dimension can be switched off safely');
+    }
+    assert.equal(await p.locator('.lane.draw .lane-svg').evaluate(el=>el.classList.contains('dragging')),false);
+    calm(f,`dimension drag ended by ${mode}`);await context.close();
+  }
+
   // a drawing carried in from Query brings its dimensions; one that names them wrongly is refused
   {const PACKET=JSON.parse('{"version":1,"revision":"133e3017ba9143f7dc255df7218ff7bfe46d9d06","oriented":true,"bars":[{"v":[15,20,40,50],"d":"u"},{"v":[30,40,60,85],"d":"u"}],"pins":[],"skeleton":0,"stretch":0,"next":{"dir":0,"measure":"any","bps":10,"atr":1},"limit":12}');
     const {DIMENSIONS_REVISION}=await import('../bench/model.js');
