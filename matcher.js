@@ -245,7 +245,7 @@ function give(filang, tables) {
   for (const T of tables) {
     if (!T.JO) links(T);
     gridOf(T);
-    const { slots } = filang.loadComposerFrame(frameCsv(T), T.sec * 1000);
+    const { slots } = filang.loadComposerFrameTicks(T.sec * 1000, { times: T.ts, timeUnit: 's', open: T.O, high: T.H, low: T.L, close: T.C });
     if (slots !== T.slots) throw new Error(`The engine reads ${slots} ${T.name} slots where Composer reads ${T.slots}.`);
   }
   studied = null;

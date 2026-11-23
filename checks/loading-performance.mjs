@@ -39,7 +39,7 @@ try{
   for(const kind of ['cold','warm']){
     await page.goto(`http://127.0.0.1:${port}`,{waitUntil:'domcontentloaded'});
     await page.waitForSelector('#canvas[data-readings="ready"][data-answer="current"][data-waiting="0"]',{timeout:20000});
-    const result=await page.evaluate(()=>({first:__loadEvents[0]?.at,complete:__loadEvents.find(e=>e.readings)?.at,cls:__loadShifts.reduce((a,b)=>a+b.value,0),shifts:__loadShifts,resources:performance.getEntriesByType('resource').filter(e=>/\/(bars|activity)$/.test(e.name)).map(e=>({path:e.name.split('/').at(-1),start:e.startTime,end:e.responseEnd,bytes:e.transferSize,encoded:e.encodedBodySize,decoded:e.decodedBodySize}))}));
+    const result=await page.evaluate(()=>({first:__loadEvents[0]?.at,firstReadings:__loadEvents[0]?.readings,complete:__loadEvents.find(e=>e.readings)?.at,cls:__loadShifts.reduce((a,b)=>a+b.value,0),shifts:__loadShifts,resources:performance.getEntriesByType('resource').filter(e=>/\/(bars|activity)$/.test(e.name)).map(e=>({path:e.name.split('/').at(-1),start:e.startTime,end:e.responseEnd,bytes:e.transferSize,encoded:e.encodedBodySize,decoded:e.decodedBodySize}))}));
     console.log(JSON.stringify({kind,...result,responses:requests.slice(-2)}));
     if(kind==='cold'){
       assert.deepEqual(requests.map(r=>[r.status,r.encoding]),[[200,'gzip'],[200,'gzip']],'the production handler must compress both real payloads');
@@ -48,6 +48,7 @@ try{
         assert.ok(resource.encoded<resource.decoded,'compression must reduce actual browser transfer');
       }
     }
+    assert.equal(result.firstReadings,false,`${kind}: activity preparation must follow the first answer`);
     assert.ok(result.first<(kind==='cold'?4000:2000),`${kind}: first matches exceeded their loading budget (${result.first})`);
     assert.ok(result.complete<(kind==='cold'?7500:2500),`${kind}: complete results exceeded their loading budget (${result.complete})`);
     assert.ok(result.cls<.02,`${kind}: initial results moved established content (${result.cls})`);
