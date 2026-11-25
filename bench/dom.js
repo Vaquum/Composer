@@ -24,10 +24,14 @@ export const label = (text, cls = '') => h('span', { class: 'label ' + cls }, te
 export const note = (text, cls = '') => h('span', { class: 'note ' + cls }, text);
 export const quiet = (text, fn, title) => h('button', { class: 'quiet', type: 'button', title, onclick: (e) => { e.stopPropagation(); fn(e); } }, text);
 
-let popup = null; let opener = null;
-export function closeMenu() { if (popup) { popup.remove(); popup = null; document.removeEventListener('mousedown', outside, true); } opener?.setAttribute('aria-expanded', 'false'); opener = null; }
+let popup = null; let opener = null; let openerName = null;
+/** The control a menu or popover opened from, as it stands now: a redraw may have replaced the one that opened it. */
+const openerNow = () => (openerName ? document.querySelector(`[data-enc="${CSS.escape(openerName)}"]`) : null) || opener;
+export function closeMenu() { if (popup) { popup.remove(); popup = null; document.removeEventListener('mousedown', outside, true); } openerNow()?.setAttribute('aria-expanded', 'false'); opener = null; openerName = null; }
 /** The control a menu or popover opened from says that it is open, until it closes. */
-const opened = (anchor) => { opener = anchor; anchor.setAttribute('aria-expanded', 'true'); };
+const opened = (anchor) => { opener = anchor; openerName = anchor.dataset.enc || null; anchor.setAttribute('aria-expanded', 'true'); };
+/** Whether the menu or popover on screen opened from the term of this name: a redrawn term says so too. */
+export const menuOpenFor = (name) => !!popup && openerName === name;
 export const menuOpen = () => !!popup;
 function outside(e) { if (popup && !popup.contains(e.target) && !e.target.closest('[data-menu]')) closeMenu(); }
 /**
@@ -42,7 +46,9 @@ export function menu(anchor, { title, hint, options, value, onChange, multi = fa
   h('span', null, o.label, o.detail ? h('small', null, o.detail) : null), o.figure !== undefined ? h('span', { class: 'fig' }, o.figure) : null))));
   popup = h('div', { class: 'pop', role: 'menu', onkeydown: (e) => {
     const items = [...popup.querySelectorAll('li button:not(:disabled)')]; const at = items.indexOf(document.activeElement);
-    if (e.key === 'Escape' || e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); closeMenu(); anchor.focus(); }
+    // Esc goes back to the control; Tab and ⇧Tab close the menu and move on from the control, either way
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeMenu(); anchor.focus(); }
+    if (e.key === 'Tab') { e.stopPropagation(); const back = openerNow() || anchor; closeMenu(); back.focus(); }
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); e.stopPropagation(); items[(at + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus(); }
     if (e.key === 'Home' || e.key === 'End') { e.preventDefault(); e.stopPropagation(); items[e.key === 'Home' ? 0 : items.length - 1]?.focus(); }
   } }, h('header', null, label(title)), hint ? h('p', { class: 'note' }, hint) : null, list);

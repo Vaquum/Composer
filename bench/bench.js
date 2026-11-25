@@ -1,6 +1,6 @@
 // Composer bench. One canvas locked on the drawn shape and what it became; rows are cohorts of that shape.
 // Panels around it toggle: the named patterns, the inspector, and a drawer for windows, the g1 string and Limen.
-import { h, mount, $, label, note, quiet, menu, popover, closeMenu, menuOpen } from './dom.js';
+import { h, mount, $, label, note, quiet, menu, popover, closeMenu, menuOpen, menuOpenFor } from './dom.js';
 import { createModel, ohlc, extent, fromRows, chainBars, copyParams, moveParams, partPrice, dimPart, DIMENSIONS, PARTS, KIND_NAME, TF, TF_LONG, MIN_BARS, MAX_BARS, MAX_STRETCH, AFTER, NO_GIVEN, PACKET_MAX } from './model.js';
 import { Candles } from './filang.js';
 import { createEngine } from './engine.js';
@@ -233,9 +233,13 @@ function give(j, z) {
 let toastTimer = 0;
 function toast(text, action = null) {
   const el = $('#toast'); clearTimeout(toastTimer);
-  if (!text) { el.hidden = true; return; }
+  // a notice that goes while the keys are on its button would leave them nowhere: they go to the selected row instead
+  const hide = () => { const had = el.contains(document.activeElement); el.hidden = true; if (had) $('#lanes > .lane.sel, #lanes > .lane.draw')?.focus({ preventScroll: true }); };
+  if (!text) { hide(); return; }
   mount(el, h('span', null, text), action ? h('button', { type: 'button', class: 'quiet', onclick: () => { action.run(); toast(null); } }, action.label) : null);
-  el.hidden = false; toastTimer = setTimeout(() => { el.hidden = true; }, 8000);
+  // it stays while the keyboard is on it, and goes a little after the keyboard leaves
+  const fade = () => { if (el.contains(document.activeElement)) { toastTimer = setTimeout(fade, 2000); return; } hide(); };
+  el.hidden = false; toastTimer = setTimeout(fade, 8000);
 }
 /** A six-bar closing path in words: its runs, in order. */
 function pathText(key) {
@@ -246,6 +250,7 @@ function pathText(key) {
 // Hold mode's picked point and the point under the pointer live on the drawing. When their bar is removed, or the
 // hold a knot stood for is released, they go too: nothing may be read from a bar that is no longer there.
 function tidyPicks() {
+  if (state.level === 'open' && M.sel !== 0) state.level = 'close';   // only the first bar has an open of its own
   const n = M.bars.length; const gone = (q) => !!q && ((q.bar !== undefined && q.bar >= n) || (q.kind === 'knot' && !M.pins[q.pin]));
   if (gone(state.pend)) state.pend = null;
   if (gone(state.hot)) state.hot = null;
@@ -361,7 +366,7 @@ function renderBars() {
   // the readout is a live region: it is rewritten only when what it says changes, so a reader hears each answer once
   if ($('#readout').innerHTML !== rd.innerHTML) mount($('#readout'), ...rd.childNodes);
   for (const b of document.querySelectorAll('button[data-panel]')) { const k = b.dataset.panel; b.setAttribute('aria-pressed', String(k === 'left' ? ui.left : k === 'right' ? ui.right : ui.drawer === k)); }
-  const enc = (name, value, open, cls = '') => { const b = h('button', { class: 'enc ' + cls, type: 'button', 'data-menu': '1', 'data-enc': name, 'aria-haspopup': ['Holds', 'Given'].includes(name) ? 'dialog' : 'menu', 'aria-expanded': 'false', onclick: () => open(b) }, label(name), h('span', { class: 'val' }, value), h('i', { 'aria-hidden': 'true' }, '▼')); return b; };
+  const enc = (name, value, open, cls = '') => { const b = h('button', { class: 'enc ' + cls, type: 'button', 'data-menu': '1', 'data-enc': name, 'aria-haspopup': ['Holds', 'Given'].includes(name) ? 'dialog' : 'menu', 'aria-expanded': String(menuOpenFor(name)), onclick: () => open(b) }, label(name), h('span', { class: 'val' }, value), h('i', { 'aria-hidden': 'true' }, '▼')); return b; };
   const on = M.tfOn.filter(Boolean).length;
   mount($('#encbar'),
     h('span', { class: 'enc step' }, label('Bars'),
@@ -1250,7 +1255,7 @@ const KEYS = [
 ];
 /** The keys sheet: every shortcut the bench answers to, opened with ? or from the dock. */
 function keysSheet() {
-  const open = $('#keys-sheet'); if (open) { open.remove(); return; }
+  const open = $('#keys-sheet'); if (open) { open.close(); return; }
   const was = document.activeElement; let back = null;
   const close = () => { back.remove(); if (was?.isConnected) was.focus({ preventScroll: true }); };
   const shut = h('button', { class: 'quiet', type: 'button', onclick: () => close() }, 'Close · Esc');
@@ -1259,7 +1264,7 @@ function keysSheet() {
   h('div', { class: 'sheet', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Keys' },
     h('header', null, label('Keys'), shut),
     h('dl', null, KEYS.map(([k, t]) => [h('dt', null, k.split(' ').map((x) => h('kbd', null, x))), h('dd', null, t)]))));
-  document.body.append(back); shut.focus();
+  back.close = close; document.body.append(back); shut.focus();
 }
 $('[data-keys]').addEventListener('click', keysSheet);
 
