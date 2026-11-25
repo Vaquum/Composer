@@ -33,7 +33,7 @@ PAGES = {
     '/': ('bench/index.html', 'text/html; charset=utf-8'),
     '/matcher.js': ('matcher.js', 'text/javascript; charset=utf-8'),
 }
-BENCH_ASSETS = {'base.css': 'text/css', 'bench.css': 'text/css', 'composer.css': 'text/css',
+BENCH_ASSETS = {'surface.css': 'text/css', 'surface.js': 'text/javascript', 'base.css': 'text/css', 'bench.css': 'text/css', 'composer.css': 'text/css',
                 'bench.js': 'text/javascript', 'lanes.js': 'text/javascript', 'engine.js': 'text/javascript',
                 'model.js': 'text/javascript', 'motion.js': 'text/javascript', 'dom.js': 'text/javascript',
                 'filang.js': 'text/javascript'}
