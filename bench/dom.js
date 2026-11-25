@@ -24,8 +24,10 @@ export const label = (text, cls = '') => h('span', { class: 'label ' + cls }, te
 export const note = (text, cls = '') => h('span', { class: 'note ' + cls }, text);
 export const quiet = (text, fn, title) => h('button', { class: 'quiet', type: 'button', title, onclick: (e) => { e.stopPropagation(); fn(e); } }, text);
 
-let popup = null;
-export function closeMenu() { if (popup) { popup.remove(); popup = null; document.removeEventListener('mousedown', outside, true); } }
+let popup = null; let opener = null;
+export function closeMenu() { if (popup) { popup.remove(); popup = null; document.removeEventListener('mousedown', outside, true); } opener?.setAttribute('aria-expanded', 'false'); opener = null; }
+/** The control a menu or popover opened from says that it is open, until it closes. */
+const opened = (anchor) => { opener = anchor; anchor.setAttribute('aria-expanded', 'true'); };
 export const menuOpen = () => !!popup;
 function outside(e) { if (popup && !popup.contains(e.target) && !e.target.closest('[data-menu]')) closeMenu(); }
 /**
@@ -40,10 +42,11 @@ export function menu(anchor, { title, hint, options, value, onChange, multi = fa
   h('span', null, o.label, o.detail ? h('small', null, o.detail) : null), o.figure !== undefined ? h('span', { class: 'fig' }, o.figure) : null))));
   popup = h('div', { class: 'pop', role: 'menu', onkeydown: (e) => {
     const items = [...popup.querySelectorAll('li button:not(:disabled)')]; const at = items.indexOf(document.activeElement);
-    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeMenu(); anchor.focus(); }
+    if (e.key === 'Escape' || e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); closeMenu(); anchor.focus(); }
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); e.stopPropagation(); items[(at + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus(); }
+    if (e.key === 'Home' || e.key === 'End') { e.preventDefault(); e.stopPropagation(); items[e.key === 'Home' ? 0 : items.length - 1]?.focus(); }
   } }, h('header', null, label(title)), hint ? h('p', { class: 'note' }, hint) : null, list);
-  document.body.append(popup);
+  document.body.append(popup); opened(anchor);
   const r = anchor.getBoundingClientRect();
   popup.style.left = Math.max(8, Math.min(window.innerWidth - popup.offsetWidth - 8, r.left)) + 'px';
   popup.style.top = (r.bottom + popup.offsetHeight + 4 < window.innerHeight ? r.bottom + 1 : r.top - popup.offsetHeight - 1) + 'px';
@@ -57,7 +60,7 @@ export function popover(anchor, { title, hint, body, footer = null }) {
   closeMenu();
   popup = h('div', { class: 'pop wide', role: 'dialog', 'aria-label': title, onkeydown: (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeMenu(); anchor.focus(); } } },
     h('header', null, label(title)), hint ? h('p', { class: 'note' }, hint) : null, body, footer ? h('footer', null, footer) : null);
-  document.body.append(popup);
+  document.body.append(popup); opened(anchor);
   const r = anchor.getBoundingClientRect();
   popup.style.left = Math.max(8, Math.min(window.innerWidth - popup.offsetWidth - 8, r.left)) + 'px';
   popup.style.top = (r.bottom + popup.offsetHeight + 4 < window.innerHeight ? r.bottom + 1 : r.top - popup.offsetHeight - 1) + 'px';

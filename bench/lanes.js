@@ -99,7 +99,7 @@ export function domainOf(conts) {
  */
 export function drawLane(host, { bars, cont, states, next = null, domain, height, hero = false, pick = -1, direct = false, wait = false, why = '', numbers = false, mark = null, pooled = null, diff = null,
   holds = null, tints = null, frame = -1, bones = null, bonesOn = false, targets = false, pend = null, hot = null,
-  given = NONE, path = null, overlay = null, col = 0, loose = false, dims = null, band = BAND }) {
+  given = NONE, path = null, overlay = null, col = 0, loose = false, dims = null, band = BAND, edit = null }) {
   const W = Math.max(160, Math.floor(host.clientWidth)); const n = bars.length;
   // the dimension tracks take the foot of the lane; the candles and what followed them keep the rest, as they were
   const full = height; height = full - (dims || []).reduce((a, t) => a + t.height, 0);
@@ -184,6 +184,11 @@ export function drawLane(host, { bars, cont, states, next = null, domain, height
   if (frame >= 0 && bars[frame]) {
     const [o, , , c] = bars[frame]; const top = yb(Math.max(o, c)); const bot = yb(Math.min(o, c));
     sc.put('frame', 'marks', () => s('rect', { class: 'b-frame' }), [g.xb(frame) - cw / 2 - 4, top - 4, cw + 8, Math.max(1, bot - top) + 8], setRect);
+  }
+  // the level the keys move, when one is picked: marked as the point under the pointer is in hold mode
+  if (edit && !targets && bars[edit.bar]) {
+    const [o, hi, lo, c] = bars[edit.bar]; const lv = { H: hi, T: Math.max(o, c), B: Math.min(o, c), L: lo };
+    sc.put('edit', 'knobs', () => s('rect'), [g.xb(edit.bar) - 3.5, yb(lv[edit.part]) - 3.5, 7, 7], setRect, 'b-target hot');
   }
   if (targets) {
     // hold mode: every endpoint of the drawing is a point to pick, and a body stands for its colour

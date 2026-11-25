@@ -111,6 +111,24 @@ body.bench {
 .boot.err, .boot.err .label { color: var(--t1); }
 .boot:not(.err) .label::after { content: ''; display: block; width: 72px; height: 1px; margin: 10px auto 0; background: linear-gradient(90deg, transparent, var(--t1), transparent); background-size: 50% 100%; background-repeat: no-repeat; animation: sweep 1.4s var(--ease) infinite; }
 @keyframes sweep { from { background-position: -100% 0; } to { background-position: 200% 0; } }
+/* a notice with its action: Release after a pick, or what a step did */
+.canvas { position: relative; }
+.toast { position: absolute; z-index: 9; left: 50%; bottom: 74px; transform: translateX(-50%); display: flex; align-items: baseline; gap: 16px; max-width: calc(100% - 40px);
+  padding: 8px 14px; background: var(--raised); border: 1px solid var(--line-2); box-shadow: 0 10px 28px rgba(7, 12, 24, .42); color: var(--t1); font-size: 12.5px; animation: rise var(--t) var(--ease); }
+.toast[hidden] { display: none; }
+.toast > span { overflow-wrap: anywhere; }
+.toast .quiet { white-space: nowrap; color: var(--t1); text-decoration: underline; text-decoration-color: var(--line-2); text-underline-offset: 3px; }
+.dock .keys-hint { margin-left: auto; margin-right: 7px; }
+.readout .quiet { margin-left: 4px; }
+/* the keys sheet */
+.sheet-back { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: color-mix(in srgb, var(--navy) 70%, transparent); }
+.sheet { width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 64px); overflow: auto; background: var(--raised); border: 1px solid var(--line-2); box-shadow: 0 24px 60px rgba(7, 12, 24, .6); animation: pop var(--t-short) var(--ease); }
+.sheet header { display: flex; align-items: center; justify-content: space-between; padding: 12px 18px; border-bottom: 1px solid var(--line); }
+.sheet dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0 18px; margin: 0; padding: 8px 18px 14px; }
+.sheet dt, .sheet dd { padding: 7px 0; border-bottom: 1px solid var(--line); margin: 0; }
+.sheet dt { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+.sheet dd { color: var(--t2); font-size: 13px; }
+.sheet kbd { color: var(--t1); }
 .row3 { display: grid; grid-template-columns: var(--head) minmax(0, 1fr) var(--track); min-width: 0; }
 .axis { border-bottom: 1px solid var(--line); align-items: center; }
 .axis .lab { padding: 0 12px 0 18px; display: flex; align-items: baseline; gap: 14px; min-width: 0; white-space: nowrap; }
