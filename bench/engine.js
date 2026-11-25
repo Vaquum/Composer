@@ -6,10 +6,11 @@
 
 import { engineModule } from './filang.js';
 
-async function loadPayload(path, options = {}, loaded = null) {
+async function loadPayload(path, options = {}, loaded = null, waiting = null) {
   for (let attempt = 0; ; attempt++) {
     const response = await fetch(path, options);
-    if (response.status === 503 && attempt < 180) { await new Promise((resolve) => setTimeout(resolve, 1000)); continue; }
+    // the server answers 503 while it is still reading the history: the page waits, and says that it is waiting
+    if (response.status === 503 && attempt < 180) { if (waiting) waiting(attempt + 1); await new Promise((resolve) => setTimeout(resolve, 1000)); continue; }
     if (response.status === 409) throw new Error('history changed; reload the page');
     if (!response.ok) throw new Error(`the server answered ${response.status}`);
     if (loaded) loaded(response);
@@ -19,7 +20,8 @@ async function loadPayload(path, options = {}, loaded = null) {
 
 export function createEngine({ onState }) {
   // counters: 'idle' until a dimension is asked about, then 'loading', and 'ready' or 'failed' (why is in `counted`)
-  const state = { ready: false, readings: 'loading', failed: '', bars: 0, from: 0, to: 0, note: '', counters: 'idle', counted: '' };
+  // warming: how many times the server has said it is still reading the history; 0 once the bars are in
+  const state = { ready: false, readings: 'loading', failed: '', bars: 0, from: 0, to: 0, note: '', counters: 'idle', counted: '', warming: 0 };
   let barsTag = '';
   let activity = null, answered = false;
   const waiting = []; let flight = null; let id = 0; let worker = null; const named = new Map();
@@ -69,10 +71,10 @@ export function createEngine({ onState }) {
       if (m.type === 'named-pattern') { const w = named.get(m.id); if (w) { named.delete(m.id); w(m); } return; }
       if (m.type === 'progress') { if (flight && m.id === flight.id && flight.onProgress) flight.onProgress(m.f); return; }
       if (m.type === 'result' && flight && m.id === flight.id) { answered = true; useActivity(); const f = flight; flight = null; f.resolve(m); pump(); }
-      // a question the engine refuses is answered with nothing, and says why
-      if (m.type === 'refused' && flight && m.id === flight.id) { answered = true; useActivity(); const f = flight; flight = null; state.note = m.message; console.error(m.message); f.resolve(null); tell(); pump(); }
+      // a question the engine refuses is answered with its refusal, so the page can say so instead of waiting for it
+      if (m.type === 'refused' && flight && m.id === flight.id) { answered = true; useActivity(); const f = flight; flight = null; state.note = m.message; console.error(m.message); f.resolve({ refused: m.message }); tell(); pump(); }
     };
-    loadPayload('/bars', {}, (response) => { barsTag = response.headers.get('ETag') || ''; }).then((buffer) => {
+    loadPayload('/bars', {}, (response) => { barsTag = response.headers.get('ETag') || ''; state.warming = 0; }, (attempt) => { state.warming = attempt; tell(); }).then((buffer) => {
       const b = new Uint8Array(buffer);
       if (!(b.length > 5 && String.fromCharCode(b[0], b[1], b[2], b[3], b[4]) === 'CBAR1')) throw new Error('the server sent something other than bars');
       worker.postMessage({ type: 'bars', buffer }, [buffer]);
@@ -83,7 +85,7 @@ export function createEngine({ onState }) {
   start();
   return {
     state,
-    /** Ask the matcher. Resolves with its result, or with null when the question was dropped before it was sent. */
+    /** Ask the matcher. Resolves with its result, with { refused } when the engine refuses the question, or with null when it was dropped before it was sent. */
     query(q, { onProgress = null, group = '', first = false } = {}) {
       return new Promise((resolve) => {
         const item = { q, resolve, onProgress, group };

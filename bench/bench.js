@@ -4,7 +4,7 @@ import { h, mount, $, label, note, quiet, menu, popover, closeMenu, menuOpen } f
 import { createModel, ohlc, extent, fromRows, chainBars, copyParams, moveParams, partPrice, dimPart, DIMENSIONS, PARTS, KIND_NAME, TF, TF_LONG, MIN_BARS, MAX_BARS, MAX_STRETCH, AFTER, NO_GIVEN, PACKET_MAX } from './model.js';
 import { Candles } from './filang.js';
 import { createEngine } from './engine.js';
-import { drawLane, drawAxis, drawColumnTrack, drawGlyph, drawExample, conditioned, sharesOf, domainOf, differsFrom, trackHeight } from './lanes.js';
+import { drawLane, drawAxis, drawColumnTrack, drawGlyph, drawExample, conditioned, sharesOf, domainOf, differsFrom, trackHeight, BAND } from './lanes.js';
 
 // The other two aspects of the tool. On a vaquum.fi host they are the deployed sites behind the same Portal login.
 const DEPLOYED = location.hostname.endsWith('.vaquum.fi');
@@ -48,6 +48,11 @@ const remember = (key, r) => { if (answers.size > 60) answers.delete(answers.key
 const keyOf = (q) => JSON.stringify([engine.state.readings === 'ready', q]);
 let hero = null; let heroKey = ''; let wantKey = ''; let gen = 0; let progress = 0; let pendingRender = 0;
 const fresh = () => !!hero && heroKey === wantKey;
+// A drawing the engine refuses has no answer coming: the page says so, instead of searching for ever.
+let refused = null;   // { key, why } for the drawing's own question
+const refusedNow = () => !!refused && refused.key === wantKey;
+const refusals = new Map();   // a row's question the engine refused, by key: its reason
+const reject = (key, why) => { if (refusals.size > 60) refusals.delete(refusals.keys().next().value); refusals.set(key, why); };
 let wasReady = false;
 const engine = createEngine({ onState: (st) => {
   // the matcher counts the catalogue: a Patterns panel opened before the history was ready starts counting now
@@ -66,6 +71,8 @@ function ask() {
   render();
   engine.query(q, { first: true, onProgress: (f) => { progress = f; statusLine(); } }).then((r) => {
     if (!r || mine !== gen) return;
+    // not remembered: the same drawing is asked again when the readings arrive, and may be answered then
+    if (r.refused) { refused = { key, why: r.refused }; render(); return; }
     remember(key, r); hero = r; heroKey = key; askLanes(); render();
   });
 }
@@ -73,8 +80,8 @@ function askLanes() {
   engine.clear('lanes'); const mine = gen;
   for (const spec of laneSpecs()) {
     if (!spec.q) continue;
-    const key = keyOf(spec.q); if (answers.has(key)) continue;
-    engine.query(spec.q, { group: 'lanes' }).then((r) => { if (!r) return; remember(key, r); if (mine === gen) later(); });
+    const key = keyOf(spec.q); if (answers.has(key) || refusals.has(key)) continue;
+    engine.query(spec.q, { group: 'lanes' }).then((r) => { if (!r) return; if (r.refused) reject(key, r.refused); else remember(key, r); if (mine === gen) later(); });
   }
 }
 const later = () => { if (!pendingRender) pendingRender = setTimeout(() => { pendingRender = 0; render(); }, 16); };
@@ -155,10 +162,44 @@ function markOf(lane) {
 }
 const scaled = (rows, ext) => { const [lo, hi] = ext || extent(rows); const d = hi - lo || 1; return rows.map((r) => r.map((v) => (v - lo) / d)); };
 
+// ---- a steady view of the drawing
+// Each row draws the shape fitted to its own range. Fitted afresh after every edit, a level dragged past the others
+// would, once let go, rescale every bar: the level leaves the pointer and bars that did not change appear to move.
+// So the rows that show the drawing hold one price range, the view, while edits stay inside its headroom, and fit
+// again only when the shape leaves that headroom, shrinks to under half of it, or is replaced by another drawing.
+let view = null;   // [lo, hi]: the prices the band's 0 and 1 stand for
+const STEADY = new Set(['draw', 'tf', 'hold', 'offer', 'path', 'nopath']);   // rows whose candles are the drawing itself
+function settleView() {
+  const [lo, hi] = extent(ohlc(M.bars)); const span = hi - lo;
+  if (!view || !(span > 0)) { view = [lo, hi]; return; }
+  const vs = view[1] - view[0]; const a = (lo - view[0]) / vs; const b = (hi - view[0]) / vs;
+  if (a < -0.2 || b > 1.2 || span / vs < 0.45) view = [lo, hi];
+}
+/** The band, in the shape units of bars scaled to `ext`, that puts every price where the view has it. */
+function bandFor(ext) {
+  if (!view) return undefined;
+  const vs = view[1] - view[0]; const span = ext[1] - ext[0]; if (!(span > 0) || !(vs > 0)) return undefined;
+  const a = (ext[0] - view[0]) / vs; const b = span / vs;
+  return [(BAND[0] - a) / b, (BAND[1] - a) / b];
+}
+/**
+ * A level set by the pointer carries the pointer's arithmetic: 94.70143999999999 where 94.7 was meant, and the address
+ * shows it. A bar's levels are put on a hundredth of the drawing's unit when they are let go, unless that would change
+ * the g1 code: an order or a tie the hand made is never moved by tidying.
+ */
+function tidyBar(i) {
+  const P = model.params(); const before = model.code(); const Q = copyParams(P); const r = (v) => Math.round(v * 100) / 100;
+  Q.c[i] = r(Q.c[i]); Q.h[i] = r(Q.h[i]); Q.l[i] = r(Q.l[i]); if (i === 0) Q.o0 = r(Q.o0);
+  model.setParams(Q); if (model.code() !== before) model.setParams(P);
+}
+
 function buildLanes() {
   const rows = ohlc(M.bars);
-  const lanes = [{ id: 'draw', kind: 'draw', title: 'The drawing', rows, res: hero, wait: !fresh() }];
-  for (const spec of laneSpecs()) lanes.push({ ...spec, res: spec.q ? answers.get(keyOf(spec.q)) || null : null, wait: spec.q ? !answers.has(keyOf(spec.q)) : false });
+  const lanes = [{ id: 'draw', kind: 'draw', title: 'The drawing', rows, res: hero, wait: !fresh() && !refusedNow(), refused: refusedNow() ? refused.why : null }];
+  for (const spec of laneSpecs()) {
+    const key = spec.q ? keyOf(spec.q) : null; const no = key ? refusals.get(key) ?? null : null;
+    lanes.push({ ...spec, res: key ? answers.get(key) || null : null, wait: key ? !answers.has(key) && no === null : false, refused: no });
+  }
   // a ledger line keeps some of the line above it; the first is measured against every window that could match
   let prev = null;
   for (const l of lanes) if (l.kind === 'hold') {
@@ -198,6 +239,7 @@ function tidyPicks() {
 
 let ctx = null;
 function render() {
+  $('#boot')?.remove();   // the canvas has rows to show from the first render on: they say what they wait for
   tidyPicks();
   document.body.classList.toggle('holding', state.hold);
   $('#left').hidden = !ui.left; $('#right').hidden = !ui.right; $('#drawer').hidden = !ui.drawer;
@@ -212,7 +254,7 @@ function render() {
 function mark() {
   const d = $('#canvas').dataset; const st = engine.state;
   d.history = st.failed ? 'failed' : st.ready ? 'ready' : 'loading'; d.readings = st.readings;
-  d.answer = !hero ? 'none' : fresh() ? 'current' : 'stale';
+  d.answer = refusedNow() ? 'refused' : !hero ? 'none' : fresh() ? 'current' : 'stale';
   d.waiting = String(ctx ? ctx.lanes.filter((l) => l.wait).length : 0);
   d.bar = String(M.sel + 1); d.col = !state.col ? '' : state.col.after ? `+${state.col.after}` : `bar ${state.col.bar + 1}`;
   d.counters = st.counters; d.dim = state.dim || '';
@@ -234,6 +276,7 @@ const TOO_MUCH = 'Too much is pinned to carry this shape to Query: release some 
 const notCarried = () => `Carried: the bars${M.dims.length ? ', the dimensions switched on' : ''} and the pins. Not carried: the skeleton, stretch, the next-bar term, timeframes and picks. Query counts on its own 15m recording.`;
 /** Take the drawing a link carried in, or say why it could not be read. The link is spent either way. */
 function takeCarried(text) {
+  view = null;
   const why = model.readPacket(text);
   if (why) state.message = `The drawing in the link could not be read: ${why}`;
   else { wanted = null; showDrawing(); const k = M.pins.length; const dm = M.dims.length; state.message = `Drawn from Query · ${M.bars.length} bars${dm ? ` · ${dm} ${dm === 1 ? 'dimension' : 'dimensions'}` : ''}${k ? ` · ${k} ${k === 1 ? 'pin' : 'pins'}` : ''} · counted on this history`; }
@@ -258,24 +301,30 @@ function renderBars() {
   { const link = queryLink(model.pinned()); $('#to-query').href = link || QUERY;
     $('#to-query').title = !link ? `${TOO_MUCH}. Query opens without it.` : model.pinned() ? 'Ask in Query: the relations pinned here, on fixed candles' : 'Ask in Query: this exact shape'; }
   $('#chip').textContent = st.ready ? `BTCUSDT · Binance · 15m to 4h · ${day.format(new Date(st.from * 1000))} to ${day.format(new Date(st.to * 1000))} · ${int(st.bars)} bars` : 'BTCUSDT · Binance · 15m to 4h';
-  const rd = $('#readout'); rd.classList.toggle('stale', !fresh());
-  if (!r) mount(rd, note(st.failed ? st.failed : st.ready ? 'Searching the history' : 'Loading the BTCUSDT history'));
+  const rd = $('#readout'); rd.classList.toggle('stale', !fresh() && !refusedNow());
+  if (refusedNow()) mount(rd, note('The engine refused this drawing · its reason is at the foot of the page'));
+  else if (!r) mount(rd, note(st.failed ? st.failed : st.ready ? 'Searching the history' : st.warming ? 'Waiting for the server to finish reading the BTCUSDT history' : 'Loading the BTCUSDT history'));
   else {
     const p = r.panes; const c = tally(r); const k = r.holds; const rate = (v, text) => (v ? h('span', { class: 'sub' }, h('b', { class: 'fig' }, pct(v[0])), ' ' + text) : null);
     const every = k === 1 ? 'the hold' : `all ${k} holds`;
-    // the count says what it counts: twins of the whole shape, windows that keep what is held, or nothing at all
-    const lead = c.mode === 'nearest' ? [h('b', null, int(c.n)), note(c.n === 1 ? 'exact twin' : 'exact twins')]
-      : c.mode === 'held' ? [h('b', null, int(c.n)), note(`${c.n === 1 ? 'window keeps' : 'windows keep'} ${every}`)]
-        : [h('b', { class: 'none' }, '0'), note(c.raw ? `windows keep ${every} and pass the next-bar filter` : `windows keep ${every}`)];
+    // The count leads with what the rates beside it are read from. With fewer than 30 twins, or none that keeps what is
+    // held, the rates are the closest or nearest windows': their number leads, and the twins or holds are said after it.
+    const instead = p.kind === 'closest' && p.n > 0;
+    const lead = instead ? [h('b', null, int(p.n)), note(c.mode === 'fallback' ? 'nearest windows' : 'closest windows')]
+      : c.mode === 'nearest' ? [h('b', null, int(c.n)), note(c.n === 1 ? 'exact twin' : 'exact twins')]
+        : c.mode === 'held' ? [h('b', null, int(c.n)), note(`${c.n === 1 ? 'window keeps' : 'windows keep'} ${every}`)]
+          : [h('b', { class: 'none' }, '0'), note(c.raw ? `windows keep ${every} and pass the next-bar filter` : `windows keep ${every}`)];
+    const why = !instead ? null : c.mode === 'fallback' ? `· none keeps ${every}${c.raw ? ' and passes the next-bar filter' : ''}`
+      : `· ${c.n ? `only ${int(c.n)} exact ${c.n === 1 ? 'twin' : 'twins'}` : 'no exact twin'}, under 30`;
     // with a later bar picked, the readout says how many windows closed there; the whole cohort's rates would misstate them
     const cd = conditioned(p.cont, M.given); const share = cd?.picks ? rateOf(cd.n, cd.base) : null;
     // with a dimension on, the closest windows are the closest that stand in its order: there may be none at all
-    mount(rd, lead, p.kind === 'closest' ? note(!p.n && M.dims.length ? '· no window stands in the order of the dimensions' : c.mode === 'fallback' ? `· reading the ${int(p.n)} nearest windows instead` : `· reading the ${int(p.n)} closest windows`) : null,
+    mount(rd, lead, p.kind === 'closest' ? note(!p.n && M.dims.length ? '· no window stands in the order of the dimensions' : why) : null,
       p.next || p.cont ? h('span', { class: 'sep' }) : null,
       cd?.picks ? [h('span', { class: 'sub', title: `${int(cd.n)} of ${int(cd.base)} complete windows closed where the picks say` }, `given ${givenList().length > 2 ? `${givenList().length} later bars` : givenWords()} `, h('b', { class: 'fig' }, int(cd.n)), ` of ${int(cd.base)}`), share ? h('span', { class: 'sub' }, h('b', { class: 'fig' }, pct(share[0]))) : null]
         : [rate(p.next, 'next bar up'), rate(p.cont?.aboveHigh, 'broke the high'), rate(p.cont?.belowLow, 'broke the low')]);
   }
-  for (const b of document.querySelectorAll('.toggles button')) { const k = b.dataset.panel; b.setAttribute('aria-pressed', String(k === 'left' ? ui.left : k === 'right' ? ui.right : ui.drawer === k)); }
+  for (const b of document.querySelectorAll('button[data-panel]')) { const k = b.dataset.panel; b.setAttribute('aria-pressed', String(k === 'left' ? ui.left : k === 'right' ? ui.right : ui.drawer === k)); }
   const enc = (name, value, open, cls = '') => { const b = h('button', { class: 'enc ' + cls, type: 'button', 'data-menu': '1', 'data-enc': name, onclick: () => open(b) }, label(name), h('span', { class: 'val' }, value), h('i', null, '▼')); return b; };
   const on = M.tfOn.filter(Boolean).length;
   mount($('#encbar'),
@@ -379,8 +428,10 @@ function statusLine() {
   const st = engine.state; const el = $('#status');
   // a dimension is read from the bars' exact counters, fetched when the first one is switched on
   const uncounted = st.ready && M.dims.length > 0 && st.counters === 'failed';
-  el.className = st.failed || uncounted ? 'err' : '';
-  el.textContent = st.failed ? st.failed : !st.ready ? 'Loading the history' : uncounted ? `The counters could not be loaded (${st.counted}): no dimension can be read`
+  el.className = st.failed || uncounted || refusedNow() ? 'err' : '';
+  el.textContent = st.failed ? st.failed : !st.ready ? (st.warming ? `The server is still reading the history · asking again every second (${st.warming})` : 'Loading the history')
+    : uncounted ? `The counters could not be loaded (${st.counted}): no dimension can be read`
+    : refusedNow() ? `The engine refused this drawing: ${refused.why}`
     : !fresh() && M.dims.length && st.counters !== 'ready' ? 'Loading the counters' : !fresh() ? `Searching ${Math.round(progress * 100)}%` : state.hold ? (state.pend ? 'Pick the second point · Esc to cancel' : 'Hold mode · pick two points, a body or a knot · Esc to leave') : state.message || `${hero.ms} ms${st.readings === 'ready' ? '' : st.readings === 'failed' ? ' · readings unavailable' : ' · readings loading'}`;
 }
 
@@ -413,6 +464,7 @@ function laneTrack(lane) {
   if (lane.kind === 'nopath') return [];
   const r = lane.res; const p = r?.panes;
   if (lane.kind === 'offer') return [];
+  if (lane.refused) return [h('div', { title: `The engine refused this row’s question: ${lane.refused}` }, h('b', { class: 'thin' }, '—'), h('small', null, 'refused'))];
   if (!r) return [h('div', null, h('b', { class: 'thin' }, lane.kind === 'variant' ? int(lane.v.n) : '—'), h('small', null, lane.wait ? 'searching' : 'windows'))];
   const cd = condOf(lane);
   if (!cd && givenAny() && lane.kind !== 'window') {
@@ -452,6 +504,7 @@ function laneTrack(lane) {
 /** The held relations a nearest window does not keep, in words. The matcher reports them only when nothing holds. */
 function brokenOf(w) { if (!w.broken?.length || !fresh()) return []; const held = model.held(); return w.broken.map((i) => (held[i] ? holdText(held[i]) : null)).filter(Boolean); }
 function putOnCanvas(rows, message) {
+  view = null;   // another drawing: fitted afresh
   model.setBars(fromRows(rows)); M.sel = M.bars.length - 1; state.lane = 'draw'; state.col = null; state.message = message || ''; ask();
 }
 function laneHead(lane) {
@@ -565,7 +618,7 @@ function drawOne(lane, n, domain, height, direct = false, ext = null) {
   const cont = contOf(lane); const sel = lane.id === state.lane; const cd = conditioned(cont, M.given); const states = sharesOf(cd);
   // a cohort is compared with the drawing's pooled answer, once both stand for the drawing as it is now
   const pooled = lane.kind !== 'draw' && fresh() && !lane.wait ? sharesOf(condOf(ctx.lanes[0])) : null;
-  const ex = scaled(lane.rows, ext); const draws = lane.kind === 'draw'; const line = ctx?.sel?.kind === 'hold' ? ctx.sel.gp : null; let marks = {};
+  const fit = ext || extent(lane.rows); const ex = scaled(lane.rows, fit); const draws = lane.kind === 'draw'; const line = ctx?.sel?.kind === 'hold' ? ctx.sel.gp : null; let marks = {};
   if (draws) {
     // every pin on the drawing, quiet; the one whose ledger line is selected, or that the pointer is on, stands out
     const held = model.held(lane.rows); const on = (x) => (!!line && line.items.some((y) => y.pin === x.pin && y.from === 'pin')) || (state.hot?.kind === 'knot' && state.hot.pin === x.pin);
@@ -574,12 +627,13 @@ function drawOne(lane, n, domain, height, direct = false, ext = null) {
       bones: M.skel ? bonesOf(ex) : null, bonesOn: line?.kind === 'skeleton', targets: state.hold, pend: state.pend, hot: state.hot };
   } else if (lane.kind === 'hold') marks = { frame: lane.gp.kind === 'colour' ? lane.gp.items[0].h.bar : -1, bones: lane.gp.kind === 'skeleton' ? bonesOf(ex) : null, bonesOn: true };
   else if (lane.kind === 'offer' && model.skelTop()) marks = { bones: bonesOf(ex, 1) };
-  n.geo = drawLane(n.svgHost, { bars: ex, cont, states, next: lane.next ? scaled([lane.next], extent(lane.rows))[0] : null, domain, height, ...marks,
+  n.geo = drawLane(n.svgHost, { bars: ex, cont, states, next: lane.next ? scaled([lane.next], extent(lane.rows))[0] : null, domain, height, ...marks, band: STEADY.has(lane.kind) ? bandFor(fit) : undefined,
     mark: markOf(lane), pooled, diff: pooled && states ? differsFrom(states, cd.n, pooled) : null,
     dims: draws ? dimTracks() : null,
     given: cont ? M.given : NO_GIVEN, loose: !!cd?.picks, path: lane.kind === 'path' ? lane.key : null, overlay: lane.kind === 'draw' && ctx?.sel?.kind === 'path' ? ctx.sel.key : null, col: state.col?.after || 0,
     hero: lane.kind === 'draw', pick: lane.kind === 'draw' && (state.lane === 'draw' || !!drag) ? M.sel : -1, direct, wait: lane.wait, numbers: lane.kind === 'draw' || (sel && height >= 120),
-    why: lane.kind === 'window' ? (lane.next ? '' : 'NO NEXT BAR') : lane.kind === 'offer' ? 'NOTHING IS HELD · A HOLD ADDS A LINE HERE' : lane.kind === 'hold' && lane.res && lane.res.mode !== 'held' ? (tally(lane.res).raw ? 'NONE THAT KEEPS IT PASSES THE NEXT-BAR FILTER' : 'NO WINDOW KEEPS THIS') : lane.res && !cont ? 'FEWER THAN 30 COMPLETE WINDOWS'
+    why: lane.refused ? (lane.kind === 'draw' ? 'THE ENGINE REFUSED THIS DRAWING · ITS REASON IS AT THE FOOT OF THE PAGE' : 'THE ENGINE REFUSED THIS ROW’S QUESTION')
+      : lane.kind === 'window' ? (lane.next ? '' : 'NO NEXT BAR') : lane.kind === 'offer' ? 'NOTHING IS HELD · A HOLD ADDS A LINE HERE' : lane.kind === 'hold' && lane.res && lane.res.mode !== 'held' ? (tally(lane.res).raw ? 'NONE THAT KEEPS IT PASSES THE NEXT-BAR FILTER' : 'NO WINDOW KEEPS THIS') : lane.res && !cont ? 'FEWER THAN 30 COMPLETE WINDOWS'
       : lane.kind === 'nopath' ? (hero?.panes?.cont ? 'NO WINDOW CLOSED WHERE THE PICKS SAY' : 'FEWER THAN 30 COMPLETE WINDOWS')
         : cont && !states ? `${int(cd.n)} CLOSED THERE · UNDER 30, NO ESTIMATE` : '' });
 }
@@ -606,6 +660,7 @@ function renderCanvas() {
   fitCanvas();
   const { lanes } = ctx; const host = $('#lanes'); const avail = host.clientHeight;
   host.classList.toggle('stale', !fresh());
+  settleView();
   let rest = lanes.slice(1); const MIN = 64;
   // the selected row is drawn tall, as the drawing is; the others stay compact and share what is left
   // The drawing's row carries its dimension tracks at its foot, and they add to its height. The candles then give up
@@ -758,7 +813,9 @@ function heroDown(n, e) {
   const box = n.svgHost.getBoundingClientRect(); const hit = hitTest(n, e.clientX - box.left, e.clientY - box.top);
   if (!hit || hit.kind === 'select') return;
   e.preventDefault(); n.svgHost.setPointerCapture(e.pointerId);
-  const ext = extent(ohlc(M.bars)); const span = ext[1] - ext[0] || 1; const priceAt = (y) => ext[0] + Math.max(-0.26, Math.min(1.26, n.geo.price(y))) * span;
+  // a level goes no further than the drawing's band shows: its edges, in the units of the shape as it stands
+  const ext = extent(ohlc(M.bars)); const span = ext[1] - ext[0] || 1; const [b0, b1] = n.geo.band; const edge = (b1 - b0) * 0.013;
+  const priceAt = (y) => ext[0] + Math.max(b0 + edge, Math.min(b1 - edge, n.geo.price(y))) * span;
   M.sel = hit.bar; state.lane = 'draw';
   drag = { n, hit, ext, P0: model.params(), was: model.snapshot(), start: priceAt(e.clientY - box.top), moved: false, priceAt, id: e.pointerId, height: n.geo.height };
   n.svgHost.classList.add('dragging'); $('#lanes').classList.remove('hot');
@@ -779,7 +836,7 @@ function heroDown(n, e) {
     n.svgHost.removeEventListener('pointermove', move); n.svgHost.removeEventListener('pointerup', up); n.svgHost.removeEventListener('pointercancel', up);
     n.svgHost.classList.remove('dragging');
     const d = drag; drag = null; n.dragged = d.moved; setTimeout(() => { n.dragged = false; }, 60);
-    if (d.moved) { model.record(d.was); state.message = ''; state.col = null; ask(); } else render();
+    if (d.moved) { tidyBar(hit.bar); model.record(d.was); state.message = ''; state.col = null; ask(); } else render();
   };
   n.svgHost.addEventListener('pointermove', move); n.svgHost.addEventListener('pointerup', up); n.svgHost.addEventListener('pointercancel', up);
 }
@@ -1020,7 +1077,7 @@ function renderRight() {
     const cd = conditioned(hero?.panes?.cont || null, M.given);
     blocks.push(title('Closing paths', cd ? 'No window closed there' : 'No closing paths', cd ? 'No complete window closed where every pick says. Release a pick to see paths again.' : 'Fewer than 30 complete windows: nothing is estimated.'), cd?.picks ? givenBlock(cd) : null);
   } else if (!p) {
-    blocks.push(title(KIND[sel.kind], sel.kind === 'tf' ? TF_LONG[sel.k] : sel.title, engine.state.failed || (engine.state.ready ? 'Searching the history.' : 'The history is loading.')));
+    blocks.push(title(KIND[sel.kind], sel.kind === 'tf' ? TF_LONG[sel.k] : sel.title, engine.state.failed || (sel.refused ? `The engine refused this question: ${sel.refused}` : engine.state.ready ? 'Searching the history.' : 'The history is loading.')));
   } else {
     const kind = KIND[sel.kind]; const res = sel.res; const fell = res.mode === 'fallback';
     // the figure is what the cohort is: exact twins, windows that keep what is held, or only the nearest windows
@@ -1142,7 +1199,7 @@ function togglePanel(p, force) {
   const el = p === 'left' || p === 'right' ? $('#' + p) : $('#drawer');
   if (!el.hidden && !document.hidden) { el.classList.remove('enter'); void el.offsetWidth; el.classList.add('enter'); el.addEventListener('animationend', () => el.classList.remove('enter'), { once: true }); }
 }
-for (const b of document.querySelectorAll('.toggles button')) b.addEventListener('click', () => togglePanel(b.dataset.panel));
+for (const b of document.querySelectorAll('button[data-panel]')) b.addEventListener('click', () => togglePanel(b.dataset.panel));
 document.addEventListener('keydown', (e) => {
   // Where a key was pressed is the event's own target. The focus cannot say: a control that acted on the key may have
   // been redrawn by now, leaving the focus on the page. And a key a control has already taken is not a shortcut too.
@@ -1201,7 +1258,7 @@ document.addEventListener('keydown', (e) => {
       if (model.stepMark(state.dim, M.sel, up ? 1 : -1)) { state.message = ''; ask(); } else { state.message = `Bar ${M.sel + 1} is already ${up ? 'above' : 'below'} every other mark`; render(); }
       return;
     }
-    if (e.shiftKey) { const [lo, hi] = extent(ohlc(M.bars)); model.nudge(M.sel, (e.key === 'ArrowUp' ? 1 : -1) * (hi - lo) * 0.03); state.lane = 'draw'; ask(); return; }
+    if (e.shiftKey) { const [lo, hi] = extent(ohlc(M.bars)); model.nudge(M.sel, (e.key === 'ArrowUp' ? 1 : -1) * (hi - lo) * 0.03); tidyBar(M.sel); state.lane = 'draw'; ask(); return; }
     const row = ctx.all.findIndex((l) => l.id === state.lane); const next = ctx.all[row + (e.key === 'ArrowDown' ? 1 : -1)];
     if (next) { state.col = null; selectLane(next); }
   }
@@ -1216,7 +1273,7 @@ window.addEventListener('hashchange', () => {
   if (location.hash.slice(1) === encode()) return;
   const was = model.snapshot(true);   // with the terms: a link replaces them, and undo must bring them back
   if (!model.readAddress(location.hash)) { render(); return; }   // unreadable: the bench stays as it is, and says so in the address
-  model.record(was); closeMenu(); showDrawing(); ask();
+  model.record(was); closeMenu(); showDrawing(); view = null; ask();
 });
 $('#coltrack').addEventListener('mousemove', (e) => { const n = ctx?.read?.node; if (n) hover(n, e); });
 $('#coltrack').addEventListener('mouseleave', unhover);

@@ -16,27 +16,31 @@
     <span class="word">Composer</span>
     <nav class="tabs aspects" aria-label="Aspects of the tool"><a id="to-cube" target="_blank" rel="noopener">Cube ↗</a><span aria-current="page">Composer</span><a id="to-query" target="_blank" rel="noopener">Query ↗</a></nav>
     <div id="readout" class="readout" aria-live="polite"></div>
-    <div class="tabs toggles" role="toolbar" aria-label="Panels">
-      <button type="button" data-panel="left" title="Named patterns · P">Patterns</button>
-      <button type="button" data-panel="windows" title="The matched windows · W">Windows</button>
-      <button type="button" data-panel="g1" title="The drawing as a g1 pattern · G">g1</button>
-      <button type="button" data-panel="limen" title="Hand this shape to Limen · L">Limen</button>
-      <button type="button" data-panel="right" title="Inspect the selected row or column · I">Inspect</button>
-    </div>
   </header>
-  <div id="encbar" class="encbar" role="toolbar" aria-label="The drawing's terms and what the canvas shows"></div>
+  <!-- Each panel's switch sits on the edge it opens from: the catalogue on the left, Inspect on the right, the drawer's tabs on the drawer. -->
+  <div class="encrow">
+    <button type="button" class="edge" data-panel="left" aria-label="Patterns" title="Named patterns" aria-keyshortcuts="P"><svg class="side-icon" width="14" height="10" aria-hidden="true"><rect x=".5" y=".5" width="13" height="9"/><rect class="fill" x=".5" y=".5" width="4.5" height="9"/></svg><span class="label-text">Patterns</span><kbd>P</kbd></button>
+    <div id="encbar" class="encbar" role="toolbar" aria-label="The drawing's terms and what the canvas shows"></div>
+    <button type="button" class="edge right" data-panel="right" aria-label="Inspect" title="Inspect the selected row or column" aria-keyshortcuts="I"><span class="label-text">Inspect</span><kbd>I</kbd><svg class="side-icon" width="14" height="10" aria-hidden="true"><rect x=".5" y=".5" width="13" height="9"/><rect class="fill" x="9" y=".5" width="4.5" height="9"/></svg></button>
+  </div>
   <div class="work">
     <aside id="left" class="side" aria-label="Named patterns" hidden></aside>
     <div class="main">
       <section id="canvas" class="canvas" aria-label="Shape canvas">
         <div class="axis row3"><div class="lab"><span id="rowlabel" class="note"></span><span id="pager" class="pagerbar"></span></div><div id="axis"></div><div id="trackhead" class="cols label"></div></div>
-        <div id="lanes"><div class="cursor" id="cursor"></div><div class="tip" id="tip"></div></div>
+        <div id="lanes"><div class="cursor" id="cursor"></div><div class="tip" id="tip"></div>
+          <div id="boot" class="boot" role="status"><span class="label">Loading</span><span id="boot-text">Starting the Filang engine…</span></div></div>
         <div class="band row3"><div class="cursor" id="cursor2"></div>
           <div id="names" class="cell names"></div>
           <div id="coltrack"></div>
           <div id="collabel" class="lab"></div>
         </div>
       </section>
+      <nav id="dock" class="dock" aria-label="Drawer">
+        <button type="button" data-panel="windows" title="The matched windows" aria-keyshortcuts="W">Windows<kbd>W</kbd></button>
+        <button type="button" data-panel="g1" title="The drawing as a g1 pattern, and the way to ask it in Query" aria-keyshortcuts="G">g1<kbd>G</kbd></button>
+        <button type="button" data-panel="limen" title="Hand this shape to Limen" aria-keyshortcuts="L">Limen<kbd>L</kbd></button>
+      </nav>
       <section id="drawer" class="drawer" hidden></section>
     </div>
     <aside id="right" class="side right" aria-label="Inspect" hidden></aside>
@@ -65,6 +69,20 @@
   <link rel="modulepreload" href="/bench/lanes.js">
   <link rel="modulepreload" href="/bench/dom.js">
   <link rel="modulepreload" href="/bench/motion.js">
+  <script>
+    // The bench answers nothing without the engine. Until its first render, a module that fails to load or to start
+    // (the engine above all) says why where the drawing would be, instead of leaving an empty page.
+    (() => {
+      const stop = (why) => {
+        const boot = document.getElementById('boot'); if (!boot) return;
+        boot.classList.add('err'); boot.querySelector('.label').textContent = 'Stopped';
+        document.getElementById('boot-text').textContent = 'The bench could not start: ' + why + '. Reload the page to try again.';
+        const s = document.getElementById('status'); s.textContent = 'The bench could not start: ' + why; s.className = 'err';
+      };
+      addEventListener('error', (e) => stop(e.message || 'a part of the page could not be loaded'), true);
+      addEventListener('unhandledrejection', (e) => stop(e.reason?.message || String(e.reason)));
+    })();
+  </script>
   <script type="module" src="/bench/bench.js"></script>
 </body>
 </html>

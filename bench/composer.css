@@ -251,11 +251,13 @@ svg.moving .b-holdknot, svg.moving .b-bone, svg.moving .b-frame, svg.moving .b-t
 .composer .g1 .askq .link:hover, .composer .g1 .askq .link:focus-visible { border-bottom-color: var(--t2); }
 .composer .g1 .askq .note { flex-basis: 100%; color: var(--t3); }
 
-/* the terms bar gives way before a term is cut off: the terms draw closer, then lose their carets, and under that
-   the bar scrolls sideways, as it does on a phone */
-@media (max-width: 1480px) { .composer .enc { padding-inline: 7px; gap: 6px; } }
-@media (max-width: 1360px) { .composer .enc > i { display: none; } }
-@media (max-width: 1220px) { .composer .encbar { overflow-x: auto; scrollbar-width: none; } }
+/* the terms bar gives way before a term is cut off: the panel switches at its edges keep only their icon and key,
+   the terms draw closer, then lose their carets, and under that the bar scrolls sideways, as it does on a phone.
+   It never runs under the switches: what does not fit scrolls. */
+.composer .encbar { overflow-x: auto; scrollbar-width: none; }
+.composer .encbar::-webkit-scrollbar { display: none; }
+@media (max-width: 1600px) { .composer .edge .label-text { display: none; } .composer .edge { padding-inline: 12px; } .composer .enc { padding-inline: 7px; gap: 6px; } }
+@media (max-width: 1480px) { .composer .enc > i { display: none; } }
 
 /* a narrow window keeps the keys and drops the swatches */
 @media (max-width: 1280px) { .composer .foot .keys { display: flex; } .composer .foot .key:not(.hint) { display: none; } }

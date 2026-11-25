@@ -8,7 +8,7 @@ import { s } from './dom.js';
 import { sceneFor } from './motion.js';
 
 export const AFTER = 6;
-const BAND = [-0.28, 1.28];
+export const BAND = [-0.28, 1.28];
 const f1 = (v) => Math.round(v * 10) / 10;
 const pc = (v) => (v * 100).toFixed(v >= 0.0995 ? 0 : 1) + '%';
 
@@ -99,7 +99,7 @@ export function domainOf(conts) {
  */
 export function drawLane(host, { bars, cont, states, next = null, domain, height, hero = false, pick = -1, direct = false, wait = false, why = '', numbers = false, mark = null, pooled = null, diff = null,
   holds = null, tints = null, frame = -1, bones = null, bonesOn = false, targets = false, pend = null, hot = null,
-  given = NONE, path = null, overlay = null, col = 0, loose = false, dims = null }) {
+  given = NONE, path = null, overlay = null, col = 0, loose = false, dims = null, band = BAND }) {
   const W = Math.max(160, Math.floor(host.clientWidth)); const n = bars.length;
   // the dimension tracks take the foot of the lane; the candles and what followed them keep the rest, as they were
   const full = height; height = full - (dims || []).reduce((a, t) => a + t.height, 0);
@@ -107,7 +107,9 @@ export function drawLane(host, { bars, cont, states, next = null, domain, height
   const g = geom(W, n); const small = height < 112;
   const padT = hero ? 14 : small ? 6 : 12; const padB = hero ? 24 : small ? 6 : 12; const inner = Math.max(20, height - padT - padB);
   const to = (d) => (v) => padT + (1 - (v - d[0]) / (d[1] - d[0])) * inner;
-  const yb = to(BAND); const ya = to(domain); const clampA = (v) => Math.max(domain[0], Math.min(domain[1], v));
+  // `band` is the price range the drawn bars stand in, in shape units. It is BAND unless the bench holds the view steady
+  // while a drawing is edited: then the same prices keep the same height however the shape's own range moves.
+  const yb = to(band); const ya = to(domain); const clampA = (v) => Math.max(domain[0], Math.min(domain[1], v));
   const lastClose = bars[n - 1][3]; const text = [];
   sc.begin();
   sc.put('band', 'back', () => s('rect', { class: 'b-pattern' }), [g.band[0], 0, g.band[1] - g.band[0], full], setRect);
@@ -285,7 +287,7 @@ export function drawLane(host, { bars, cont, states, next = null, domain, height
   };
   /** The dimension track under a point, if it is on one. */
   const dimAt = (py) => dimGeo.find((t) => py >= t.y0 && py < t.y0 + t.height) || null;
-  return { g, yb, ya, cw, padT, inner, height: full, n, knots, cellAt, dims: dimGeo, dimAt, price: (y) => BAND[0] + (1 - (y - padT) / inner) * (BAND[1] - BAND[0]) };
+  return { g, yb, ya, cw, padT, inner, height: full, n, knots, cellAt, dims: dimGeo, dimAt, band, price: (y) => band[0] + (1 - (y - padT) / inner) * (band[1] - band[0]) };
 }
 
 /** Column labels: the drawn bars by number, then the bars after them. */
