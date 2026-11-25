@@ -50,10 +50,22 @@ body.bench {
 .readout .sep { width: 1px; align-self: stretch; background: var(--line-2); margin: 0 6px; }
 .readout .sub { color: var(--t2); font-size: 12px; }
 .readout .sub b { font-size: 12px; color: var(--t1); letter-spacing: 0; }
-.toggles { padding-right: 7px; }
+
+/* a panel's switch sits on the edge the panel opens from, and names its key */
+.bench kbd { font: 500 10.5px/1 var(--mono); letter-spacing: 0; color: var(--t3); border: 1px solid var(--line); padding: 2px 4px 1px; text-transform: none; }
+.encrow { display: flex; align-items: stretch; min-width: 0; border-bottom: 1px solid var(--line-2); }
+.edge { flex: none; display: inline-flex; align-items: center; gap: 8px; padding: 0 14px 0 18px; color: var(--t3); white-space: nowrap; border-right: 1px solid var(--line);
+  font: 500 10.5px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; transition: color var(--t-short) var(--ease), background-color var(--t-short) var(--ease); }
+.edge.right { padding: 0 18px 0 14px; border-right: 0; border-left: 1px solid var(--line); }
+.edge:hover:not(:disabled) { color: var(--t1); background: var(--wash); }
+.edge[aria-pressed='true'] { color: var(--t1); }
+.side-icon { display: block; }
+.side-icon rect { fill: none; stroke: currentColor; stroke-width: 1; }
+.side-icon rect.fill { fill: transparent; transition: fill var(--t-short) var(--ease); }
+.edge[aria-pressed='true'] .side-icon rect.fill { fill: currentColor; }
 
 /* encoding bar */
-.encbar { display: flex; align-items: stretch; min-width: 0; padding-left: 7px; border-bottom: 1px solid var(--line-2); }
+.encbar { display: flex; flex: 1; align-items: stretch; min-width: 0; padding-left: 7px; }
 .enc { display: inline-flex; align-items: center; gap: 8px; padding: 0 11px; white-space: nowrap; transition: background-color var(--t-short) var(--ease); }
 .enc .val { font-size: 12.5px; font-weight: 500; }
 .enc i { font-style: normal; color: var(--t3); font-size: 8px; transform: translateY(1px); transition: color var(--t-short) var(--ease); }
@@ -79,10 +91,26 @@ body.bench {
 @keyframes side-in-right { from { opacity: 0; transform: translateX(8px); } }
 @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
 @keyframes pop { from { opacity: 0; transform: translateY(-3px); } }
-.main { display: grid; grid-template-rows: minmax(0, 1fr) auto; min-height: 0; min-width: 0; }
+.main { display: grid; grid-template-rows: minmax(0, 1fr) auto auto; min-height: 0; min-width: 0; }
+
+/* the drawer's tabs, on the drawer's edge: open or closed, they stay where the drawer opens */
+.dock { display: flex; align-items: stretch; height: 30px; padding-left: 7px; border-top: 1px solid var(--line-2); }
+.dock button { position: relative; display: inline-flex; align-items: center; gap: 8px; padding: 0 11px; color: var(--t3); white-space: nowrap;
+  font: 500 10.5px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; transition: color var(--t-short) var(--ease), background-color var(--t-short) var(--ease); }
+.dock button::after { content: ''; position: absolute; left: 11px; right: 11px; bottom: -1px; height: 1px; background: var(--t1); transform: scaleX(0); transition: transform var(--t) var(--ease); }
+.dock button:hover:not(:disabled) { color: var(--t1); background: var(--wash); }
+.dock button[aria-pressed='true'] { color: var(--t1); }
+.dock button[aria-pressed='true']::after { transform: scaleX(1); }
+/* the open tab names the drawer: its header keeps the title for assistive reading only */
+.drawer > header .title { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 /* canvas frame */
 .canvas { display: grid; grid-template-rows: 30px minmax(0, 1fr) 62px; min-height: 0; min-width: 0; }
+/* before the first answer: what the page is waiting for, or why it stopped */
+.boot { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 24px; text-align: center; color: var(--t2); font-size: 13px; }
+.boot.err, .boot.err .label { color: var(--t1); }
+.boot:not(.err) .label::after { content: ''; display: block; width: 72px; height: 1px; margin: 10px auto 0; background: linear-gradient(90deg, transparent, var(--t1), transparent); background-size: 50% 100%; background-repeat: no-repeat; animation: sweep 1.4s var(--ease) infinite; }
+@keyframes sweep { from { background-position: -100% 0; } to { background-position: 200% 0; } }
 .row3 { display: grid; grid-template-columns: var(--head) minmax(0, 1fr) var(--track); min-width: 0; }
 .axis { border-bottom: 1px solid var(--line); align-items: center; }
 .axis .lab { padding: 0 12px 0 18px; display: flex; align-items: baseline; gap: 14px; min-width: 0; white-space: nowrap; }
@@ -360,7 +388,8 @@ svg.moving .b-up, svg.moving .b-down, svg.moving .b-bar, svg.moving .b-horizon, 
   .work { position: relative; }
   .side { position: absolute; z-index: 20; top: 0; bottom: 0; left: 0; background: var(--navy); }
   .side.right { left: auto; right: 0; }
-  .encbar, .topbar { overflow-x: auto; scrollbar-width: none; }
+  .encbar, .topbar, .dock { overflow-x: auto; scrollbar-width: none; }
+  .edge { padding-inline: 12px; } .edge .label-text { display: none; }
   .readout .sub, .tabs.aspects a { display: none; }
   .lane-head .text { font-size: 13px; } .lane.pinned .lane-head .text { font-size: 14.5px; }
   .lane-head > .role { flex-wrap: wrap; row-gap: 4px; }
