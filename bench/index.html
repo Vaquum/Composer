@@ -69,13 +69,20 @@
   <link rel="modulepreload" href="/bench/lanes.js">
   <link rel="modulepreload" href="/bench/dom.js">
   <link rel="modulepreload" href="/bench/motion.js">
-  <link rel="modulepreload" href="/bench/bench.js">
-  <script type="module">
-    // The bench answers nothing without the engine: a page that cannot load it says so, where the drawing would be.
-    import('/bench/bench.js').catch((e) => {
-      console.error(e); const s = document.getElementById('status'); s.textContent = 'The bench could not start: ' + e.message; s.className = 'err';
-      const boot = document.getElementById('boot'); if (boot) { boot.classList.add('err'); boot.querySelector('.label').textContent = 'Stopped'; document.getElementById('boot-text').textContent = 'The bench could not start: ' + e.message + '. Reload the page to try again.'; }
-    });
+  <script>
+    // The bench answers nothing without the engine. Until its first render, a module that fails to load or to start
+    // (the engine above all) says why where the drawing would be, instead of leaving an empty page.
+    (() => {
+      const stop = (why) => {
+        const boot = document.getElementById('boot'); if (!boot) return;
+        boot.classList.add('err'); boot.querySelector('.label').textContent = 'Stopped';
+        document.getElementById('boot-text').textContent = 'The bench could not start: ' + why + '. Reload the page to try again.';
+        const s = document.getElementById('status'); s.textContent = 'The bench could not start: ' + why; s.className = 'err';
+      };
+      addEventListener('error', (e) => stop(e.message || 'a part of the page could not be loaded'), true);
+      addEventListener('unhandledrejection', (e) => stop(e.reason?.message || String(e.reason)));
+    })();
   </script>
+  <script type="module" src="/bench/bench.js"></script>
 </body>
 </html>
