@@ -17,7 +17,7 @@ body.composer { --head: 284px; --track: 328px; }
 .composer #canvas:not([data-fit='roomy']) .lane-head .text { font-size: 13px; }
 .composer #canvas:not([data-fit='roomy']) .lane.pinned .lane-head .text { font-size: 14.5px; }
 .composer #canvas[data-fit='tight'] .lane-head .acts { display: none; }
-.composer #canvas[data-fit='tight'] .lane.sel .lane-head .acts { display: inline-flex; }
+.composer #canvas[data-fit='tight'] .lane.sel .lane-head .acts, .composer #canvas[data-fit='tight'] .lane.draw .lane-head .acts { display: inline-flex; }
 .composer #canvas[data-fit='tight'] .lane-head > .role { flex-wrap: wrap; row-gap: 3px; }
 .composer #canvas:not([data-fit='roomy']) .axis .lab .note { display: none; }
 

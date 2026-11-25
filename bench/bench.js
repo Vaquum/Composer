@@ -24,6 +24,7 @@ const state = { rows: saved.rows ?? 'timeframes', track: saved.track ?? 'range',
   sort: { key: 'rank', dir: 1 }, winPage: 0, catalog: '', frame: saved.frame ?? 2, message: '',
   hold: false, pend: null, hot: null,     // hold mode: picking points on the drawing; the first point picked; the point under the pointer or the keys
   dim: null,                              // the dimension track the nudge keys move a mark on; null and they move the bar's prices
+  level: null,                            // the one price of the picked bar the nudge keys move: close, high, low or open; null and the bar moves
   seek: null };                           // a window picked in the drawer: the canvas turns to the page that holds it
 const persist = () => { try { localStorage.setItem('composer.bench', JSON.stringify({ ...ui, rows: state.rows, track: state.track, frame: state.frame })); } catch { /* storage is optional */ } };
 const model = createModel(); const M = model.state;
@@ -122,7 +123,7 @@ function ledger() {
   if (skel.length) groups.push({ id: 'skel', kind: 'skeleton', items: skel, text: `The skeleton: ${skel.length} ${skel.length === 1 ? 'relation' : 'relations'} between its swings` });
   return { held, groups };
 }
-function toggleHold(on) { state.hold = on ?? !state.hold; state.pend = null; state.hot = null; if (state.hold) state.lane = 'draw'; render(); }
+function toggleHold(on) { state.hold = on ?? !state.hold; state.pend = null; state.hot = null; state.message = ''; if (state.hold) state.lane = 'draw'; render(); }
 
 /** The rows under the drawing, each with the question that fills it. */
 function laneSpecs() {
@@ -221,7 +222,21 @@ const condOf = (lane) => conditioned(contOf(lane), M.given);
 /** A share of n windows with its Wilson 95% interval, as the matcher writes one: null under 30 windows. */
 const rateOf = (k, n) => (n >= 30 ? [k / n, ...wilson(k, n), n] : null);
 /** Pick a closing state for later bar +j, or free the bar when it is the one already picked. */
-function give(j, z) { model.give(j, z < 0 ? '-' : 'UID'[z]); state.message = ''; render(); }
+function give(j, z) {
+  model.give(j, z < 0 ? '-' : 'UID'[z]); state.message = '';
+  // a pick narrows every row at once, and one click on a cell makes it: the canvas says so, with its release beside it
+  if (z >= 0) toast(`Given: bar +${j} closed ${STATE_LONG[z]}. Every row now reads only the windows that closed there.`, { label: 'Release · 0', run: () => give(j, -1) });
+  else toast(null);
+  render();
+}
+/** A short notice on the canvas with an action beside it. */
+let toastTimer = 0;
+function toast(text, action = null) {
+  const el = $('#toast'); clearTimeout(toastTimer);
+  if (!text) { el.hidden = true; return; }
+  mount(el, h('span', null, text), action ? h('button', { type: 'button', class: 'quiet', onclick: () => { action.run(); toast(null); } }, action.label) : null);
+  el.hidden = false; toastTimer = setTimeout(() => { el.hidden = true; }, 8000);
+}
 /** A six-bar closing path in words: its runs, in order. */
 function pathText(key) {
   const runs = []; for (const ch of key) { const z = 'UID'.indexOf(ch); if (runs.length && runs[runs.length - 1][0] === z) runs[runs.length - 1][1]++; else runs.push([z, 1]); }
@@ -238,7 +253,25 @@ function tidyPicks() {
 }
 
 let ctx = null;
+/** Where the keyboard is, as a selector that finds the same control once a redraw has replaced it. */
+function focusKey(el) {
+  if (!el || el === document.body) return null;
+  for (const a of ['data-enc', 'data-panel', 'data-keys', 'data-pattern', 'data-dim']) if (el.hasAttribute?.(a)) return `[${a}="${CSS.escape(el.getAttribute(a))}"]`;
+  if (el.closest?.('.lane-head .acts') && el.textContent) return { text: el.textContent, lane: el.closest('.lane')?.dataset.lane };
+  return null;
+}
+function refocus(key) {
+  if (!key || (document.activeElement && document.activeElement !== document.body)) return;
+  const el = typeof key === 'string' ? $(key) : [...document.querySelectorAll(`#lanes > .lane[data-lane="${CSS.escape(key.lane || '')}"] .lane-head .acts button`)].find((b) => b.textContent === key.text);
+  if (el && !el.disabled) el.focus({ preventScroll: true });
+}
 function render() {
+  const keep = focusKey(document.activeElement);
+  paint();
+  // a control the redraw replaced takes the keyboard back, so the keys go on where they were
+  refocus(keep);
+}
+function paint() {
   $('#boot')?.remove();   // the canvas has rows to show from the first render on: they say what they wait for
   tidyPicks();
   document.body.classList.toggle('holding', state.hold);
@@ -301,7 +334,7 @@ function renderBars() {
   { const link = queryLink(model.pinned()); $('#to-query').href = link || QUERY;
     $('#to-query').title = !link ? `${TOO_MUCH}. Query opens without it.` : model.pinned() ? 'Ask in Query: the relations pinned here, on fixed candles' : 'Ask in Query: this exact shape'; }
   $('#chip').textContent = st.ready ? `BTCUSDT · Binance · 15m to 4h · ${day.format(new Date(st.from * 1000))} to ${day.format(new Date(st.to * 1000))} · ${int(st.bars)} bars` : 'BTCUSDT · Binance · 15m to 4h';
-  const rd = $('#readout'); rd.classList.toggle('stale', !fresh() && !refusedNow());
+  const rd = h('div'); $('#readout').classList.toggle('stale', !fresh() && !refusedNow());
   if (refusedNow()) mount(rd, note('The engine refused this drawing · its reason is at the foot of the page'));
   else if (!r) mount(rd, note(st.failed ? st.failed : st.ready ? 'Searching the history' : st.warming ? 'Waiting for the server to finish reading the BTCUSDT history' : 'Loading the BTCUSDT history'));
   else {
@@ -321,11 +354,14 @@ function renderBars() {
     // with a dimension on, the closest windows are the closest that stand in its order: there may be none at all
     mount(rd, lead, p.kind === 'closest' ? note(!p.n && M.dims.length ? '· no window stands in the order of the dimensions' : why) : null,
       p.next || p.cont ? h('span', { class: 'sep' }) : null,
-      cd?.picks ? [h('span', { class: 'sub', title: `${int(cd.n)} of ${int(cd.base)} complete windows closed where the picks say` }, `given ${givenList().length > 2 ? `${givenList().length} later bars` : givenWords()} `, h('b', { class: 'fig' }, int(cd.n)), ` of ${int(cd.base)}`), share ? h('span', { class: 'sub' }, h('b', { class: 'fig' }, pct(share[0]))) : null]
+      cd?.picks ? [h('span', { class: 'sub', title: `${int(cd.n)} of ${int(cd.base)} complete windows closed where the picks say` }, `given ${givenList().length > 2 ? `${givenList().length} later bars` : givenWords()} `, h('b', { class: 'fig' }, int(cd.n)), ` of ${int(cd.base)}`), share ? h('span', { class: 'sub' }, h('b', { class: 'fig' }, pct(share[0]))) : null,
+        quiet('Release', () => { model.giveAll(NO_GIVEN); state.message = ''; toast(null); render(); }, 'Release every pick: every row reads its whole cohort again · Esc')]
         : [rate(p.next, 'next bar up'), rate(p.cont?.aboveHigh, 'broke the high'), rate(p.cont?.belowLow, 'broke the low')]);
   }
+  // the readout is a live region: it is rewritten only when what it says changes, so a reader hears each answer once
+  if ($('#readout').innerHTML !== rd.innerHTML) mount($('#readout'), ...rd.childNodes);
   for (const b of document.querySelectorAll('button[data-panel]')) { const k = b.dataset.panel; b.setAttribute('aria-pressed', String(k === 'left' ? ui.left : k === 'right' ? ui.right : ui.drawer === k)); }
-  const enc = (name, value, open, cls = '') => { const b = h('button', { class: 'enc ' + cls, type: 'button', 'data-menu': '1', 'data-enc': name, onclick: () => open(b) }, label(name), h('span', { class: 'val' }, value), h('i', null, '▼')); return b; };
+  const enc = (name, value, open, cls = '') => { const b = h('button', { class: 'enc ' + cls, type: 'button', 'data-menu': '1', 'data-enc': name, 'aria-haspopup': ['Holds', 'Given'].includes(name) ? 'dialog' : 'menu', 'aria-expanded': 'false', onclick: () => open(b) }, label(name), h('span', { class: 'val' }, value), h('i', { 'aria-hidden': 'true' }, '▼')); return b; };
   const on = M.tfOn.filter(Boolean).length;
   mount($('#encbar'),
     h('span', { class: 'enc step' }, label('Bars'),
@@ -340,7 +376,7 @@ function renderBars() {
     enc('Timeframes', on === 5 ? 'All five' : TF.filter((_, k) => M.tfOn[k]).join(', '), (b) => menu(b, { title: 'Timeframes', hint: 'Bars searched. The figure is the exact twins on each.', multi: true, value: TF.map((_, k) => k).filter((k) => M.tfOn[k]),
       options: TF.map((t, k) => ({ value: k, label: TF_LONG[k], figure: r ? int(tally(r, k).n) : '' })),
       // the bar is redrawn by the change, so the menu reopens on its new button
-      onChange: (k) => { if (M.tfOn[k] && on === 1) return; M.tfOn[k] = !M.tfOn[k]; ask(); document.querySelector('[data-enc="Timeframes"]')?.click(); } })),
+      onChange: (k) => { if (M.tfOn[k] && on === 1) { state.message = 'At least one timeframe is searched: switch another on first'; statusLine(); return; } M.tfOn[k] = !M.tfOn[k]; ask(); document.querySelector('[data-enc="Timeframes"]')?.click(); } })),
     enc('Holds', holdsValue(), (b) => holdsPopover(b)),
     h('button', { class: 'enc tog', type: 'button', 'aria-pressed': String(state.hold), title: 'Pick points on the drawing to hold · H', onclick: () => toggleHold() }, label('Hold mode'), h('span', { class: 'val' }, state.hold ? 'On' : 'Off')),
     enc('Given', givenValue(), (b) => givenPopover(b), givenAny() ? 'on' : ''),
@@ -382,6 +418,12 @@ function dimTracks() {
   return M.dims.map((name) => { const d = dimOf(name); return { name, zero: d.zero, marks: model.marks(name), height: trackHeight(n, d.zero), active: state.dim === name && state.lane === 'draw', scale: drag?.dim === name ? drag.scale : null }; });
 }
 /** Make a track the one the nudge keys move, or hand the keys back to the prices. */
+/** The picked price as an endpoint of the drawn bar: its high, low, or the body end the close or open stands at. */
+function levelPart() {
+  const b = M.bars[M.sel]; if (!b) return null; const up = b.d === 'u';
+  const part = state.level === 'high' ? 'H' : state.level === 'low' ? 'L' : state.level === 'close' ? (up ? 'T' : 'B') : (up ? 'B' : 'T');
+  return { bar: M.sel, part };
+}
 function pickTrack(name) { state.dim = name; state.lane = 'draw'; state.message = ''; render(); }
 
 // What is held, as the terms bar says it.
@@ -429,10 +471,11 @@ function statusLine() {
   // a dimension is read from the bars' exact counters, fetched when the first one is switched on
   const uncounted = st.ready && M.dims.length > 0 && st.counters === 'failed';
   el.className = st.failed || uncounted || refusedNow() ? 'err' : '';
-  el.textContent = st.failed ? st.failed : !st.ready ? (st.warming ? `The server is still reading the history · asking again every second (${st.warming})` : 'Loading the history')
+  el.textContent = st.failed ? st.failed : !st.ready ? (st.warming ? `The server is still reading the history · asking again every second (${st.warming})` : 'Loading the BTCUSDT history')
     : uncounted ? `The counters could not be loaded (${st.counted}): no dimension can be read`
     : refusedNow() ? `The engine refused this drawing: ${refused.why}`
-    : !fresh() && M.dims.length && st.counters !== 'ready' ? 'Loading the counters' : !fresh() ? `Searching ${Math.round(progress * 100)}%` : state.hold ? (state.pend ? 'Pick the second point · Esc to cancel' : 'Hold mode · pick two points, a body or a knot · Esc to leave') : state.message || `${hero.ms} ms${st.readings === 'ready' ? '' : st.readings === 'failed' ? ' · readings unavailable' : ' · readings loading'}`;
+    : !fresh() && M.dims.length && st.counters !== 'ready' ? 'Loading the counters' : !fresh() ? `Searching ${Math.round(progress * 100)}%` : state.hold ? (state.message || (state.pend ? 'Pick the second point · Esc to cancel' : 'Hold mode · pick two points, a body or a knot · Esc to leave'))
+    : state.level && !state.dim ? `Bar ${M.sel + 1} ${state.level} · ⇧↑↓ moves it · E the next level · Esc the whole bar` : state.message || `${hero.ms} ms${st.readings === 'ready' ? '' : st.readings === 'failed' ? ' · readings unavailable' : ' · readings loading'}`;
 }
 
 // ---------------------------------------------------------------- canvas
@@ -518,7 +561,9 @@ function laneHead(lane) {
       onclick: (e) => { e.stopPropagation(); pickTrack(t.active ? null : t.name); $(`.dimhead[data-dim="${t.name}"]`)?.focus({ preventScroll: true }); } },
     label(dimOf(t.name).label), h('span', { class: 'receipt' }, dimPart(t.name, t.marks).slice(t.name.length + 1))))) : null;
     return [head('01', 'Shape', names.length ? names.slice(0, 2).map((x) => x.p.name).join(' · ') : `${cap(NWORD[n] || String(n))}-bar shape`, model.code(),
-      [quiet('Undo', () => model.undo() && ask(), 'Undo the last change · ⌘Z'), quiet('Flip', () => { model.flip(); ask(); }, 'Trade the first bar’s open and close · Space'),
+      [h('button', { class: 'quiet', type: 'button', disabled: !M.past.length, title: 'Undo the last change · ⌘Z', onclick: (e) => { e.stopPropagation(); if (model.undo()) ask(); } }, 'Undo'),
+        h('button', { class: 'quiet', type: 'button', disabled: !M.future.length, title: 'Redo what was undone · ⇧⌘Z', onclick: (e) => { e.stopPropagation(); if (model.redo()) ask(); } }, 'Redo'),
+        quiet('Flip', () => { model.flip(); ask(); }, 'Trade the first bar’s open and close · Space'),
         h('button', { class: 'quiet', type: 'button', 'aria-pressed': String(state.hold), title: 'Pick points on the drawing to hold · H', onclick: (e) => { e.stopPropagation(); toggleHold(); } }, 'Hold')]), heads];
   }
   if (lane.kind === 'path') return head(pad(lane.i + 1), 'Path', lane.title, `${int(lane.n)} of ${int(lane.of)} windows`,
@@ -629,7 +674,7 @@ function drawOne(lane, n, domain, height, direct = false, ext = null) {
   else if (lane.kind === 'offer' && model.skelTop()) marks = { bones: bonesOf(ex, 1) };
   n.geo = drawLane(n.svgHost, { bars: ex, cont, states, next: lane.next ? scaled([lane.next], extent(lane.rows))[0] : null, domain, height, ...marks, band: STEADY.has(lane.kind) ? bandFor(fit) : undefined,
     mark: markOf(lane), pooled, diff: pooled && states ? differsFrom(states, cd.n, pooled) : null,
-    dims: draws ? dimTracks() : null,
+    dims: draws ? dimTracks() : null, edit: draws && state.level && !state.dim ? levelPart() : null,
     given: cont ? M.given : NO_GIVEN, loose: !!cd?.picks, path: lane.kind === 'path' ? lane.key : null, overlay: lane.kind === 'draw' && ctx?.sel?.kind === 'path' ? ctx.sel.key : null, col: state.col?.after || 0,
     hero: lane.kind === 'draw', pick: lane.kind === 'draw' && (state.lane === 'draw' || !!drag) ? M.sel : -1, direct, wait: lane.wait, numbers: lane.kind === 'draw' || (sel && height >= 120),
     why: lane.refused ? (lane.kind === 'draw' ? 'THE ENGINE REFUSED THIS DRAWING · ITS REASON IS AT THE FOOT OF THE PAGE' : 'THE ENGINE REFUSED THIS ROW’S QUESTION')
@@ -962,7 +1007,8 @@ const counted = new Map(); let counting = 0;
 const infoOf = (p) => counted.get(`${p.id}|${state.frame}`);
 /** Put a catalogue pattern on the canvas from its most recent recorded example on the chosen timeframe. */
 function drawNamed(p) {
-  const info = infoOf(p); const sample = info?.samples?.[0]; if (!sample) return;
+  const info = infoOf(p); const sample = info?.samples?.[0];
+  if (!sample) { state.message = `${p.name}: ${!info ? 'still being counted; try again in a moment' : info.error ? `could not be looked up (${info.error})` : `no ${TF[state.frame]} close fits it`}`; render(); return; }
   if (p.bars >= MIN_BARS) { putOnCanvas(sample.bars, `${p.name}: drawn from ${TF[state.frame]} · ${when(sample.close)}`); return; }
   // a one-bar pattern is put on the picked bar: its open stays on the chain, its shape comes from the example
   const [o, hi, lo, c] = sample.bars[0]; const i = M.sel; const P = model.params(); const open = i ? P.c[i - 1] : P.o0;
@@ -1019,7 +1065,7 @@ function renderLeft() {
   const search = h('input', { class: 'search', type: 'text', placeholder: 'Search, in English or Japanese', value: state.catalog, 'aria-label': 'Search patterns', oninput: (e) => { state.catalog = e.target.value; renderLeft(); } });
   const live = items.filter((p) => !infoOf(p) || infoOf(p).error || infoOf(p).count > 0); const none = items.filter((p) => infoOf(p) && !infoOf(p).error && !infoOf(p).count);
   mount(el, search, h('div', { class: 'frame' }, 'Closes that fit each rule, on', frameBtn),
-    live.length ? [h('div', { class: 'sec' }, label('Named candles'), note(engine.state.ready ? '' : 'history loading')), live.map(row)] : null,
+    live.length ? [h('div', { class: 'sec' }, label('Named candles'), note(engine.state.ready ? '' : 'Loading the BTCUSDT history')), live.map(row)] : null,
     none.length ? [h('div', { class: 'sec' }, label(`Not on ${TF[state.frame]}`)), none.map(row)] : null,
     !items.length ? h('p', { class: 'empty', style: 'padding:16px 18px' }, 'No pattern matches that search.') : null);
   el.scrollTop = top;
@@ -1077,7 +1123,7 @@ function renderRight() {
     const cd = conditioned(hero?.panes?.cont || null, M.given);
     blocks.push(title('Closing paths', cd ? 'No window closed there' : 'No closing paths', cd ? 'No complete window closed where every pick says. Release a pick to see paths again.' : 'Fewer than 30 complete windows: nothing is estimated.'), cd?.picks ? givenBlock(cd) : null);
   } else if (!p) {
-    blocks.push(title(KIND[sel.kind], sel.kind === 'tf' ? TF_LONG[sel.k] : sel.title, engine.state.failed || (sel.refused ? `The engine refused this question: ${sel.refused}` : engine.state.ready ? 'Searching the history.' : 'The history is loading.')));
+    blocks.push(title(KIND[sel.kind], sel.kind === 'tf' ? TF_LONG[sel.k] : sel.title, engine.state.failed || (sel.refused ? `The engine refused this question: ${sel.refused}` : engine.state.ready ? 'Searching the history.' : 'Loading the BTCUSDT history.')));
   } else {
     const kind = KIND[sel.kind]; const res = sel.res; const fell = res.mode === 'fallback';
     // the figure is what the cohort is: exact twins, windows that keep what is held, or only the nearest windows
@@ -1192,8 +1238,35 @@ function renderDrawer() {
 
 // ---------------------------------------------------------------- panels, keys, start
 
+// ---------------------------------------------------------------- the keys, in one place
+const KEYS = [
+  ['Drag', 'A close, high, low or the first open; a body moves its bar. Alt: no snapping to other levels'],
+  [', .', 'The previous or next column: the drawn bars, then the six after'], ['↑ ↓', 'The row above or below'],
+  ['⇧↑ ⇧↓', 'Nudge the picked bar, or its picked price, or its mark on a picked track'], ['E', 'Pick a price of the bar for the nudge keys'],
+  ['+ −', 'Add or remove a bar'], ['Space', 'Flip the first bar'], ['H', 'Hold mode: arrows walk the points, Enter picks, C holds a colour, ⌫ releases'],
+  ['1 2 3 0', 'On a later bar: given it closed above, inside, below; free it'], ['D T', 'The dimension switches; walk their tracks'],
+  ['⌘Z ⇧⌘Z', 'Undo and redo'], ['P I', 'The named patterns; Inspect'], ['W G L', 'The drawer: windows, g1, Limen'],
+  ['Esc', 'One step back: a menu, a pick, hold mode, a column, the picks'], ['?', 'This list'],
+];
+/** The keys sheet: every shortcut the bench answers to, opened with ? or from the dock. */
+function keysSheet() {
+  const open = $('#keys-sheet'); if (open) { open.remove(); return; }
+  const was = document.activeElement; let back = null;
+  const close = () => { back.remove(); if (was?.isConnected) was.focus({ preventScroll: true }); };
+  const shut = h('button', { class: 'quiet', type: 'button', onclick: () => close() }, 'Close · Esc');
+  back = h('div', { id: 'keys-sheet', class: 'sheet-back', onmousedown: (e) => { if (e.target === back) close(); },
+    onkeydown: (e) => { e.stopPropagation(); if (e.key === 'Escape' || e.key === '?') { e.preventDefault(); close(); } else if (e.key === 'Tab') { e.preventDefault(); shut.focus(); } } },
+  h('div', { class: 'sheet', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Keys' },
+    h('header', null, label('Keys'), shut),
+    h('dl', null, KEYS.map(([k, t]) => [h('dt', null, k.split(' ').map((x) => h('kbd', null, x))), h('dd', null, t)]))));
+  document.body.append(back); shut.focus();
+}
+$('[data-keys]').addEventListener('click', keysSheet);
+
 function togglePanel(p, force) {
   if (p === 'left' || p === 'right') ui[p] = force ?? !ui[p]; else ui.drawer = ui.drawer === p ? null : p;
+  // two side panels on a narrow window leave the drawing a sliver: the one opened last stays, the other closes
+  if ((p === 'left' || p === 'right') && ui[p] && window.innerWidth < 1400) ui[p === 'left' ? 'right' : 'left'] = false;
   persist(); render();
   if (p === 'left' && ui.left) countCatalogue();
   const el = p === 'left' || p === 'right' ? $('#' + p) : $('#drawer');
@@ -1212,6 +1285,7 @@ document.addEventListener('keydown', (e) => {
     // one thing at a time, nearest first: a menu, a half-made hold, hold mode, the pick on the picked later bar, the column, every pick
     if (menuOpen()) closeMenu(); else if (state.pend) { state.pend = null; render(); } else if (state.hold) toggleHold(false);
     else if (state.dim) pickTrack(null);
+    else if (state.level) { state.level = null; render(); }
     else if (state.col?.after && M.given[state.col.after - 1] !== '-') give(state.col.after, -1);
     else if (state.col) { state.col = null; render(); }
     else if (givenAny()) { model.giveAll(NO_GIVEN); render(); }
@@ -1226,6 +1300,12 @@ document.addEventListener('keydown', (e) => {
     pickTrack([...M.dims, null][M.dims.indexOf(state.lane === 'draw' ? state.dim : null) + 1]); return;
   }
   if (state.hold && !at.closest('.pop, table, button, a, [role="button"]') && holdKey(e)) return;
+  if (e.key === '?' && !at.closest('.pop')) { e.preventDefault(); keysSheet(); return; }
+  // E walks the picked bar's prices for the nudge keys: close, high, low (and the first bar's open), then the whole bar
+  if (k === 'e' && !at.closest('.pop')) {
+    e.preventDefault(); const order = ['close', 'high', 'low', ...(M.sel === 0 ? ['open'] : []), null];
+    state.level = order[(order.indexOf(state.level) + 1) % order.length]; state.dim = null; state.lane = 'draw'; render(); return;
+  }
   const map = { p: 'left', i: 'right', w: 'windows', g: 'g1', l: 'limen' };
   if (map[k]) { e.preventDefault(); togglePanel(map[k]); return; }
   if (e.key === ',' || e.key === '.' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
@@ -1257,6 +1337,13 @@ document.addEventListener('keydown', (e) => {
       const up = e.key === 'ArrowUp'; state.lane = 'draw';
       if (model.stepMark(state.dim, M.sel, up ? 1 : -1)) { state.message = ''; ask(); } else { state.message = `Bar ${M.sel + 1} is already ${up ? 'above' : 'below'} every other mark`; render(); }
       return;
+    }
+    if (e.shiftKey && state.level) {
+      // one price of the bar, a step at a time; its shadows reach its body however far the price goes
+      if (state.level === 'open' && M.sel !== 0) state.level = 'close';
+      const [lo, hi] = extent(ohlc(M.bars)); const dv = (e.key === 'ArrowUp' ? 1 : -1) * (hi - lo) * 0.03; const i = M.sel; const Q = copyParams(model.params());
+      if (state.level === 'close') Q.c[i] += dv; else if (state.level === 'high') Q.h[i] += dv; else if (state.level === 'low') Q.l[i] += dv; else Q.o0 += dv;
+      model.setParams(Q, { record: true }); tidyBar(i); state.lane = 'draw'; state.message = ''; ask(); return;
     }
     if (e.shiftKey) { const [lo, hi] = extent(ohlc(M.bars)); model.nudge(M.sel, (e.key === 'ArrowUp' ? 1 : -1) * (hi - lo) * 0.03); tidyBar(M.sel); state.lane = 'draw'; ask(); return; }
     const row = ctx.all.findIndex((l) => l.id === state.lane); const next = ctx.all[row + (e.key === 'ArrowDown' ? 1 : -1)];
