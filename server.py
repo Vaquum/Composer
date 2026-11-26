@@ -275,7 +275,11 @@ def handler(state: Bars, pages: dict[str, tuple[bytes, str]]):
             if path in pages:
                 body, kind = pages[path]
                 # a page is revalidated, not sent again, and sent compressed: the engine alone is close to a megabyte
-                packed = 'gzip' in ','.join(self.headers.get_all('Accept-Encoding', [])).lower()
+                gzip_weight, identity_weight = encoding_weights(','.join(self.headers.get_all('Accept-Encoding', [])))
+                if gzip_weight <= 0 and identity_weight <= 0:
+                    self._send(406, b'No acceptable content encoding\n', 'text/plain; charset=utf-8', {'Vary': 'Accept-Encoding'})
+                    return
+                packed = gzip_weight > 0 and gzip_weight >= identity_weight
                 etag = '"' + hashlib.sha256(body).hexdigest()[:32] + ('-gzip"' if packed else '"')
                 headers = {'ETag': etag, 'Vary': 'Accept-Encoding'}
                 if packed:
