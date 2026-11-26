@@ -261,14 +261,16 @@ let ctx = null;
 /** Where the keyboard is, as a selector that finds the same control once a redraw has replaced it. */
 function focusKey(el) {
   if (!el || el === document.body) return null;
+  if (el.matches?.('#lanes > .lane[data-lane]')) return `#lanes > .lane[data-lane="${CSS.escape(el.dataset.lane)}"]`;
   for (const a of ['data-enc', 'data-panel', 'data-keys', 'data-pattern', 'data-dim']) if (el.hasAttribute?.(a)) return `[${a}="${CSS.escape(el.getAttribute(a))}"]`;
   if (el.closest?.('.lane-head .acts') && el.textContent) return { text: el.textContent, lane: el.closest('.lane')?.dataset.lane };
   return null;
 }
 function refocus(key) {
   if (!key || (document.activeElement && document.activeElement !== document.body)) return;
-  const el = typeof key === 'string' ? $(key) : [...document.querySelectorAll(`#lanes > .lane[data-lane="${CSS.escape(key.lane || '')}"] .lane-head .acts button`)].find((b) => b.textContent === key.text);
-  if (el && !el.disabled) el.focus({ preventScroll: true });
+  const row = typeof key === 'string' ? null : $(`#lanes > .lane[data-lane="${CSS.escape(key.lane || '')}"]`);
+  const el = typeof key === 'string' ? $(key) : [...(row?.querySelectorAll('.lane-head .acts button') || [])].find((b) => b.textContent === key.text);
+  (el?.disabled ? row : el)?.focus({ preventScroll: true });
 }
 function render() {
   const keep = focusKey(document.activeElement);
@@ -480,7 +482,7 @@ function statusLine() {
     : uncounted ? `The counters could not be loaded (${st.counted}): no dimension can be read`
     : refusedNow() ? `The engine refused this drawing: ${refused.why}`
     : !fresh() && M.dims.length && st.counters !== 'ready' ? 'Loading the counters' : !fresh() ? `Searching ${Math.round(progress * 100)}%` : state.hold ? (state.message || (state.pend ? 'Pick the second point · Esc to cancel' : 'Hold mode · pick two points, a body or a knot · Esc to leave'))
-    : state.level && !state.dim ? `Bar ${M.sel + 1} ${state.level} · ⇧↑↓ moves it · E the next level · Esc the whole bar` : state.message || `${hero.ms} ms${st.readings === 'ready' ? '' : st.readings === 'failed' ? ' · readings unavailable' : ' · readings loading'}`;
+    : state.message || (state.level && !state.dim ? `Bar ${M.sel + 1} ${state.level} · ⇧↑↓ moves it · E the next level · Esc the whole bar` : `${hero.ms} ms${st.readings === 'ready' ? '' : st.readings === 'failed' ? ' · readings unavailable' : ' · readings loading'}`);
 }
 
 // ---------------------------------------------------------------- canvas
@@ -1309,7 +1311,7 @@ document.addEventListener('keydown', (e) => {
   // E walks the picked bar's prices for the nudge keys: close, high, low (and the first bar's open), then the whole bar
   if (k === 'e' && !at.closest('.pop')) {
     e.preventDefault(); const order = ['close', 'high', 'low', ...(M.sel === 0 ? ['open'] : []), null];
-    state.level = order[(order.indexOf(state.level) + 1) % order.length]; state.dim = null; state.lane = 'draw'; render(); return;
+    state.level = order[(order.indexOf(state.level) + 1) % order.length]; state.dim = null; state.lane = 'draw'; state.message = ''; render(); return;
   }
   const map = { p: 'left', i: 'right', w: 'windows', g: 'g1', l: 'limen' };
   if (map[k]) { e.preventDefault(); togglePanel(map[k]); return; }

@@ -101,6 +101,24 @@ try{
   const port=await ready,base=`http://127.0.0.1:${port}`;
   browser=await chromium.launch({headless:true});
 
+  // Feedback and focus survive redraws at the edge of the drawing history.
+  {
+    const isolated=await open(),p=isolated.page;
+    await p.goto(`${base}/#${START.replace('tf=11111','tf=10000')}`,{waitUntil:'domcontentloaded'});await settled(p);
+    await p.keyboard.press('e');
+    await p.click('[data-enc="Timeframes"]');await p.locator('.pop li button').first().click();
+    assert.match((await see(p)).status,/At least one timeframe/,'a selected price must not hide the last-timeframe explanation');
+    await p.keyboard.press('Escape');await p.keyboard.press('e');
+    assert.match((await see(p)).status,/Bar \d+ (close|high|low|open)/,'selecting the next level must replace the old message');
+    await p.keyboard.press('Escape');await p.keyboard.press('Equal');await settled(p);
+    const row=p.locator('#lanes > .lane.draw');
+    await row.locator('.acts button').filter({hasText:'Undo'}).focus();await p.keyboard.press('Enter');await settled(p);
+    assert.equal(await row.evaluate(el=>el===document.activeElement),true,'undo at the history boundary must keep focus on the drawing');
+    await row.locator('.acts button').filter({hasText:'Redo'}).focus();await p.keyboard.press('Enter');await settled(p);
+    assert.equal(await row.evaluate(el=>el===document.activeElement),true,'redo at the history boundary must keep focus on the drawing');
+    calm(isolated.faults,'status and focus');await isolated.context.close();
+  }
+
   // ---- 1. the bench sends the terms of each drawing and displays the result
   // The bench asks its worker with the engine's drawing packet: the opening drawing, what is pinned on it, its skeleton
   // level and its stretch. The engine turns the pins and the skeleton into the relations it holds.
