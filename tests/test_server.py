@@ -115,6 +115,21 @@ class Server(unittest.TestCase):
         self.assertEqual((again.status, again.read()), (304, b''))
         self.assertEqual(self.get('/bench/bench.js', {'If-None-Match': self.get('/bench/bench.js').headers['ETag']}).status, 304)
 
+    def test_static_assets_respect_encoding_preferences(self) -> None:
+        for path in ('/', '/bench/bench.js', '/engine/filang_engine.wasm'):
+            with self.subTest(path=path):
+                raw = self.get(path, {'Accept-Encoding': 'identity'})
+                body, tag = raw.read(), raw.headers['ETag']
+                rejected = self.get(path, {'Accept-Encoding': 'gzip;q=0, identity'})
+                self.assertEqual((rejected.status, rejected.headers.get('Content-Encoding'), rejected.read()), (200, None, body))
+                self.assertEqual(rejected.headers['ETag'], tag)
+                self.assertEqual(self.get(path, {'Accept-Encoding': 'gzip;q=0, identity', 'If-None-Match': tag}).status, 304)
+                packed = self.get(path, {'Accept-Encoding': 'x-gzip'})
+                self.assertEqual((packed.headers['Content-Encoding'], gzip.decompress(packed.read())), ('gzip', body))
+                for method in ('GET', 'HEAD'):
+                    refused = self.get(path, {'Accept-Encoding': 'gzip;q=0, identity;q=0'}, method=method)
+                    self.assertEqual((refused.status, refused.headers['Vary']), (406, 'Accept-Encoding'))
+
     def test_page_aliases_keep_the_query(self) -> None:
         query = '?drawing=%7B%22bars%22%3A%5B%5D%7D&pattern=hammer'
         for path in ('/bench', '/bench/', '/bench/index.html', '/index.html'):
