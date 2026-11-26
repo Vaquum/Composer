@@ -47,7 +47,7 @@ export function menu(anchor, { title, hint, options, value, onChange, multi = fa
   popup = h('div', { class: 'pop', role: 'menu', onkeydown: (e) => {
     const items = [...popup.querySelectorAll('li button:not(:disabled)')]; const at = items.indexOf(document.activeElement);
     // Esc goes back to the control; Tab and ⇧Tab close the menu and move on from the control, either way
-    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeMenu(); anchor.focus(); }
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); const back = openerNow() || anchor; closeMenu(); back.focus(); }
     if (e.key === 'Tab') { e.stopPropagation(); const back = openerNow() || anchor; closeMenu(); back.focus(); }
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); e.stopPropagation(); items[(at + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus(); }
     if (e.key === 'Home' || e.key === 'End') { e.preventDefault(); e.stopPropagation(); items[e.key === 'Home' ? 0 : items.length - 1]?.focus(); }
@@ -64,7 +64,7 @@ export function menu(anchor, { title, hint, options, value, onChange, multi = fa
 /** A panel under its anchor with any content: the same surface as the menu, for a term that is more than a choice. */
 export function popover(anchor, { title, hint, body, footer = null }) {
   closeMenu();
-  popup = h('div', { class: 'pop wide', role: 'dialog', 'aria-label': title, onkeydown: (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeMenu(); anchor.focus(); } } },
+  popup = h('div', { class: 'pop wide', role: 'dialog', 'aria-label': title, onkeydown: (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); const back = openerNow() || anchor; closeMenu(); back.focus(); } } },
     h('header', null, label(title)), hint ? h('p', { class: 'note' }, hint) : null, body, footer ? h('footer', null, footer) : null);
   document.body.append(popup); opened(anchor);
   const r = anchor.getBoundingClientRect();
