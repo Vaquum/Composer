@@ -7,6 +7,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <!-- the surface, navy or warm stock, is set before anything is drawn -->
+  <script src="/bench/surface.js"></script>
+  <link rel="stylesheet" href="/bench/surface.css">
   <link rel="stylesheet" href="/bench/base.css">
   <link rel="stylesheet" href="/bench/bench.css">
   <link rel="stylesheet" href="/bench/composer.css">
@@ -16,6 +19,7 @@
     <span class="word">Composer</span>
     <nav class="tabs aspects" aria-label="Aspects of the tool"><a id="to-cube" target="_blank" rel="noopener">Cube ↗</a><span aria-current="page">Composer</span><a id="to-query" target="_blank" rel="noopener">Query ↗</a></nav>
     <div id="readout" class="readout" aria-live="polite"></div>
+    <button type="button" class="surface-toggle" data-surface-toggle><svg width="12" height="12" aria-hidden="true"><circle cx="6" cy="6" r="5.5"/><path d="M6 .5a5.5 5.5 0 0 1 0 11Z"/></svg><span data-surface-word>Auto</span></button>
   </header>
   <!-- Each panel's switch sits on the edge it opens from: the catalogue on the left, Inspect on the right, the drawer's tabs on the drawer. -->
   <div class="encrow">
@@ -51,12 +55,12 @@
     <span id="chip"></span>
     <span class="keys">
       <span class="key hint">Drag a level · , . column · ⇧↑↓ nudge · + − bars · H hold · 1 2 3 given above, inside, below · 0 free</span>
-      <span class="key"><svg width="9" height="14"><line x1="4.5" x2="4.5" y1="0" y2="14" stroke="#AAB3BD"/><rect x="1.5" y="3.5" width="6" height="6" fill="#142038" stroke="#AAB3BD"/></svg>Up</span>
-      <span class="key"><svg width="9" height="14"><line x1="4.5" x2="4.5" y1="0" y2="14" stroke="#AAB3BD"/><rect x="1.5" y="3.5" width="6" height="6" fill="#AAB3BD" stroke="#AAB3BD"/></svg>Down</span>
-      <span class="key"><svg width="18" height="6"><line x1="0" x2="18" y1="3" y2="3" stroke="#AAB3BD" stroke-dasharray="2 4"/></svg>Shape high and low</span>
-      <span class="key"><svg width="16" height="10"><rect width="16" height="10" fill="#F7F6F2" fill-opacity=".2"/></svg>Middle half of closes</span>
-      <span class="key"><svg width="18" height="10"><rect y="2" width="18" height="6" fill="#F7F6F2" fill-opacity=".07"/><rect y="2" width="10" height="6" fill="#F7F6F2" fill-opacity=".36"/></svg>Share closing above, inside, below</span>
-      <span class="key"><svg width="18" height="10"><rect y="2" width="18" height="6" fill="#F7F6F2" fill-opacity=".07"/><rect y="2" width="11" height="6" fill="#F7F6F2" fill-opacity=".6"/><rect x="6" y="1" width="1" height="8" fill="#F7F6F2" fill-opacity=".85"/></svg>Outside the drawing’s interval · tick, the drawing</span>
+      <span class="key"><svg width="9" height="14"><line x1="4.5" x2="4.5" y1="0" y2="14" style="stroke:var(--t2)"/><rect x="1.5" y="3.5" width="6" height="6" style="fill:var(--surface);stroke:var(--t2)"/></svg>Up</span>
+      <span class="key"><svg width="9" height="14"><line x1="4.5" x2="4.5" y1="0" y2="14" style="stroke:var(--t2)"/><rect x="1.5" y="3.5" width="6" height="6" style="fill:var(--t2);stroke:var(--t2)"/></svg>Down</span>
+      <span class="key"><svg width="18" height="6"><line x1="0" x2="18" y1="3" y2="3" stroke-dasharray="2 4" style="stroke:var(--t2)"/></svg>Shape high and low</span>
+      <span class="key"><svg width="16" height="10"><rect width="16" height="10" fill-opacity=".2" style="fill:var(--tint)"/></svg>Middle half of closes</span>
+      <span class="key"><svg width="18" height="10"><rect y="2" width="18" height="6" fill-opacity=".07" style="fill:var(--tint)"/><rect y="2" width="10" height="6" fill-opacity=".36" style="fill:var(--tint)"/></svg>Share closing above, inside, below</span>
+      <span class="key"><svg width="18" height="10"><rect y="2" width="18" height="6" fill-opacity=".07" style="fill:var(--tint)"/><rect y="2" width="11" height="6" fill-opacity=".6" style="fill:var(--tint)"/><rect x="6" y="1" width="1" height="8" fill-opacity=".85" style="fill:var(--tint)"/></svg>Outside the drawing’s interval · tick, the drawing</span>
     </span>
     <span id="status"></span>
   </footer>
