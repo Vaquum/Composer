@@ -1,8 +1,10 @@
 # Composer
 
-Compose ordinal bar patterns in Filang and find the closest ones in BTCUSDT history, at
+Draw bar patterns in [Filang](https://github.com/Vaquum/Filang) and find matching
+windows in BTCUSDT history at
 `https://composer.vaquum.fi` behind the Vaquum portal login.
-Query and Composer exchange those patterns in Filang's `g1` format.
+Composer and Query use the Filang engine and exchange complete ordinal patterns
+in Filang's `g1` format, including any selected activity axes.
 
 Draw two to twenty bars in a chain. Every bar after the first opens exactly where the previous
 one closed. You place each bar's close and shadows. A bar is green when it closes above its open
@@ -120,7 +122,11 @@ as the Market State Cube Explorer does. `DEPLOY_DIR` names the directory on the 
 
 Open **Patterns** to browse the English and Japanese names or open a link such as `/?pattern=hammer`. Choose a timeframe to count every complete window satisfying the displayed rule and inspect its most recent closes in UTC. Clicking a name under the drawing opens the same rule. Gaps reset two-bar windows. These counts use observed OHLC prices, including recorded opens, independently of the drawing's nearest matches, pins, next-bar filters and closing paths.
 
-The catalogue is the Filang engine's: profile v1, where every entry has a stable ID, names, a window length and a rule over exact price ticks, including ties. A changed rule needs a new version. Composer shows the catalogue and asks the engine to count it and to name a drawing; it holds no copy of the rules. A G1 string expresses endpoint order; wick-to-body length ratios require measured OHLC distances.
+Filang supplies the catalogue. Each profile v1 entry has a stable ID, names,
+a window length and a versioned rule over exact price ticks. Composer asks
+Filang to count matches and name drawings. The drawing's `g1` pattern
+preserves endpoint order and ties. Named rules can also use measured
+wick-to-body ratios, which Filang evaluates from the OHLC prices.
 
 The original names use the geometry in [Composer at 133e301](https://github.com/Vaquum/Composer/blob/133e3017ba9143f7dc255df7218ff7bfe46d9d06/index.html#L730). Profile v1 adds Hammer and Inverted hammer shapes, Spinning top, Four-price doji and the Inside/Outside bar range relations already described on the paper. A Hammer requires a nonzero body, a lower wick at least twice its length and an upper wick at most half its length. Short-wick tolerance is a Composer convention. The profile tests geometry at the close and imposes no preceding trend or subsequent reversal confirmation. Other implementations can choose different definitions, including the adaptive lookbacks in [TA-Lib Hammer](https://ta-lib.org/functions/cdlhammer) and [Limen's CDL indicators](https://github.com/Vaquum/Limen/tree/main/limen/indicators).
 
