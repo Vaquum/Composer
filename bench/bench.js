@@ -1223,7 +1223,7 @@ function renderDrawer() {
     mount(el, head('Windows', hero ? `${hero.mode === 'nearest' ? 'The closest recorded windows, distinct in time' : hero.mode === 'held' ? 'Windows that keep everything held, closest in shape first' : 'No window keeps everything held: the nearest, each with what it breaks'} · click a column to sort, a row to inspect it` : ''), body);
     windowsTable(body);
   } else if (ui.drawer === 'g1') {
-    mount(el, head('g1', `Every endpoint ranked, equal prices sharing a rank, then each bar’s direction.${M.dims.length ? ' Then each dimension’s marks, ranked among themselves.' : ''}`, copy), body);
+    mount(el, head('Filang pattern', `The g1 code records endpoint order, ties and any directions kept.${M.dims.length ? ' It ranks each selected dimension separately.' : ''}`, copy), body);
     const pinned = model.pinned(); const out = (held, text, title) => { const link = queryLink(held); return link ? h('a', { class: 'link', href: link, target: '_blank', rel: 'noopener', title }, text) : h('span', { class: 'dim', title: TOO_MUCH }, text.replace(' ↗', '')); };
     mount(body, h('div', { class: 'g1' }, h('code', null, code),
       h('div', { class: 'askq' }, label('Ask in Query'),
@@ -1252,7 +1252,7 @@ const KEYS = [
   ['⇧↑ ⇧↓', 'Nudge the picked bar, or its picked price, or its mark on a picked track'], ['E', 'Pick a price of the bar for the nudge keys'],
   ['+ −', 'Add or remove a bar'], ['Space', 'Flip the first bar'], ['H', 'Hold mode: arrows walk the points, Enter picks, C holds a colour, ⌫ releases'],
   ['1 2 3 0', 'On a later bar: given it closed above, inside, below; free it'], ['D T', 'The dimension switches; walk their tracks'],
-  ['⌘Z ⇧⌘Z', 'Undo and redo'], ['P I', 'The named patterns; Inspect'], ['W G L', 'The drawer: windows, g1, Limen'],
+  ['⌘Z ⇧⌘Z', 'Undo and redo'], ['P I', 'The named patterns; Inspect'], ['W G L', 'The drawer: windows, Filang pattern, Limen'],
   ['Esc', 'One step back: a menu, a pick, hold mode, a column, the picks'], ['?', 'This list'],
 ];
 /** The keys sheet: every shortcut the bench answers to, opened with ? or from the dock. */

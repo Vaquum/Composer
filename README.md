@@ -1,7 +1,8 @@
 # Composer
 
-Compose bar patterns in Filang's g1 language and find the closest ones in BTCUSDT history, at
+Compose ordinal bar patterns in Filang and find the closest ones in BTCUSDT history, at
 `https://composer.vaquum.fi` behind the Vaquum portal login.
+Query and Composer exchange those patterns in Filang's `g1` format.
 
 Draw two to twenty bars in a chain. Every bar after the first opens exactly where the previous
 one closed. You place each bar's close and shadows. A bar is green when it closes above its open
