@@ -205,7 +205,7 @@ try{
   await after('Control+z','undoes it again',n=>n.p===''&&n.s===v.s);
   await after('p','opens Patterns',n=>n.left);await after('p','closes Patterns',n=>!n.left);
   await after('i','closes Inspect',n=>!n.right);await after('i','opens Inspect',n=>n.right);
-  for(const [key,title] of [['w','Windows'],['g','g1'],['l','Limen']]){await after(key,`opens ${title}`,n=>n.drawer===title);await after(key,`closes ${title}`,n=>n.drawer===null);}
+  for(const [key,title] of [['w','Windows'],['g','Filang pattern'],['l','Limen']]){await after(key,`opens ${title}`,n=>n.drawer===title);await after(key,`closes ${title}`,n=>n.drawer===null);}
   await settled(page);v=await see(page);
   assert.equal(v.hash,START,'the keys, undone, must leave the opening drawing');
   calm(faults,'the keys');
